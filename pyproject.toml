@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "sharespences"
+version = "0.1.0"
+description = ""
+authors = ["sqkrv <kochkarev02@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+openpyxl = "^3.1.2"
+sqlalchemy = "^2.0.23"
+asyncpg = "^0.29.0"
+psycopg2 = "^2.9.9"
+pydantic = "^2.4.2"
+black = "^23.10.1"
+webauthn = "^2.0.0"
+fastapi = {extras = ["all"], version = "^0.109.0"}
+geoalchemy2 = "^0.14.3"
+pyjwt = "^2.8.0"
+httpx = "^0.26.0"
+pydantic-settings = "^2.1.0"
+greenlet = "^3.0.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
