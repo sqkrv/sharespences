@@ -33,9 +33,9 @@ class _AuthenticatorAttestationResponse(CamelBaseModel, AuthenticatorAttestation
 class CustomRegistrationCredential(CamelBaseModel, RegistrationCredential):
     response: _AuthenticatorAttestationResponse
     user_id: str
-    # username: str
-    # display_name: str
-    # email: str
+    username: str
+    display_name: str
+    email: str
 
     @field_validator('raw_id', mode='before')
     def convert_raw_id(cls, v: str) -> bytes:

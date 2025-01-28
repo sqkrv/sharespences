@@ -1,10 +1,10 @@
 import base64
 import logging
-from uuid import uuid4
 
 import webauthn
 from fastapi import APIRouter
 from fastapi import Request, HTTPException, Response
+from sqlalchemy import exc
 from webauthn import generate_registration_options
 
 from backend.api.api_v1.dependencies import DBSession
@@ -16,35 +16,26 @@ from backend.repositories.users_repository import UsersRepository
 from backend.schemas.response_schemas import RegistrationOptionsResponse, AuthOptionsResponse, TokensResponse
 from backend.schemas.user_schemas import CustomRegistrationCredential, MyCustomAuthenticationCredential, RegistrationOptionsSchema
 
-
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
 @router.post(
     "/register/options",
-    response_model=RegistrationOptionsResponse
+    response_model=RegistrationOptionsResponse,
+    response_model_exclude_none=True
 )
 async def get_registration_options_endpoint(
         request: Request,
         registration_options: RegistrationOptionsSchema
 ):
-    user_id = str(uuid4())
     public_key = generate_registration_options(
         rp_id=settings.HOSTNAME,
         rp_name=settings.RP_ID,
-        # user_id=registration_options.user_id.encode(),
-        user_id=str(user_id).encode(),
         user_name=registration_options.user_name,
         user_display_name=registration_options.display_name,
-        # authenticator_selection=AuthenticatorSelectionCriteria(
-        #     authenticator_attachment=AuthenticatorAttachment.CROSS_PLATFORM,
-        #     resident_key=ResidentKeyRequirement.DISCOURAGED,
-        #     user_verification=UserVerificationRequirement.DISCOURAGED,
-        # ),
     )
     request.session['webauthn_register_challenge'] = base64.urlsafe_b64encode(public_key.challenge).decode()
-    request.session['webauthn_register_user_id'] = user_id
     return public_key
 
 
@@ -67,30 +58,23 @@ async def register_user_endpoint(
         expected_origin=settings.ORIGIN,
     )
 
-    new_user_id = await users_repository.create_user(UserDB(
-        username='test',
-        display_name='John Doe',
-        email='test@test.com'
-    ))
-    # auth_database[email] = {
-    #     'public_key': registration.credential_public_key,
-    #     'sign_count': registration.sign_count,
-    #     'credential_id': registration.credential_id,
-    # }
-    # auth_database.append({
-    #     'public_key': registration.credential_public_key,
-    #     'sign_count': registration.sign_count,
-    #     'credential_id': registration.credential_id,
-    #     'user_id': registration_info.user_id
-    # })
+    try:
+        new_user_id = await users_repository.create_user(UserDB(
+            username=registration_info.username,
+            display_name=registration_info.display_name,
+            email=registration_info.email,
+        ))
+    except exc.IntegrityError as e:
+        logger.error(f"User creation failed: {e}")
+        raise HTTPException(status_code=400, detail='User creation failed')
+
     await passkeys_repository.add_credential(PasskeyDB(
         id=base64.b64encode(registration.credential_id).decode(),
         user_id=new_user_id,
-        name="temp cred name",
+        name=request.headers.get('User-Agent'),
         public_key=base64.b64encode(registration.credential_public_key).decode(),
     ))
     print(base64.b64encode(registration.credential_id), base64.urlsafe_b64encode(registration.credential_id))
-    # debug(registration)
 
 
 @router.get(
@@ -101,10 +85,8 @@ async def auth_get(request: Request):
     public_key = webauthn.generate_authentication_options(
         rp_id=settings.RP_ID,
         allow_credentials=[],
-        # user_verification=UserVerificationRequirement.PREFERRED,
     )
     request.session['webauthn_auth_challenge'] = base64.b64encode(public_key.challenge).decode()
-    # print(auth_database)
     return public_key
 
 
@@ -114,7 +96,6 @@ async def auth_get(request: Request):
 async def auth_post(
         credential: MyCustomAuthenticationCredential,
         request: Request,
-        response: Response,
         db_session: DBSession
 ):
     expected_challenge = base64.b64decode(request.session['webauthn_auth_challenge'].encode())
