@@ -1,31 +1,23 @@
-[tool.poetry]
+[project]
 name = "sharespences"
 version = "0.1.0"
 description = ""
-authors = ["sqkrv <kochkarev02@gmail.com>"]
 readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.12"
-openpyxl = "^3.1.2"
-sqlalchemy = "^2.0.23"
-asyncpg = "^0.29.0"
-psycopg2 = "^2.9.9"
-pydantic = "^2.4.2"
-webauthn = "^2.0.0"
-fastapi = { extras = ["all"], version = "^0.109.0" }
-geoalchemy2 = "^0.14.3"
-pyjwt = "^2.8.0"
-httpx = "^0.26.0"
-pydantic-settings = "^2.1.0"
-greenlet = "^3.0.3"
-
-[tool.pyright]
-venvPath = "/Users/sqkrv/Library/Caches/pypoetry/virtualenvs/"
-venv = "sharespences-G1iCFPwo-py3.12"
-# executionEnvironments = [ "/Users/daniel/miniforge3/bin/python" ]
-
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+authors = [
+    {name = "sqkrv", email = "kochkarev02@gmail.com"},
+]
+requires-python = "<4.0,>=3.13"
+dependencies = [
+    "openpyxl<4.0.0,>=3.1.2",
+    "sqlalchemy<3.0.0,>=2.0.23",
+    "asyncpg<1.0.0,>=0.29.0",
+    "psycopg2<3.0.0,>=2.9.9",
+    "pydantic<3.0.0,>=2.4.2",
+    "webauthn<3.0.0,>=2.0.0",
+    "fastapi[all]<1.0.0,>=0.109.0",
+    "geoalchemy2<1.0.0,>=0.14.3",
+    "pyjwt<3.0.0,>=2.8.0",
+    "httpx<1.0.0,>=0.26.0",
+    "pydantic-settings<3.0.0,>=2.1.0",
+    "greenlet<4.0.0,>=3.0.3",
+]
