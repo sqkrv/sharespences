@@ -1,28 +1,30 @@
-import asyncio
-from logging.config import dictConfig
+from logging.config import dictConfig as loggerDictConfig
 import logging
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import ORJSONResponse
 from starlette.middleware.cors import CORSMiddleware
-# from starlette.middleware import
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.staticfiles import StaticFiles
 
-from core.config import settings, logging_conf
-from api.api_v1.api import api_router
+from backend.core.config import settings, logging_conf
+from backend.api.api_v1.api import api_router
 
-dictConfig(logging_conf)
+loggerDictConfig(logging_conf)
 
-openapi_url = f"{settings.api_v1_path}/openapi.json"
+openapi_url = f"{settings.API_V1_PATH}/openapi.json"
 
 app = FastAPI(title=settings.project_name,
               openapi_url=openapi_url,
               debug=settings.debug,
               docs_url='/api/docs',
               redoc_url='/api/redoc',
-              version='0.0.1')
+              version='0.0.1',
+              default_response_class=ORJSONResponse)
 
-# app.mount("/static", StaticFiles(directory="static"), name="static")
-app.include_router(api_router, prefix=settings.api_v1_path)
+app.include_router(api_router, prefix=settings.API_V1_PATH)
+app.mount("", StaticFiles(directory="test_static"), name="static")
 
 # app.state.transactions_waiting = 0
 
@@ -37,42 +39,44 @@ app.include_router(api_router, prefix=settings.api_v1_path)
 
 
 # Set all CORS enabled origins
-if settings.backend_cors_origins:
+if settings.BACKEND_CORS_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.backend_cors_origins,
+        allow_origins=settings.BACKEND_CORS_ORIGINS,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
 
 
 if settings.debug:
     logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
 
-def custom_openapi():
-    if app.openapi_schema:
-        return app.openapi_schema
-    openapi_schema = get_openapi(
-        title=settings.project_name,
-        version=app.version,
-        description="Sharespences API",
-        routes=app.routes,
-    )
-    openapi_schema['components']['securitySchemes'] = {
-        'cookieAuth': {
-            'type': 'apiKey',
-            'in': 'cookie',
-            'name': 'TOKEN',
-            'description': 'Enter JWT token, where JWT is the access token'
-        }
-    }
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
-
-
-app.openapi = custom_openapi
+# def custom_openapi():
+#     if app.openapi_schema:
+#         return app.openapi_schema
+#     openapi_schema = get_openapi(
+#         title=settings.project_name,
+#         version=app.version,
+#         description="Sharespences API",
+#         routes=app.routes,
+#     )
+#     # openapi_schema['components']['securitySchemes'] = {
+#     #     'cookieAuth': {
+#     #         'type': 'apiKey',
+#     #         'in': 'cookie',
+#     #         'name': 'TOKEN',
+#     #         'description': 'Enter JWT token, where JWT is the access token'
+#     #     }
+#     # }
+#     app.openapi_schema = openapi_schema
+#     return app.openapi_schema
+#
+#
+# app.openapi = custom_openapi
 
 # if settings.ONES_INTEGRATION:
 #     start_runners()

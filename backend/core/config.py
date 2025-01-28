@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     # DATABASE_BASE_URL: str = f"postgres:{os.environ.get("POSTGRES_PASSWORD")}@{os.environ.get("POSTGRES_HOST")}:{os.environ.get("POSTGRES_PORT")}/postgres"
     DATABASE_BASE_URL: str = os.environ.get("DATABASE_URL_PART", None)
     HOSTNAME: str = os.environ.get("HOSTNAME", None)
+    ORIGIN: str = f"http://{HOSTNAME}:8777"
     RP_ID: str = HOSTNAME
     RP_NAME: str = "Sharespences Co."
 
@@ -22,13 +23,15 @@ class Settings(BaseSettings):
     MEDIA_PATH: Path = Path("media")
 
     project_name: str = "Sharespences"
-    api_v1_path: str = "/api/v1"
+    API_V1_PATH: str = "/api/v1"
 
-    access_token_expire_minutes: int = 60 * 999  # TODO 999 for dev
-    refresh_token_expire_minutes: int = 60 * 24 * 30  # 60 minutes * 24 hours * 90 days = 30 days
-    access_token_secret_key: str | None = os.environ.get("JWT_ACCESS_TOKEN_SECRET", None)
-    refresh_token_secret_key: str | None = os.environ.get("JWT_REFRESH_TOKEN_SECRET", None)
-    backend_cors_origins: List[str] = ["localhost", "*"]
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 3
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30  # 60 minutes * 24 hours * 90 days = 30 days
+    ACCESS_TOKEN_SECRET_KEY: str | None = os.environ.get("JWT_ACCESS_TOKEN_SECRET", None)
+    REFRESH_TOKEN_SECRET_KEY: str | None = os.environ.get("JWT_REFRESH_TOKEN_SECRET", None)
+    BACKEND_CORS_ORIGINS: List[str] = ["localhost", "*"]
+
+    secret_key: str = 'some-random-string-for-now'
 
 
 settings = Settings()
