@@ -19,6 +19,8 @@ if __name__ == '__main__':
                 {"name": "Сбербанк"},
                 {"name": "Тинькофф"},
                 {"name": "ВТБ"},
+                {"name": "Ozon банк"},
+                {"name": "Яндекс Pay"},
         ]
         session.execute(insert(BankDB), banks)
 
