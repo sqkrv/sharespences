@@ -1,6 +1,6 @@
 ### Userspace
 operations*json*
-/operations
+/transactions
 backend/parsers/dev_parser.py
 /test_static/
 
