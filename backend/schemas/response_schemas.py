@@ -16,7 +16,7 @@ class GenericResponse(BaseModel):
     error: Optional[Any] = Field(None)
 
 
-class Operation(BaseModel):
+class Transaction(BaseModel):
     id: UUID
     og_id: str
     timestamp: datetime.datetime
