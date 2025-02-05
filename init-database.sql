@@ -9,13 +9,11 @@ create type transaction_direction as enum ('expense', 'income');
 create table public."user"
 (
     id           uuid primary key                  default gen_random_uuid(),
-    username     text                     not null,
+    username     text                     not null unique,
     display_name text                     not null,
-    email        text                     not null,
+    email        text                     not null unique,
     created_at   timestamp with time zone not null default now()
 );
-create unique index user_username_key on "user" using btree (username);
-create unique index user_email_key on "user" using btree (email);
 
 create table public.attachment
 (
