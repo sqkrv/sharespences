@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import select, insert
 from sqlalchemy.orm import Session, selectinload
 
-from backend.db_models.models import UserDB
+from backend.db_models.models.user_models import UserDB
 
 logger = logging.getLogger(__name__)
 

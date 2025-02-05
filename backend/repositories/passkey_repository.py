@@ -2,7 +2,7 @@ import logging
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from backend.db_models.models import PasskeyDB
+from backend.db_models.models.user_models import PasskeyDB
 
 logger = logging.getLogger(__name__)
 

@@ -10,7 +10,7 @@ from webauthn import generate_registration_options
 from backend.api.api_v1.dependencies import DBSession
 from backend.core import security
 from backend.core.config import settings
-from backend.db_models.models import UserDB, PasskeyDB
+from backend.db_models.models.user_models import UserDB, PasskeyDB
 from backend.repositories.passkey_repository import PasskeysRepository
 from backend.repositories.users_repository import UsersRepository
 from backend.schemas.response_schemas import RegistrationOptionsResponse, AuthOptionsResponse, TokensResponse

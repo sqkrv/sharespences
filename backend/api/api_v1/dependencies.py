@@ -11,12 +11,12 @@ from starlette import status
 from backend.core import security
 from backend.core.config import settings
 from backend.db_models.db_session import AsyncSessionLocal
-from backend.db_models.models import UserDB
+from backend.db_models.models.user_models import UserDB
 from backend.repositories.users_repository import UsersRepository
 from backend.schemas.user_schemas import TokenPayload
 
 reusable_oauth2 = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.API_V1_PATH}/login/access-token"
+    tokenUrl=f"{settings.API_V1_PATH}/auth/auth"  # doesn't work due to openapi not supporting webauthn
 )
 
 async def get_session() -> Session:
@@ -39,7 +39,7 @@ async def get_user(
     try:
         payload = jwt.decode(
             token,
-            settings.SECRET_KEY,
+            settings.ACCESS_TOKEN_SECRET_KEY,
             algorithms=[security.ALGORITHM]
         )
         token_data = TokenPayload(**payload)
