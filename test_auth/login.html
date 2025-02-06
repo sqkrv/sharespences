@@ -1,0 +1,28 @@
+<h1>Webauthn demo</h1>
+<div style="display: flex; justify-content: space-around">
+    <div style="border: 1px solid black; padding: 10px">
+        <h2>Register</h2>
+        <label for="username-register">Username:</label>
+        <input type="text" id="username-register" />
+        <label for="display-name-register">Display name:</label>
+        <input type="text" id="display-name-register" />
+        <label for="user-email-register">User Email:</label>
+        <input type="text" step="1" id="user-email-register" />
+        <button onclick="register()">Register</button>
+    </div>
+    <div style="border: 1px solid black; padding: 10px">
+        <h2>Authenticate</h2>
+        <label for="user-id-auth">User ID:</label>
+        <input
+            type="text"
+            step="1"
+            id="user-id-auth"
+            autocomplete="username webauthn"
+        />
+        <!--    <input type="text" class="form-control form-control-lg" id="user-id-auth" placeholder="example_username" x-model="username" autocomplete="webauthn">-->
+        <button onclick="authenticate()">Authenticate</button>
+    </div>
+</div>
+<pre id="log"></pre>
+<script src="/webauthn_client.js"></script>
+<script></script>
