@@ -1,5 +1,4 @@
 import logging
-from typing import List
 from uuid import UUID
 
 from sqlalchemy import select
@@ -18,7 +17,7 @@ class CashbacksRepository:
     async def get_cashbacks_by_params(
             self,
             user_id: UUID,
-    ) -> List[TransactionDB]:
+    ) -> list[TransactionDB]:
         stmt = (
             select(CashbackDB)
             .where(CashbackDB.user_id == user_id)

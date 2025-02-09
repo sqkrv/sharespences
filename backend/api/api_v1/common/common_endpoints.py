@@ -1,10 +1,8 @@
-from typing import List
-
-from fastapi import APIRouter
 import logging
 
-from backend.api.api_v1.dependencies import CurrentUser, DBSession
+from fastapi import APIRouter
 
+from backend.api.api_v1.dependencies import CurrentUser, DBSession
 from backend.repositories.common_repository import CommonRepository
 from backend.schemas.response_schemas import CategoryMinimal, Bank, MCCCode
 

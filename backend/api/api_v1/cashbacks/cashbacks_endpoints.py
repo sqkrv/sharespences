@@ -1,10 +1,8 @@
-from typing import List
-
-from fastapi import APIRouter
 import logging
 
-from backend.api.api_v1.dependencies import CurrentUser, DBSession
+from fastapi import APIRouter
 
+from backend.api.api_v1.dependencies import CurrentUser, DBSession
 from backend.schemas.response_schemas import Cashback
 from repositories.cashbacks_repository import CashbacksRepository
 
@@ -14,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 @router.get(
     "/",
-    response_model=List[Cashback]
+    response_model=list[Cashback]
 )
 async def cashbacks_endpoint(
     user: CurrentUser,
