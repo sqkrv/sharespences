@@ -82,14 +82,14 @@ class Bank(BaseModel):
     name: str
     logo_filename: str | None
 
-
-class Category(BaseModel):
+class CategoryMinimal(BaseModel):
     id: int
-    bank: Bank
     name: str
     icon_filename: str | None
     description: str | None
 
+class Category(CategoryMinimal):
+    bank: Bank
 
 class Cashback(BaseModel):
     id: int
@@ -99,3 +99,8 @@ class Cashback(BaseModel):
     percentage: float
     description: str | None
     super_cashback: bool
+
+class MCCCode(BaseModel):
+    code: int
+    name: str
+    description: str
