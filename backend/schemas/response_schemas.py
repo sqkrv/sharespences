@@ -75,3 +75,27 @@ class AuthOptionsResponse(CamelBaseModel, PublicKeyCredentialRequestOptions):
 class TokensResponse(BaseModel):
     access_token: str
     refresh_token: str
+
+
+class Bank(BaseModel):
+    id: int
+    name: str
+    logo_filename: str | None
+
+
+class Category(BaseModel):
+    id: int
+    bank: Bank
+    name: str
+    icon_filename: str | None
+    description: str | None
+
+
+class Cashback(BaseModel):
+    id: int
+    category: Category
+    start_date: datetime.date
+    end_date: datetime.date
+    percentage: float
+    description: str | None
+    super_cashback: bool
