@@ -6,7 +6,7 @@ create type payment_system as enum ('visa', 'mastercard', 'mir', 'unionpay', 'am
 create type transaction_status as enum ('hold', 'success');
 create type transaction_direction as enum ('expense', 'income');
 
-create table public."user"
+create table "user"
 (
     id           uuid primary key                  default gen_random_uuid(),
     username     text                     not null unique,
