@@ -1,0 +1,1 @@
+The main point of the bot is to notify users about actions related to them, such as a new debt.
