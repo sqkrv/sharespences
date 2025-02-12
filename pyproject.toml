@@ -8,16 +8,16 @@ authors = [
 ]
 requires-python = "<4.0,>=3.13"
 dependencies = [
-    "openpyxl<4.0.0,>=3.1.2",
-    "sqlalchemy<3.0.0,>=2.0.23",
+    "fastapi[all]<1.0.0,>=0.109.0",
+    "sqlmodel>=0.0.22",
+    "webauthn<3.0.0,>=2.0.0",
+    "pyjwt<3.0.0,>=2.8.0",
+    "geoalchemy2<1.0.0,>=0.14.3",
     "asyncpg<1.0.0,>=0.29.0",
     "psycopg2<3.0.0,>=2.9.9",
-    "pydantic<3.0.0,>=2.4.2",
-    "webauthn<3.0.0,>=2.0.0",
-    "fastapi[all]<1.0.0,>=0.109.0",
-    "geoalchemy2<1.0.0,>=0.14.3",
-    "pyjwt<3.0.0,>=2.8.0",
+    "greenlet<4.0.0,>=3.0.3",
     "httpx<1.0.0,>=0.26.0",
     "pydantic-settings<3.0.0,>=2.1.0",
-    "greenlet<4.0.0,>=3.0.3",
+    "openpyxl<4.0.0,>=3.1.2",
+    "email-validator>=2.2.0",
 ]
