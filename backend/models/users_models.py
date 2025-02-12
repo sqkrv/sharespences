@@ -4,7 +4,7 @@ from uuid import UUID
 from pydantic import EmailStr
 from sqlmodel import Field, DateTime, Relationship, Column, Uuid
 
-from backend.db import Base
+from backend.models import Base
 from backend.models.common_models import Transaction
 
 

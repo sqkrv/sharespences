@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlmodel import Field, Relationship
 
-from backend.db.db_base_class import Base
+from backend.models import Base
 
 if TYPE_CHECKING:
     from .common_models import Category

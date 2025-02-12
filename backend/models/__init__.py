@@ -1,7 +1,13 @@
-from pydantic.alias_generators import to_camel
+from pydantic.alias_generators import to_camel, to_snake
 from sqlmodel import Numeric
+from sqlmodel import SQLModel as _SQLModel
+from sqlmodel.main import declared_attr
 
-from backend.db import Base
+
+class Base(_SQLModel):
+    @declared_attr
+    def __tablename__(cls) -> str:
+        return to_snake(cls.__name__)
 
 
 class CamelBase(Base):

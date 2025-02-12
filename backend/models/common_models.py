@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import SmallInteger, DateTime, Enum, CheckConstraint
 from sqlmodel import Field, Relationship
 
-from backend.db import Base
+from backend.models import Base, money_type
 from backend.models.enums.common_enums import Direction, Status, PaymentSystem
 
 if TYPE_CHECKING:
@@ -36,14 +36,14 @@ class Transaction(Base, table=True):
     og_id: str
     timestamp: datetime.datetime = Field(sa_type=DateTime(timezone=True))
     title: str
-    amount: float
+    amount: float = Field(sa_type=money_type)
     direction: Direction = Field(sa_type=Enum(Direction, name="direction"))
     bank_id: int | None = Field(foreign_key="bank.id")
     merchandiser_logo_url: str | None
     bank_comment: str | None
     mcc_code: int | None = Field(sa_type=SmallInteger)
     category_id: int | None = Field(foreign_key="category.id")
-    loyalty_amount: float | None
+    loyalty_amount: float | None = Field(sa_type=money_type)
     status: Status = Field(sa_type=Enum(Status, name="status"))
     # location: Geometry | None = Field(sa_type=Geometry(geometry_type="POINT", srid=4326))
 

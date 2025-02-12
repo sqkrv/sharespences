@@ -10,8 +10,7 @@ from webauthn.helpers.structs import AuthenticatorTransport, CredentialDeviceTyp
 from webauthn.helpers.structs import PublicKeyCredentialCreationOptions, PublicKeyCredentialUserEntity, PublicKeyCredentialRequestOptions, \
     PublicKeyCredentialDescriptor
 
-from backend.db import Base
-from backend.models import CamelBase
+from backend.models import Base, CamelBase
 
 
 class _PublicKeyCredentialUserEntity(CamelBase, PublicKeyCredentialUserEntity):
