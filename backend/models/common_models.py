@@ -24,7 +24,7 @@ class Bank(Base, table=True):
 class BankCard(Base, table=True):
     id: int = Field(primary_key=True)
     bank_id: int = Field(foreign_key="bank.id")
-    user_id: int = Field(foreign_key="user.id")
+    user_id: UUID = Field(foreign_key="user.id")
     last_4_digits: int = CheckConstraint("LENGTH(last_4_digits::text) = 4")
     payment_system: PaymentSystem = Field(sa_type=Enum(PaymentSystem, name="payment_system"))
     image_filename: str | None
