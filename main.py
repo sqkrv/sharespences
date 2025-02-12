@@ -24,7 +24,7 @@ app = FastAPI(title=settings.project_name,
               default_response_class=ORJSONResponse)
 
 app.include_router(api_router, prefix=settings.API_V1_PATH)
-app.mount("", StaticFiles(directory="test_static"), name="static")
+app.mount("", StaticFiles(directory="test_auth"), name="static")
 
 # app.state.transactions_waiting = 0
 
