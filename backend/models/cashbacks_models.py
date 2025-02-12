@@ -23,5 +23,8 @@ class Cashback(CashbackBase, table=True):
     id: int = Field(primary_key=True)
     user_id: UUID = Field(foreign_key="user.id")
 
-    category: Mapped["CategoryDB"] = relationship()
     category: "Category" = Relationship()
+
+
+class CashbackAdd(CashbackBase):
+    ...

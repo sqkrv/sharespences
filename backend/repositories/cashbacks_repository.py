@@ -36,3 +36,10 @@ class CashbacksRepository:
 
         query = await self._db_session.exec(stmt)
         return query.all()
+
+    async def create_cashback(
+            self,
+            cashbacks: list[Cashback],
+    ) -> None:
+        await self._db_session.add_all(cashbacks)
+        await self._db_session.commit()
