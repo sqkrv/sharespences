@@ -3,18 +3,18 @@ import logging
 
 import webauthn
 from fastapi import APIRouter
-from fastapi import Request, HTTPException, Response
+from fastapi import Request, HTTPException
 from sqlalchemy import exc
 from webauthn import generate_registration_options
 
 from backend.api.api_v1.dependencies import DBSession
 from backend.core import security
 from backend.core.config import settings
-from backend.db_models.models.user_models import UserDB, PasskeyDB
+from backend.models.auth_models import RegistrationOptionsResponse, AuthOptionsResponse, TokensResponse, CustomRegistrationCredential, \
+    MyCustomAuthenticationCredential, RegistrationOptionsSchema
+from backend.models.users_models import Passkey, UserCreate, User
 from backend.repositories.passkey_repository import PasskeysRepository
 from backend.repositories.users_repository import UsersRepository
-from backend.schemas.response_schemas import RegistrationOptionsResponse, AuthOptionsResponse, TokensResponse
-from backend.schemas.user_schemas import CustomRegistrationCredential, MyCustomAuthenticationCredential, RegistrationOptionsSchema
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -59,16 +59,17 @@ async def register_user_endpoint(
     )
 
     try:
-        new_user_id = await users_repository.create_user(UserDB(
+        new_user = User.model_validate(UserCreate(
             username=registration_info.username,
             display_name=registration_info.display_name,
             email=registration_info.email,
         ))
+        new_user_id = await users_repository.create_user(new_user)
     except exc.IntegrityError as e:
         logger.error(f"User creation failed: {e}")
         raise HTTPException(status_code=400, detail='User creation failed')
 
-    await passkeys_repository.add_credential(PasskeyDB(
+    await passkeys_repository.add_credential(Passkey(
         id=base64.b64encode(registration.credential_id).decode(),
         user_id=new_user_id,
         name=request.headers.get('User-Agent'),

@@ -55,13 +55,12 @@ create table category
 
 create table cashback
 (
-    id             serial primary key,
+    id             uuid primary key          default gen_random_uuid(),
     user_id        uuid             not null,
     category_id    integer          not null,
     start_date     date             not null,
     end_date       date             not null,
     percentage     double precision not null,
-    description    text,
     super_cashback boolean          not null default false,
     foreign key (category_id) references category (id),
     foreign key (user_id) references "user" (id)
@@ -73,7 +72,7 @@ comment on column cashback.super_cashback is 'Whether cashback is super (e.g. go
 create table mcc_code
 (
     code        smallint primary key,
-    name        text    not null,
+    name        text not null,
     description text
 );
 
@@ -89,8 +88,8 @@ create table bank_mcc
 
 create table category_mcc
 (
-    category_id               integer  not null,
-    mcc_code                  smallint not null,
+    category_id integer  not null,
+    mcc_code    smallint not null,
     primary key (category_id, mcc_code),
     foreign key (category_id) references category (id),
     foreign key (mcc_code) references mcc_code (code)

@@ -1,41 +1,40 @@
-from typing import Annotated
+from typing import Annotated, Any
+from collections.abc import AsyncGenerator
 
 import jwt
 from fastapi import HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 from jwt import InvalidTokenError
 from pydantic import ValidationError
-from sqlalchemy.orm import Session
+from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette import status
 
 from backend.core import security
 from backend.core.config import settings
-from backend.db_models.db_session import AsyncSessionLocal
-from backend.db_models.models.user_models import UserDB
+from backend.db.db_session import async_engine
+from backend.models.auth_models import TokenPayload
+from backend.models.users_models import User
 from backend.repositories.users_repository import UsersRepository
-from backend.schemas.user_schemas import TokenPayload
 
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_PATH}/auth/auth"  # doesn't work due to openapi not supporting webauthn
 )
 
-async def get_session() -> Session:
-    session = AsyncSessionLocal()
-    try:
-        yield session
-    except Exception:
-        await session.rollback()
-        raise
-    finally:
-        await session.close()
+async def get_session() -> AsyncGenerator[AsyncSession, Any]:
+        async with AsyncSession(bind=async_engine, expire_on_commit=False) as session:
+            try:
+                yield session
+            except Exception:
+                await session.rollback()
+                raise
 
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
-DBSession = Annotated[Session, Depends(get_session)]
+DBSession = Annotated[AsyncSession, Depends(get_session)]
 
 async def get_user(
     token: TokenDep,
     db_session: DBSession
-) -> UserDB:
+) -> User:
     try:
         payload = jwt.decode(
             token,
@@ -57,4 +56,4 @@ async def get_user(
     #     raise HTTPException(status_code=400, detail="Inactive user")
     return user
 
-CurrentUser = Annotated[UserDB, Depends(get_user)]
+CurrentUser = Annotated[User, Depends(get_user)]
