@@ -1,0 +1,68 @@
+import Image from "next/image";
+
+export default function Home() {
+  return (
+    <div className="flex flex-col justify-start items-start w-[375px] h-[1314px] relative overflow-hidden gap-8 px-2 pt-16 pb-[34px] bg-background">
+      
+      {/* Верхний бар с аватаром и иконками */}
+      <div className="flex justify-between items-center w-full">
+        <div className="flex items-center gap-2">
+          <Image src="/photo.png" width={32} height={32} alt="User Avatar" />
+          <p className="text-base text-font">Nickname</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Image src="/search.svg" width={32} height={32} alt="Search" />
+          <Image src="/settings.svg" width={32} height={32} alt="Settings" />
+        </div>
+      </div>
+
+      {/* Блок с балансом */}
+      <div className="flex flex-col w-full gap-1">
+        <p className="text-base text-font">Ваш баланс</p>
+        <p className="text-2xl text-font font-semibold">123 000 ₽</p>
+      </div>
+
+      {/* Список карт */}
+      <div className="flex flex-col w-full gap-2">
+        <div className="bg-[#FFE2E2] border border-shade p-3 rounded-xl flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <Image src="/sberbank-of-russia.png" width={16} height={16} alt="Bank" />
+            <p className="text-xs text-font">BankName</p>
+          </div>
+          <p className="text-xs text-font">100 000,00 ₽</p>
+        </div>
+      </div>
+
+      {/* Кнопки действий */}
+      <div className="flex flex-row w-full gap-2">
+        <button className="bg-accent text-font px-6 py-2 rounded-md shadow-md">Перевести деньги</button>
+        <button className="bg-neutral-200 text-font2 px-6 py-2 rounded-md shadow-md">Новая группа</button>
+        <button className="bg-green-500 text-white px-6 py-2 rounded-md shadow-md">Выбрать кешбек</button>
+      </div>
+
+      {/* Лучший кешбек */}
+      <div className="bg-neutral-100 rounded-xl p-4 shadow-md">
+        <p className="text-base text-font">Лучший кешбек</p>
+        <div className="flex gap-2">
+          <div className="bg-accent p-2 rounded-md">
+            <p className="text-xs text-font">Продукты</p>
+          </div>
+          <div className="bg-accent p-2 rounded-md">
+            <p className="text-xs text-font">Развлечения</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Подписки */}
+      <div className="bg-neutral-100 rounded-xl p-4 shadow-md">
+        <p className="text-base text-font">Мои подписки</p>
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-between items-center bg-neutral-200 p-2 rounded-md">
+            <p className="text-xs text-font">Netflix</p>
+            <p className="text-xs text-font2">1000 ₽ до 01.01.2000</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
