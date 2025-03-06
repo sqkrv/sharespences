@@ -1,3 +1,5 @@
+import Icon from "./Icon";
+
 export default function Header() {
     return (
       <header className="pt-16 px-2 flex justify-between items-center font-sans">
@@ -9,8 +11,9 @@ export default function Header() {
         
         {/* Icons Section */}
         <div className="flex items-center gap-2 font-sans">
-          <img src="/icons/search-icon.svg" alt="Search" className="w-8 h-8" />
-          <img src="/settings-icon.svg" alt="Settings" className="w-8 h-8" />
+          <Icon name="history" className="w-8 h-8 text-rose-900" />
+          {/* <img src="/icons/search-icon.svg" alt="Search" className="w-8 h-8" />
+          <img src="/settings-icon.svg" alt="Settings" className="w-8 h-8" /> */}
         </div>
       </header>
     );
