@@ -1,6 +1,7 @@
 const subscriptions = [
-    { name: "Netflix", price: "1000 ₽", date: "до 01.01.2000" },
-    { name: "Netflix", price: "1000 ₽", date: "до 01.01.2000" },
+    { name: "Sberbank", price: "1000 ₽", date: "Начислится 01.01.2000" },
+    { name: "Tbank", price: "1000 ₽", date: "Начислится 01.01.2000" },
+    { name: "AlfaBank", price: "1000 ₽", date: "Начислится 01.01.2000" },
   ];
   
   export default function Subscriptions() {
@@ -10,7 +11,8 @@ const subscriptions = [
         {subscriptions.map((sub, index) => (
           <div key={index} className="w-full h-auto p-4 rounded-lg min-w-[100px] text-left flex flex-col justify-end pl-2 pb-2 leading-tight flex gap-1 mb-1">
             <p className="text-text">{sub.name}</p>
-            <p className="text-text">{sub.price} {sub.date}</p>
+            <p className="text-text">{sub.price}</p>
+            <p className="text-text">{sub.date}</p>
           </div>
         ))}
       </div>
