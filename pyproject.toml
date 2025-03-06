@@ -20,4 +20,5 @@ dependencies = [
     "pydantic-settings<3.0.0,>=2.1.0",
     "openpyxl<4.0.0,>=3.1.2",
     "email-validator>=2.2.0",
+    "beautifulsoup4>=4.13.3",
 ]
