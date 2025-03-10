@@ -2,6 +2,8 @@ const cashbacks = [
     { percent: "5%", category: "Продукты" },
     { percent: "5%", category: "Продукты" },
     { percent: "5%", category: "Продукты" },
+    { percent: "5%", category: "Продукты" },
+    { percent: "5%", category: "Продукты" },
   ];
   
   export default function Cashback() {
@@ -12,9 +14,6 @@ const cashbacks = [
           {cashbacks.map((cashback, index) => (
             <div key={index} className="w-full h-full bg-accent p-4 rounded-lg min-w-[100px] text-left flex flex-col justify-end pl-2 pb-2 leading-tight flex gap-1">
               <p className="text-h2">{cashback.percent}</p>
-              <p className="text-text">{cashback.category}</p>
-              <p className="text-text">{cashback.category}</p>
-              <p className="text-text">{cashback.category}</p>
               <p className="text-text">{cashback.category}</p>
             </div>
           ))}
