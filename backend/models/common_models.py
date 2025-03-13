@@ -73,7 +73,7 @@ class CategoryMCC(Base, table=True):
     mcc_code: int = Field(foreign_key="mcc_code.code", primary_key=True)
 
 
-class MCCCode(Base, table=True):
+class MCC(Base, table=True):
     """MCC code table representation object"""
 
     code: int = Field(primary_key=True)
@@ -93,7 +93,7 @@ class CategoryBase(Base):
 
 class Category(CategoryBase, table=True):
     bank: "Bank" = Relationship()
-    mcc_codes: list["MCCCode"] = Relationship(sa_relationship_kwargs={'secondary': f"{CategoryMCC.__tablename__}"})
+    mcc_codes: list["MCC"] = Relationship(sa_relationship_kwargs={'secondary': f"{CategoryMCC.__tablename__}"})
 
 
 class CategoryWithMCCCodes(CategoryBase):

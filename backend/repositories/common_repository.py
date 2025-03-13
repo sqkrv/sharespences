@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from backend.models.common_models import Category, Bank, MCCCode
+from backend.models.common_models import Category, Bank, MCC
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +34,14 @@ class CommonRepository:
         results = await self._db_session.exec(stmt)
         return results.all()
 
-    async def get_mcc_codes(self) -> Sequence[MCCCode]:
-        stmt = (select(MCCCode)
-                .order_by(MCCCode.code))
+    async def get_mcc_codes(self) -> Sequence[MCC]:
+        stmt = (select(MCC)
+                .order_by(MCC.code))
         query = await self._db_session.exec(stmt)
         return query.all()
 
     async def get_mcc_code_by_code(
             self,
             code: int,
-    ) -> MCCCode | None:
-        return await self._db_session.get(MCCCode, code)
+    ) -> MCC | None:
+        return await self._db_session.get(MCC, code)

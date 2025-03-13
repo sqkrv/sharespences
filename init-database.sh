@@ -23,5 +23,8 @@ cat sql_data/category_mcc.csv | psql-17 -U sharespences -h squidass.com -p 9432 
 echo "Copying data into bank_mcc table..."
 cat sql_data/bank_mcc.csv | psql-17 -U sharespences -h squidass.com -p 9432 -d sharespences -c "copy bank_mcc (bank_id, mcc_code, footnote) from stdin with (format csv, header true, delimiter ';')"
 
+echo "Copying data into point_of_sale table..."
+cat sql_data/point_of_sale.csv | psql-17 -U sharespences -h squidass.com -p 9432 -d sharespences -c "copy point_of_sale (id, name, merchant_title, mcc_code, ) from stdin with (format csv, header true, delimiter ';')"
+
 # Unset the PGPASSWORD environment variable
 unset PGPASSWORD

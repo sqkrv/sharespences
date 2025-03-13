@@ -1,9 +1,11 @@
 import csv
 import datetime
 import logging
+import os
 import sys
 from enum import Enum
 from pathlib import Path
+from uuid import UUID
 
 import httpx
 from bs4 import BeautifulSoup
@@ -22,11 +24,12 @@ class PointTypeEnum(str, Enum):
 
 
 class Point(BaseModel):
+    id: UUID
     title: str
     merchant_title: str | None
     mcc: int
     type: PointTypeEnum | None
-    address: str
+    address: str | None
     confirmations: int
     created_at: datetime.date
     actual_at: datetime.date | None
@@ -104,6 +107,7 @@ class PointsOfSaleParser:
                     if len(columns) < 4:
                         continue
 
+                    id = UUID(row.get("data-s"))
                     mcc_code = int(columns[0].text.strip())
                     title = columns[1].find("b").text.strip()
                     merchant_title = columns[1].find("span", class_=lambda _: "text-uppercase text-muted" in _)
@@ -141,6 +145,7 @@ class PointsOfSaleParser:
                         actual_at = datetime.datetime.strptime(actual_at, "%d.%m.%Y").date()
 
                     points.append(Point(
+                        id=id,
                         title=title,
                         merchant_title=merchant_title,
                         mcc=mcc_code,
@@ -174,12 +179,14 @@ class PointsOfSaleParser:
 
 
 if __name__ == "__main__":
-    parser = PointsOfSaleParser(Path(sys.argv[1]))
+    mcc_codes_csv_file = sys.argv[1] if len(sys.argv) > 1 else os.getenv("MCC_CODES_CSV_FILE")
+    points_of_sale_csv_file = sys.argv[2] if len(sys.argv) > 2 else os.getenv("POINTS_OF_SALE_CSV_FILE")
+    parser = PointsOfSaleParser(Path(mcc_codes_csv_file))
     logger.info("Starting execution")
     all_points = parser.parse_all_points()
     logger.info(f"Total points: {len(all_points)}")
     logger.info("Writing to CSV")
-    with Path(sys.argv[2]).open('w', newline='', encoding='utf-8') as points_outfile:
+    with Path(points_of_sale_csv_file).open('w', newline='', encoding='utf-8') as points_outfile:
         points_writer = csv.DictWriter(points_outfile, Point.model_fields.keys(), delimiter=';')
         points_writer.writeheader()
         for point in all_points:

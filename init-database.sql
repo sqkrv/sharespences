@@ -5,6 +5,7 @@ create extension if not exists postgis;
 create type payment_system as enum ('visa', 'mastercard', 'mir', 'unionpay', 'american_express');
 create type transaction_status as enum ('hold', 'success');
 create type transaction_direction as enum ('expense', 'income');
+create type point_of_sale_type as enum ('offline', 'online', 'app', 'other');
 
 create domain money_type as numeric(19, 4);
 
@@ -66,7 +67,7 @@ comment on column cashback.start_date is 'When cashback takes effect';
 comment on column cashback.end_date is 'When cashback loses effect';
 comment on column cashback.super_cashback is 'Whether cashback is super (e.g. gotten from the fortune wheel) and adds up with another cashback by the category. Currently applies only to Alfa-Bank';
 
-create table mcc_code
+create table mcc
 (
     code        smallint primary key,
     name        text not null,
@@ -76,7 +77,7 @@ create table mcc_code
 create table bank_mcc
 (
     bank_id  smallint not null references bank (id),
-    mcc_code smallint not null references mcc_code (code),
+    mcc_code smallint not null references mcc (code),
     footnote text,
     primary key (bank_id, mcc_code)
 );
@@ -84,7 +85,7 @@ create table bank_mcc
 create table category_mcc
 (
     category_id integer  not null references category (id),
-    mcc_code    smallint not null references mcc_code (code),
+    mcc_code    smallint not null references mcc (code),
     primary key (category_id, mcc_code)
 );
 
@@ -94,10 +95,25 @@ create table article
     title text not null,
     text  text not null
 );
+
 create table subscription
 (
     id   serial primary key,
     name text not null
+);
+
+create table point_of_sale
+(
+    id                uuid primary key     default gen_random_uuid(),
+    name              text        not null,
+    merchant_title    text,
+    mcc_code          smallint references mcc (code),
+    type              point_of_sale_type,
+    address           text,
+    confirmations     bigint,
+    created_at        timestamptz not null default now(),
+    last_confirmed_at timestamptz,
+    location          geometry(Point, 4326)
 );
 
 create table transaction

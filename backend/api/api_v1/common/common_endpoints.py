@@ -4,7 +4,7 @@ from fastapi import APIRouter
 
 from backend.api.api_v1.dependencies import CurrentUser, DBSession
 from backend.repositories.common_repository import CommonRepository
-from backend.models.common_models import Bank, MCCCode, CategoryWithMCCCodes
+from backend.models.common_models import Bank, MCC, CategoryWithMCCCodes
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ async def categories_endpoint(
 
 @router.get(
     "/mcc_codes",
-    response_model=list[MCCCode],
+    response_model=list[MCC],
 )
 async def mcc_codes_endpoint(
     _: CurrentUser,
@@ -56,7 +56,7 @@ async def mcc_codes_endpoint(
 
 @router.get(
     "/mcc_codes/{code}",
-    response_model=MCCCode | None,
+    response_model=MCC | None,
 )
 async def mcc_code_endpoint(
     code: int,
