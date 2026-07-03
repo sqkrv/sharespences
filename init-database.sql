@@ -5,6 +5,7 @@ create extension if not exists postgis;
 create type payment_system as enum ('visa', 'mastercard', 'mir', 'unionpay', 'american_express');
 create type transaction_status as enum ('hold', 'success');
 create type transaction_direction as enum ('expense', 'income');
+create type period as enum ('day', 'week', 'month', 'year');
 create type point_of_sale_type as enum ('offline', 'online', 'app', 'other');
 
 create domain money_type as numeric(19, 4);
@@ -15,7 +16,8 @@ create table "user"
     username     text                     not null unique,
     display_name text                     not null,
     email        text                     not null unique,
-    created_at   timestamp with time zone not null default now()
+    created_at   timestamp with time zone not null default now(),
+    telegram_id  bigint unique
 );
 
 create table attachment
@@ -29,7 +31,8 @@ create table bank
 (
     id            serial primary key,
     name          text not null,
-    logo_filename text
+    logo_filename text,
+    color_hex     text check (color_hex ~* '^#[0-9a-f]{6}$')
 );
 
 create table bank_card
@@ -61,7 +64,8 @@ create table cashback
     start_date     date             not null,
     end_date       date             not null,
     percentage     double precision not null,
-    super_cashback boolean          not null default false
+    super_cashback boolean          not null default false,
+    max_cashback   money_type
 );
 comment on column cashback.start_date is 'When cashback takes effect';
 comment on column cashback.end_date is 'When cashback loses effect';
@@ -98,8 +102,24 @@ create table article
 
 create table subscription
 (
-    id   serial primary key,
-    name text not null
+    id                  serial primary key,
+    name                text       not null,
+    price               money_type not null,
+    recurrence_date     date       not null,
+    recurrence_interval interval,
+    bank_card_id        integer references bank_card (id),
+    is_active           boolean default true,
+    notes               text,
+    icon_filename       text
+);
+
+create table subscription_member
+(
+    subscription_id integer                  not null references subscription (id),
+    user_id         uuid                     not null references "user" (id),
+    since           timestamp with time zone not null,
+    is_payer        boolean                  not null default false,
+    primary key (subscription_id, user_id)
 );
 
 create table point_of_sale
@@ -173,11 +193,3 @@ create table passkey
 );
 comment on column passkey.id is 'Base64URL encoded CredentialID';
 comment on column passkey.public_key is 'Base64URL encoded PublicKey';
-
-create table subscription_member
-(
-    subscription_id integer                  not null references subscription (id),
-    user_id         uuid                     not null references "user" (id),
-    since           timestamp with time zone not null default now(),
-    primary key (subscription_id, user_id)
-);

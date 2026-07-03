@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlmodel import Field, Relationship
 
-from backend.models import Base
+from backend.models import Base, money_type
 
 if TYPE_CHECKING:
     from .common_models import Category
@@ -17,6 +17,7 @@ class CashbackBase(Base):
     end_date: datetime.date
     percentage: float
     super_cashback: bool
+    max_cashback: float | None = Field(sa_type=money_type)
 
 
 class Cashback(CashbackBase, table=True):

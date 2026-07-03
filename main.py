@@ -13,6 +13,7 @@ from backend.api.api_v1.api import api_router
 
 loggerDictConfig(logging_conf)
 
+
 openapi_url = f"{settings.API_V1_PATH}/openapi.json"
 
 app = FastAPI(title=settings.project_name,
@@ -55,28 +56,31 @@ if settings.debug:
     logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
 
-# def custom_openapi():
-#     if app.openapi_schema:
-#         return app.openapi_schema
-#     openapi_schema = get_openapi(
-#         title=settings.project_name,
-#         version=app.version,
-#         description="Sharespences API",
-#         routes=app.routes,
-#     )
-#     # openapi_schema['components']['securitySchemes'] = {
-#     #     'cookieAuth': {
-#     #         'type': 'apiKey',
-#     #         'in': 'cookie',
-#     #         'name': 'TOKEN',
-#     #         'description': 'Enter JWT token, where JWT is the access token'
-#     #     }
-#     # }
-#     app.openapi_schema = openapi_schema
-#     return app.openapi_schema
-#
-#
-# app.openapi = custom_openapi
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=settings.project_name,
+        version=app.version,
+        description="Sharespences API",
+        routes=app.routes,
+    )
+    openapi_schema['components']['securitySchemes'] = {
+        'BearerAuth': {
+            'type': 'http',
+            'scheme': 'bearer',
+            'bearerFormat': 'JWT',
+            'description': 'Enter JWT token, where JWT is the access token'
+        }
+    }
+    for path in openapi_schema['paths'].values():
+        for method in path.values():
+            method['security'] = [{'BearerAuth': []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 # if settings.ONES_INTEGRATION:
 #     start_runners()

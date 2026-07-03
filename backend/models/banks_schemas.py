@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from models.enums.common_enums import Direction, Status
+from backend.models.enums.common_enums import Direction, Status
 
 
 class AlfaBankSchemas:

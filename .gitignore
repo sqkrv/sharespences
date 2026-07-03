@@ -1,9 +1,15 @@
 ### Userspace
 operations*json*
+*transactions*.json
 /transactions
 backend/parsers/dev_parser.py
 /dumps/
+sharespences-code-only.zip
 .DS_Store
+
+# kept locally, out of the repo (seed data + data scripts)
+sql_data/
+backend/utils/
 
 ### JetBrains template
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio, WebStorm and Rider

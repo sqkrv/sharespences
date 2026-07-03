@@ -20,26 +20,24 @@ reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_PATH}/auth/auth"  # doesn't work due to openapi not supporting webauthn
 )
 
+
 async def get_session() -> AsyncGenerator[AsyncSession, Any]:
-        async with AsyncSession(bind=async_engine, expire_on_commit=False) as session:
-            try:
-                yield session
-            except Exception:
-                await session.rollback()
-                raise
+    async with AsyncSession(bind=async_engine, expire_on_commit=False) as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+
 
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 DBSession = Annotated[AsyncSession, Depends(get_session)]
 
-async def get_user(
-    token: TokenDep,
-    db_session: DBSession
-) -> User:
+
+async def get_user(token: TokenDep, db_session: DBSession) -> User:
     try:
         payload = jwt.decode(
-            token,
-            settings.ACCESS_TOKEN_SECRET_KEY,
-            algorithms=[security.ALGORITHM]
+            token, settings.ACCESS_TOKEN_SECRET_KEY, algorithms=[security.ALGORITHM]
         )
         token_data = TokenPayload(**payload)
     except (InvalidTokenError, ValidationError):
@@ -55,5 +53,6 @@ async def get_user(
     # if not user.is_active:
     #     raise HTTPException(status_code=400, detail="Inactive user")
     return user
+
 
 CurrentUser = Annotated[User, Depends(get_user)]

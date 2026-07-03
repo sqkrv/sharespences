@@ -29,7 +29,7 @@ class CommonRepository:
             .where(Category.bank_id == bank_id)
             .order_by(Category.id)
             .options(selectinload(Category.bank),
-                     selectinload(Category.mcc_codes))
+                     selectinload(Category.mccs))
         )
         results = await self._db_session.exec(stmt)
         return results.all()

@@ -28,7 +28,7 @@ class AlfabankParser(Parser):
             logger.info(f"Running {self.BANK_NAME} parser")
 
             for block_number in range(1, self.total_operations_to_save // self.block_size):
-                logger.debug(f"{block_number}/{self.total_operations_to_save // self.block_size}")
+                logger.info(f"{block_number}/{self.total_operations_to_save // self.block_size}")
 
                 json_data = {
                     'size': self.block_size,

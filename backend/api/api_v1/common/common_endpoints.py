@@ -36,7 +36,7 @@ async def categories_endpoint(
     categories = await common_repository.get_categories_by_params(bank_id=bank_id)
     categories_with_mcc_codes = []
     for category in categories:
-        category_with_mcc_codes = CategoryWithMCCCodes.model_validate(category, update={'mcc_codes': [mcc_code.code for mcc_code in category.mcc_codes]})
+        category_with_mcc_codes = CategoryWithMCCCodes.model_validate(category, update={'mcc_codes': [mcc.code for mcc in category.mccs]})
         categories_with_mcc_codes.append(category_with_mcc_codes)
     return categories_with_mcc_codes
 

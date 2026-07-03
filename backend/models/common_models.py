@@ -11,14 +11,14 @@ from backend.models.enums.common_enums import Direction, Status, PaymentSystem
 
 if TYPE_CHECKING:
     from .subscriptions_models import Subscription
-    from .user_models import User
-
+    from .users_models import User
 
 
 class Bank(Base, table=True):
     id: int = Field(sa_type=SmallInteger, primary_key=True)
     name: str
     logo_filename: str | None
+    color_hex: str | None
 
 
 class BankCard(Base, table=True):
@@ -70,11 +70,11 @@ class TransactionAttachment(Base, table=True):
 
 class CategoryMCC(Base, table=True):
     category_id: int = Field(foreign_key="category.id", primary_key=True)
-    mcc_code: int = Field(foreign_key="mcc_code.code", primary_key=True)
+    mcc_code: int = Field(foreign_key="mcc.code", primary_key=True)
 
 
 class MCC(Base, table=True):
-    """MCC code table representation object"""
+    """MCC table representation object"""
 
     code: int = Field(primary_key=True)
     name: str
@@ -93,7 +93,7 @@ class CategoryBase(Base):
 
 class Category(CategoryBase, table=True):
     bank: "Bank" = Relationship()
-    mcc_codes: list["MCC"] = Relationship(sa_relationship_kwargs={'secondary': f"{CategoryMCC.__tablename__}"})
+    mccs: list["MCC"] = Relationship(sa_relationship_kwargs={'secondary': f"{CategoryMCC.__tablename__}"})
 
 
 class CategoryWithMCCCodes(CategoryBase):
