@@ -1,10 +1,20 @@
 import React from "react";
 
 type IconNames = 
+  | "groups" 
+  | "add_circle" 
   | "add"
-  | "icon"
-  | "search"
+  | "back"
+  | "forward"
+  | "cards"
+  | "cb-ful"
+  | "cb"
   | "history"
+  | "home"
+  | "refresh"
+  | "savings"
+  | "search"
+  | "settings"
 
 type Props = {
   name: IconNames;
@@ -21,5 +31,6 @@ const Icon: React.FC<Props> = ({ name, className }) => {
     </svg>
   );
 };
+
 
 export default Icon;
