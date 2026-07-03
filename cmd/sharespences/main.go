@@ -2,7 +2,8 @@
 //
 //	sharespences migrate   apply embedded goose migrations
 //	sharespences seed      load reference data (banks, КБ programs, categories)
-//	sharespences serve     run the HTTP API (default)
+//	sharespences serve     run the HTTP API + embedded SPA (default)
+//	sharespences openapi   print the OpenAPI 3.1 doc (frontend type codegen)
 //
 // Config via env: DATABASE_URL (required), LISTEN_ADDR (default :8080),
 // ATTACHMENTS_DIR (default ./attachments).
@@ -45,7 +46,11 @@ func run() error {
 	}
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		return errors.New("DATABASE_URL is required")
+		if cmd != "openapi" {
+			return errors.New("DATABASE_URL is required")
+		}
+		// openapi only describes the API — no DB is touched; the pool is lazy.
+		dsn = "postgres://openapi@localhost:5432/openapi"
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -70,6 +75,13 @@ func run() error {
 		}
 		log.Println("seed data loaded")
 		return nil
+	case "openapi":
+		spec, err := server.OpenAPI(server.Config{Pool: pool, AttachmentsDir: "attachments"})
+		if err != nil {
+			return err
+		}
+		_, err = os.Stdout.Write(spec)
+		return err
 	case "serve":
 		handler := server.New(server.Config{
 			Pool:           pool,
@@ -92,6 +104,6 @@ func run() error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q (want migrate|seed|serve)", cmd)
+		return fmt.Errorf("unknown command %q (want migrate|seed|serve|openapi)", cmd)
 	}
 }

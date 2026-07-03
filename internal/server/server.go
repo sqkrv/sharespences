@@ -25,6 +25,7 @@ import (
 	"github.com/sqkrv/sharespences/internal/auth"
 	"github.com/sqkrv/sharespences/internal/cashback"
 	"github.com/sqkrv/sharespences/internal/db"
+	"github.com/sqkrv/sharespences/internal/web"
 )
 
 const sessionUserKey = "user_id"
@@ -34,8 +35,21 @@ type Config struct {
 	AttachmentsDir string
 }
 
-// New builds the full HTTP handler (sessions wrapped around chi+huma).
+// New builds the full HTTP handler (sessions wrapped around chi+huma,
+// embedded SPA as the catch-all).
 func New(cfg Config) http.Handler {
+	r, sm, _ := build(cfg)
+	return sm.LoadAndSave(r)
+}
+
+// OpenAPI returns the API description as JSON — consumed by
+// `sharespences openapi` for frontend type generation (web/, see spec).
+func OpenAPI(cfg Config) ([]byte, error) {
+	_, _, api := build(cfg)
+	return api.OpenAPI().MarshalJSON()
+}
+
+func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 	q := db.New(cfg.Pool)
 
 	sm := scs.New()
@@ -89,7 +103,10 @@ func New(cfg Config) http.Handler {
 		_, _ = io.Copy(w, f)
 	})
 
-	return sm.LoadAndSave(r)
+	// Embedded SPA: catch-all for everything the API and docs don't claim.
+	r.Handle("/*", web.Handler())
+
+	return r, sm, api
 }
 
 func sessionUser(sm *scs.SessionManager, ctx context.Context) (uuid.UUID, bool) {

@@ -31,3 +31,27 @@ jobs:
       - uses: golangci/golangci-lint-action@v8
         with:
           version: v2.12
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      # API types are generated from the Go OpenAPI doc — drift fails CI,
+      # mirroring the sqlc up-to-date check on the backend.
+      - name: API types are up to date
+        run: |
+          go run ./cmd/sharespences openapi > web/openapi.json
+          cd web && npm run gen && git diff --exit-code src/api/schema.d.ts
+      # tsc --noEmit + vite build (embedded by the Go release build)
+      - run: npm run build
+        working-directory: web
