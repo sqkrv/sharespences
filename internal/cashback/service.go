@@ -183,6 +183,23 @@ func (s *Service) CreateCategoryOffer(ctx context.Context, userID uuid.UUID, off
 	return offer, nil
 }
 
+// effectiveMax resolves invariant 1's limit: the period-level override wins
+// over the tier default (owner feedback 2026-07-04: slot counts vary between
+// periods); nil = no limit known, no slot check.
+func (s *Service) effectiveMax(ctx context.Context, override *int32, tierID *int64) (*int32, error) {
+	if override != nil {
+		return override, nil
+	}
+	if tierID == nil {
+		return nil, nil
+	}
+	tier, err := s.Q.GetTier(ctx, *tierID)
+	if err != nil {
+		return nil, err
+	}
+	return tier.MaxCategories, nil
+}
+
 // CreateSelection enforces invariants 1 and 2 (hard rejects) and records the
 // dated selection event. Cross-card duplicates never block here — the entry
 // screen surfaces them via HelperContext (invariant 3).
@@ -191,13 +208,9 @@ func (s *Service) CreateSelection(ctx context.Context, userID uuid.UUID, categor
 	if err != nil {
 		return db.Selection{}, notFound(err)
 	}
-	var maxCategories *int32
-	if offer.ProgramTierID != nil {
-		tier, err := s.Q.GetTier(ctx, *offer.ProgramTierID)
-		if err != nil {
-			return db.Selection{}, err
-		}
-		maxCategories = tier.MaxCategories
+	maxCategories, err := s.effectiveMax(ctx, offer.MaxCategoriesOverride, offer.ProgramTierID)
+	if err != nil {
+		return db.Selection{}, err
 	}
 	count, err := s.Q.CountRegularSelectionsInPeriod(ctx, offer.OfferPeriodID)
 	if err != nil {
@@ -224,6 +237,85 @@ func (s *Service) CreateSelection(ctx context.Context, userID uuid.UUID, categor
 	return sel, nil
 }
 
+// UpdateCategoryOffer replaces the mutable fields of a menu row (owner
+// feedback 2026-07-04: entered rows must be correctable — a row mapped to a
+// canonical category after the fact starts appearing in lookups). A newly
+// set canonical mapping is remembered as a bank alias, like on create.
+func (s *Service) UpdateCategoryOffer(ctx context.Context, userID uuid.UUID, offerID int64, rawTitle string, canonicalID *int64, percent *decimal.Decimal, kind OfferKind, notes *string) (db.CategoryOffer, error) {
+	ctxRow, err := s.Q.GetOfferWithContextForUser(ctx, db.GetOfferWithContextForUserParams{ID: offerID, UserID: userID})
+	if err != nil {
+		return db.CategoryOffer{}, notFound(err)
+	}
+	offer, err := s.Q.UpdateCategoryOfferForUser(ctx, db.UpdateCategoryOfferForUserParams{
+		ID:                  offerID,
+		UserID:              userID,
+		RawTitle:            rawTitle,
+		CanonicalCategoryID: canonicalID,
+		Percent:             percent,
+		Kind:                db.CashbackOfferKind(kind),
+		Notes:               notes,
+	})
+	if err != nil {
+		return db.CategoryOffer{}, notFound(err)
+	}
+	if canonicalID != nil {
+		if err := s.Q.UpsertAlias(ctx, db.UpsertAliasParams{
+			CanonicalCategoryID: *canonicalID,
+			BankID:              int32(ctxRow.BankID),
+			RawTitle:            rawTitle,
+		}); err != nil {
+			return db.CategoryOffer{}, err
+		}
+	}
+	return offer, nil
+}
+
+// DeleteCategoryOffer removes a menu row together with its selection.
+func (s *Service) DeleteCategoryOffer(ctx context.Context, userID uuid.UUID, offerID int64) error {
+	if _, err := s.Q.GetOfferWithContextForUser(ctx, db.GetOfferWithContextForUserParams{ID: offerID, UserID: userID}); err != nil {
+		return notFound(err)
+	}
+	if err := s.Q.DeleteSelectionByOffer(ctx, offerID); err != nil {
+		return err
+	}
+	return s.Q.DeleteCategoryOffer(ctx, offerID)
+}
+
+// SetPeriodMaxOverride sets (or clears, with nil) the period's slot count.
+func (s *Service) SetPeriodMaxOverride(ctx context.Context, userID uuid.UUID, periodID int64, value *int32) (db.OfferPeriod, error) {
+	p, err := s.Q.SetOfferPeriodMaxOverride(ctx, db.SetOfferPeriodMaxOverrideParams{
+		ID: periodID, UserID: userID, MaxCategoriesOverride: value,
+	})
+	if err != nil {
+		return db.OfferPeriod{}, notFound(err)
+	}
+	return p, nil
+}
+
+// DeleteOfferPeriod removes a period with everything under it (menu rows,
+// their selections, attachment links — the attachment files stay).
+func (s *Service) DeleteOfferPeriod(ctx context.Context, userID uuid.UUID, periodID int64) error {
+	if _, err := s.Q.GetOfferPeriodForUser(ctx, db.GetOfferPeriodForUserParams{ID: periodID, UserID: userID}); err != nil {
+		return notFound(err)
+	}
+	offerIDs, err := s.Q.ListOfferIDsForPeriod(ctx, periodID)
+	if err != nil {
+		return err
+	}
+	for _, oid := range offerIDs {
+		if err := s.Q.DeleteSelectionByOffer(ctx, oid); err != nil {
+			return err
+		}
+		if err := s.Q.DeleteCategoryOffer(ctx, oid); err != nil {
+			return err
+		}
+	}
+	if err := s.Q.DeleteOfferPeriodAttachments(ctx, periodID); err != nil {
+		return err
+	}
+	return s.Q.DeleteOfferPeriod(ctx, periodID)
+}
+
 func (s *Service) DeleteSelection(ctx context.Context, userID uuid.UUID, selectionID int64) error {
 	n, err := s.Q.DeleteSelectionForUser(ctx, db.DeleteSelectionForUserParams{ID: selectionID, UserID: userID})
 	if err != nil {
@@ -243,10 +335,12 @@ type HelperRow struct {
 }
 
 // HelperContextResult answers GET /cashback/helper-context.
+// MaxCategories is the EFFECTIVE limit (period override, else tier).
 type HelperContextResult struct {
 	Period        db.GetOfferPeriodForUserRow
 	SlotsUsed     int
 	MaxCategories *int32
+	Override      *int32
 	Rows          []HelperRow
 }
 
@@ -260,13 +354,10 @@ func (s *Service) HelperContext(ctx context.Context, userID uuid.UUID, offerPeri
 	if err != nil {
 		return HelperContextResult{}, notFound(err)
 	}
-	res := HelperContextResult{Period: period}
-	if period.ProgramTierID != nil {
-		tier, err := s.Q.GetTier(ctx, *period.ProgramTierID)
-		if err != nil {
-			return HelperContextResult{}, err
-		}
-		res.MaxCategories = tier.MaxCategories
+	res := HelperContextResult{Period: period, Override: period.MaxCategoriesOverride}
+	res.MaxCategories, err = s.effectiveMax(ctx, period.MaxCategoriesOverride, period.ProgramTierID)
+	if err != nil {
+		return HelperContextResult{}, err
 	}
 	rows, err := s.Q.ListOffersForPeriod(ctx, offerPeriodID)
 	if err != nil {

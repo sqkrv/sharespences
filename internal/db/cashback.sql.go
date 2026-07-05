@@ -118,7 +118,7 @@ func (q *Queries) CreateCategoryOffer(ctx context.Context, arg CreateCategoryOff
 const createOfferPeriod = `-- name: CreateOfferPeriod :one
 insert into offer_period (card_id, period_start, period_end)
 values ($1, $2, $3)
-returning id, card_id, period_start, period_end
+returning id, card_id, period_start, period_end, max_categories_override
 `
 
 type CreateOfferPeriodParams struct {
@@ -135,6 +135,7 @@ func (q *Queries) CreateOfferPeriod(ctx context.Context, arg CreateOfferPeriodPa
 		&i.CardID,
 		&i.PeriodStart,
 		&i.PeriodEnd,
+		&i.MaxCategoriesOverride,
 	)
 	return i, err
 }
@@ -299,6 +300,39 @@ func (q *Queries) CreateTier(ctx context.Context, arg CreateTierParams) (Program
 	return i, err
 }
 
+const deleteCategoryOffer = `-- name: DeleteCategoryOffer :exec
+delete
+from category_offer
+where id = $1
+`
+
+func (q *Queries) DeleteCategoryOffer(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deleteCategoryOffer, id)
+	return err
+}
+
+const deleteOfferPeriod = `-- name: DeleteOfferPeriod :exec
+delete
+from offer_period
+where id = $1
+`
+
+func (q *Queries) DeleteOfferPeriod(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deleteOfferPeriod, id)
+	return err
+}
+
+const deleteOfferPeriodAttachments = `-- name: DeleteOfferPeriodAttachments :exec
+delete
+from offer_period_attachment
+where offer_period_id = $1
+`
+
+func (q *Queries) DeleteOfferPeriodAttachments(ctx context.Context, offerPeriodID int64) error {
+	_, err := q.db.Exec(ctx, deleteOfferPeriodAttachments, offerPeriodID)
+	return err
+}
+
 const deletePartnerOfferForUser = `-- name: DeletePartnerOfferForUser :execrows
 delete
 from partner_offer
@@ -331,6 +365,17 @@ func (q *Queries) DeleteProgram(ctx context.Context, id int64) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const deleteSelectionByOffer = `-- name: DeleteSelectionByOffer :exec
+delete
+from selection
+where category_offer_id = $1
+`
+
+func (q *Queries) DeleteSelectionByOffer(ctx context.Context, categoryOfferID int64) error {
+	_, err := q.db.Exec(ctx, deleteSelectionByOffer, categoryOfferID)
+	return err
 }
 
 const deleteSelectionForUser = `-- name: DeleteSelectionForUser :execrows
@@ -385,7 +430,7 @@ func (q *Queries) GetCanonicalCategoryBySlug(ctx context.Context, slug string) (
 }
 
 const getOfferPeriodForUser = `-- name: GetOfferPeriodForUser :one
-select op.id, op.card_id, op.period_start, op.period_end, bc.bank_id, bc.last_4_digits, bc.program_tier_id, b.name as bank_name
+select op.id, op.card_id, op.period_start, op.period_end, op.max_categories_override, bc.bank_id, bc.last_4_digits, bc.program_tier_id, b.name as bank_name
 from offer_period op
          join bank_card bc on bc.id = op.card_id
          join bank b on b.id = bc.bank_id
@@ -399,14 +444,15 @@ type GetOfferPeriodForUserParams struct {
 }
 
 type GetOfferPeriodForUserRow struct {
-	ID            int64
-	CardID        int32
-	PeriodStart   time.Time
-	PeriodEnd     time.Time
-	BankID        int16
-	Last4Digits   int32
-	ProgramTierID *int64
-	BankName      string
+	ID                    int64
+	CardID                int32
+	PeriodStart           time.Time
+	PeriodEnd             time.Time
+	MaxCategoriesOverride *int32
+	BankID                int16
+	Last4Digits           int32
+	ProgramTierID         *int64
+	BankName              string
 }
 
 func (q *Queries) GetOfferPeriodForUser(ctx context.Context, arg GetOfferPeriodForUserParams) (GetOfferPeriodForUserRow, error) {
@@ -417,6 +463,7 @@ func (q *Queries) GetOfferPeriodForUser(ctx context.Context, arg GetOfferPeriodF
 		&i.CardID,
 		&i.PeriodStart,
 		&i.PeriodEnd,
+		&i.MaxCategoriesOverride,
 		&i.BankID,
 		&i.Last4Digits,
 		&i.ProgramTierID,
@@ -430,6 +477,7 @@ select co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.per
        op.card_id,
        op.period_start,
        op.period_end,
+       op.max_categories_override,
        bc.bank_id,
        bc.program_tier_id,
        (s.id is not null)::bool as already_selected
@@ -447,19 +495,20 @@ type GetOfferWithContextForUserParams struct {
 }
 
 type GetOfferWithContextForUserRow struct {
-	ID                  int64
-	OfferPeriodID       int64
-	RawTitle            string
-	CanonicalCategoryID *int64
-	Percent             *decimal.Decimal
-	Kind                CashbackOfferKind
-	Notes               *string
-	CardID              int32
-	PeriodStart         time.Time
-	PeriodEnd           time.Time
-	BankID              int16
-	ProgramTierID       *int64
-	AlreadySelected     bool
+	ID                    int64
+	OfferPeriodID         int64
+	RawTitle              string
+	CanonicalCategoryID   *int64
+	Percent               *decimal.Decimal
+	Kind                  CashbackOfferKind
+	Notes                 *string
+	CardID                int32
+	PeriodStart           time.Time
+	PeriodEnd             time.Time
+	MaxCategoriesOverride *int32
+	BankID                int16
+	ProgramTierID         *int64
+	AlreadySelected       bool
 }
 
 func (q *Queries) GetOfferWithContextForUser(ctx context.Context, arg GetOfferWithContextForUserParams) (GetOfferWithContextForUserRow, error) {
@@ -476,6 +525,7 @@ func (q *Queries) GetOfferWithContextForUser(ctx context.Context, arg GetOfferWi
 		&i.CardID,
 		&i.PeriodStart,
 		&i.PeriodEnd,
+		&i.MaxCategoriesOverride,
 		&i.BankID,
 		&i.ProgramTierID,
 		&i.AlreadySelected,
@@ -582,6 +632,32 @@ func (q *Queries) ListCanonicalCategories(ctx context.Context) ([]CanonicalCateg
 	return items, nil
 }
 
+const listOfferIDsForPeriod = `-- name: ListOfferIDsForPeriod :many
+select id
+from category_offer
+where offer_period_id = $1
+`
+
+func (q *Queries) ListOfferIDsForPeriod(ctx context.Context, offerPeriodID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listOfferIDsForPeriod, offerPeriodID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOfferPeriodAttachments = `-- name: ListOfferPeriodAttachments :many
 select a.id, a.filename, a.media_type, a.user_id
 from attachment a
@@ -615,7 +691,7 @@ func (q *Queries) ListOfferPeriodAttachments(ctx context.Context, offerPeriodID 
 }
 
 const listOfferPeriodsForUser = `-- name: ListOfferPeriodsForUser :many
-select op.id, op.card_id, op.period_start, op.period_end, bc.bank_id, bc.last_4_digits, b.name as bank_name
+select op.id, op.card_id, op.period_start, op.period_end, op.max_categories_override, bc.bank_id, bc.last_4_digits, b.name as bank_name
 from offer_period op
          join bank_card bc on bc.id = op.card_id
          join bank b on b.id = bc.bank_id
@@ -624,13 +700,14 @@ order by op.period_start desc, op.id
 `
 
 type ListOfferPeriodsForUserRow struct {
-	ID          int64
-	CardID      int32
-	PeriodStart time.Time
-	PeriodEnd   time.Time
-	BankID      int16
-	Last4Digits int32
-	BankName    string
+	ID                    int64
+	CardID                int32
+	PeriodStart           time.Time
+	PeriodEnd             time.Time
+	MaxCategoriesOverride *int32
+	BankID                int16
+	Last4Digits           int32
+	BankName              string
 }
 
 func (q *Queries) ListOfferPeriodsForUser(ctx context.Context, userID uuid.UUID) ([]ListOfferPeriodsForUserRow, error) {
@@ -647,6 +724,7 @@ func (q *Queries) ListOfferPeriodsForUser(ctx context.Context, userID uuid.UUID)
 			&i.CardID,
 			&i.PeriodStart,
 			&i.PeriodEnd,
+			&i.MaxCategoriesOverride,
 			&i.BankID,
 			&i.Last4Digits,
 			&i.BankName,
@@ -979,6 +1057,84 @@ func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListU
 		return nil, err
 	}
 	return items, nil
+}
+
+const setOfferPeriodMaxOverride = `-- name: SetOfferPeriodMaxOverride :one
+update offer_period op
+set max_categories_override = $3
+from bank_card bc
+where op.id = $1
+  and bc.id = op.card_id
+  and bc.user_id = $2
+returning op.id, op.card_id, op.period_start, op.period_end, op.max_categories_override
+`
+
+type SetOfferPeriodMaxOverrideParams struct {
+	ID                    int64
+	UserID                uuid.UUID
+	MaxCategoriesOverride *int32
+}
+
+func (q *Queries) SetOfferPeriodMaxOverride(ctx context.Context, arg SetOfferPeriodMaxOverrideParams) (OfferPeriod, error) {
+	row := q.db.QueryRow(ctx, setOfferPeriodMaxOverride, arg.ID, arg.UserID, arg.MaxCategoriesOverride)
+	var i OfferPeriod
+	err := row.Scan(
+		&i.ID,
+		&i.CardID,
+		&i.PeriodStart,
+		&i.PeriodEnd,
+		&i.MaxCategoriesOverride,
+	)
+	return i, err
+}
+
+const updateCategoryOfferForUser = `-- name: UpdateCategoryOfferForUser :one
+update category_offer co
+set raw_title             = $3,
+    canonical_category_id = $4,
+    percent               = $5,
+    kind                  = $6,
+    notes                 = $7
+from offer_period op,
+     bank_card bc
+where co.id = $1
+  and op.id = co.offer_period_id
+  and bc.id = op.card_id
+  and bc.user_id = $2
+returning co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes
+`
+
+type UpdateCategoryOfferForUserParams struct {
+	ID                  int64
+	UserID              uuid.UUID
+	RawTitle            string
+	CanonicalCategoryID *int64
+	Percent             *decimal.Decimal
+	Kind                CashbackOfferKind
+	Notes               *string
+}
+
+func (q *Queries) UpdateCategoryOfferForUser(ctx context.Context, arg UpdateCategoryOfferForUserParams) (CategoryOffer, error) {
+	row := q.db.QueryRow(ctx, updateCategoryOfferForUser,
+		arg.ID,
+		arg.UserID,
+		arg.RawTitle,
+		arg.CanonicalCategoryID,
+		arg.Percent,
+		arg.Kind,
+		arg.Notes,
+	)
+	var i CategoryOffer
+	err := row.Scan(
+		&i.ID,
+		&i.OfferPeriodID,
+		&i.RawTitle,
+		&i.CanonicalCategoryID,
+		&i.Percent,
+		&i.Kind,
+		&i.Notes,
+	)
+	return i, err
 }
 
 const updateProgram = `-- name: UpdateProgram :one

@@ -376,15 +376,79 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("Озон 5th selection: %d, want 409 (invariant 1 hard reject)", got)
 	}
 
+	// Owner feedback 2026-07-04: slot counts vary per period — the override
+	// raises the effective limit and the 5th selection then goes through.
+	owner.must("PUT", fmt.Sprintf("/api/v1/cashback/offer-periods/%d/max-categories", ozonPeriod.ID),
+		map[string]any{"value": 5}, nil, http.StatusOK)
+	if got := sel(ozonClothes.ID, july10); got != http.StatusCreated {
+		t.Fatalf("Озон 5th selection with override=5: %d, want 201", got)
+	}
+	var ozonHelper helperJSON
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/helper-context?offer_period_id=%d", ozonPeriod.ID), nil, &ozonHelper, http.StatusOK)
+	if ozonHelper.MaxCategories == nil || *ozonHelper.MaxCategories != 5 || ozonHelper.SlotsUsed != 5 {
+		t.Fatalf("helper after override: %d/%v, want 5/5", ozonHelper.SlotsUsed, ozonHelper.MaxCategories)
+	}
+
+	// Owner feedback 2026-07-04: entered rows must be deletable (with their
+	// selection); the slot frees up.
+	owner.must("DELETE", fmt.Sprintf("/api/v1/cashback/category-offers/%d", ozonClothes.ID), nil, nil, http.StatusNoContent)
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/helper-context?offer_period_id=%d", ozonPeriod.ID), nil, &ozonHelper, http.StatusOK)
+	if ozonHelper.SlotsUsed != 4 {
+		t.Fatalf("slots after deleting a selected row = %d, want 4", ozonHelper.SlotsUsed)
+	}
+
 	// Invariant 2: selection dated outside the period → 422.
 	augustOffer := addOffer(alfaPeriod.ID, "Цветы", "5", nil)
 	if got := sel(augustOffer.ID, "2026-08-05T10:00:00Z"); got != http.StatusUnprocessableEntity {
 		t.Fatalf("out-of-period selection: %d, want 422", got)
 	}
 
+	// Regression (owner report 2026-07-04, «Какой картой?» came back empty):
+	// a row entered WITHOUT a canonical mapping is invisible to lookup;
+	// editing the row to map it (+ selecting) makes it appear.
+	var lookup lookupJSON
+	owner.must("GET", "/api/v1/cashback/lookup?category=flowers&date=2026-07-15", nil, &lookup, http.StatusOK)
+	if len(lookup.Ranked) != 0 {
+		t.Fatalf("unmapped+unselected Цветы must not rank, got %+v", lookup.Ranked)
+	}
+	var cats []struct {
+		ID   int64  `json:"id"`
+		Slug string `json:"slug"`
+	}
+	owner.must("GET", "/api/v1/cashback/canonical-categories", nil, &cats, http.StatusOK)
+	var flowersID int64
+	for _, c := range cats {
+		if c.Slug == "flowers" {
+			flowersID = c.ID
+		}
+	}
+	owner.must("PUT", fmt.Sprintf("/api/v1/cashback/category-offers/%d", augustOffer.ID),
+		map[string]any{"raw_title": "Цветы", "percent": "5", "canonical_category_id": flowersID, "kind": "regular"},
+		nil, http.StatusOK)
+	if got := sel(augustOffer.ID, july10); got != http.StatusCreated {
+		t.Fatalf("selecting the corrected Цветы row: %d, want 201", got)
+	}
+	owner.must("GET", "/api/v1/cashback/lookup?category=flowers&date=2026-07-15", nil, &lookup, http.StatusOK)
+	if len(lookup.Ranked) != 1 || lookup.Ranked[0].BankName != "Альфа-Банк" {
+		t.Fatalf("flowers after mapping+selecting = %+v, want Альфа-Банк ranked", lookup.Ranked)
+	}
+
+	// A whole mistaken period can be deleted with everything under it.
+	var scratch periodJSON
+	owner.must("POST", "/api/v1/cashback/offer-periods", map[string]any{
+		"card_id": alfaCard.ID, "period_start": "2026-08-01", "period_end": "2026-08-31",
+	}, &scratch, http.StatusCreated)
+	scratchOffer := addOffer(scratch.ID, "Книги", "3", nil)
+	if got := sel(scratchOffer.ID, "2026-08-10T10:00:00Z"); got != http.StatusCreated {
+		t.Fatalf("scratch selection: %d", got)
+	}
+	owner.must("DELETE", fmt.Sprintf("/api/v1/cashback/offer-periods/%d", scratch.ID), nil, nil, http.StatusNoContent)
+	if got := owner.do("GET", fmt.Sprintf("/api/v1/cashback/offer-periods/%d", scratch.ID), nil, nil); got != http.StatusNotFound {
+		t.Fatalf("deleted period still readable: %d, want 404", got)
+	}
+
 	// --- E2E step 5: lookup supermarkets on July 15 → both cards ranked
 	// (same currency), Альфа-Банк with its static 7000₽ cap ---
-	var lookup lookupJSON
 	owner.must("GET", "/api/v1/cashback/lookup?category=supermarkets&date=2026-07-15", nil, &lookup, http.StatusOK)
 	if len(lookup.Ranked) != 2 {
 		t.Fatalf("supermarkets ranked = %d entries, want 2 (got %+v)", len(lookup.Ranked), lookup.Ranked)

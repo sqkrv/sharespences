@@ -127,18 +127,28 @@ type tierBody struct {
 }
 
 type OfferPeriodDTO struct {
-	ID          int64  `json:"id"`
-	CardID      int32  `json:"card_id"`
-	PeriodStart string `json:"period_start"`
-	PeriodEnd   string `json:"period_end"`
+	ID                    int64  `json:"id"`
+	CardID                int32  `json:"card_id"`
+	PeriodStart           string `json:"period_start"`
+	PeriodEnd             string `json:"period_end"`
+	MaxCategoriesOverride *int32 `json:"max_categories_override,omitempty"`
 }
 
 func offerPeriodDTO(p db.OfferPeriod) OfferPeriodDTO {
 	return OfferPeriodDTO{
 		ID: p.ID, CardID: p.CardID,
-		PeriodStart: p.PeriodStart.Format("2006-01-02"),
-		PeriodEnd:   p.PeriodEnd.Format("2006-01-02"),
+		PeriodStart:           p.PeriodStart.Format("2006-01-02"),
+		PeriodEnd:             p.PeriodEnd.Format("2006-01-02"),
+		MaxCategoriesOverride: p.MaxCategoriesOverride,
 	}
+}
+
+type categoryOfferBody struct {
+	RawTitle            string  `json:"raw_title" minLength:"1"`
+	CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
+	Percent             *string `json:"percent,omitempty"`
+	Kind                string  `json:"kind,omitempty" enum:"regular,special" default:"regular"`
+	Notes               *string `json:"notes,omitempty"`
 }
 
 type CategoryOfferDTO struct {
@@ -413,7 +423,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				continue
 			}
 			out.Body = append(out.Body, OfferPeriodListItem{
-				OfferPeriodDTO: offerPeriodDTO(db.OfferPeriod{ID: r.ID, CardID: r.CardID, PeriodStart: r.PeriodStart, PeriodEnd: r.PeriodEnd}),
+				OfferPeriodDTO: offerPeriodDTO(db.OfferPeriod{ID: r.ID, CardID: r.CardID, PeriodStart: r.PeriodStart, PeriodEnd: r.PeriodEnd, MaxCategoriesOverride: r.MaxCategoriesOverride}),
 				BankName:       r.BankName,
 			})
 		}
@@ -453,7 +463,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Attachments []uuid.UUID        `json:"attachment_ids"`
 			}
 		}{}
-		out.Body.OfferPeriodDTO = offerPeriodDTO(db.OfferPeriod{ID: p.ID, CardID: p.CardID, PeriodStart: p.PeriodStart, PeriodEnd: p.PeriodEnd})
+		out.Body.OfferPeriodDTO = offerPeriodDTO(db.OfferPeriod{ID: p.ID, CardID: p.CardID, PeriodStart: p.PeriodStart, PeriodEnd: p.PeriodEnd, MaxCategoriesOverride: p.MaxCategoriesOverride})
 		out.Body.BankName = p.BankName
 		out.Body.Offers = make([]CategoryOfferDTO, len(offers))
 		for i, o := range offers {
@@ -532,6 +542,74 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}}, nil
 	})
 
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-category-offer-update", Method: http.MethodPut,
+		Path: "/api/v1/cashback/category-offers/{id}", Summary: "Edit a menu row (full replace of mutable fields)", Tags: []string{"cashback"},
+	}, func(ctx context.Context, in *struct {
+		ID   int64 `path:"id"`
+		Body categoryOfferBody
+	}) (*struct{ Body CategoryOfferDTO }, error) {
+		pctVal, err := strToDec(in.Body.Percent, "percent")
+		if err != nil {
+			return nil, err
+		}
+		kind := OfferKind(in.Body.Kind)
+		if kind == "" {
+			kind = OfferRegular
+		}
+		o, err := s.UpdateCategoryOffer(ctx, auth.UserID(ctx), in.ID, in.Body.RawTitle, in.Body.CanonicalCategoryID, pctVal, kind, in.Body.Notes)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{ Body CategoryOfferDTO }{CategoryOfferDTO{
+			ID: o.ID, OfferPeriodID: o.OfferPeriodID, RawTitle: o.RawTitle,
+			CanonicalCategoryID: o.CanonicalCategoryID, Percent: decToStr(o.Percent),
+			Kind: string(o.Kind), Notes: o.Notes,
+		}}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-category-offer-delete", Method: http.MethodDelete,
+		Path: "/api/v1/cashback/category-offers/{id}", Summary: "Delete a menu row (with its selection)", Tags: []string{"cashback"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID int64 `path:"id"`
+	}) (*struct{}, error) {
+		if err := s.DeleteCategoryOffer(ctx, auth.UserID(ctx), in.ID); err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{}{}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-offer-period-slots", Method: http.MethodPut,
+		Path: "/api/v1/cashback/offer-periods/{id}/max-categories", Summary: "Set the period's slot count (null resets to the tier default)", Tags: []string{"cashback"},
+	}, func(ctx context.Context, in *struct {
+		ID   int64 `path:"id"`
+		Body struct {
+			Value *int32 `json:"value" minimum:"1"`
+		}
+	}) (*struct{ Body OfferPeriodDTO }, error) {
+		p, err := s.SetPeriodMaxOverride(ctx, auth.UserID(ctx), in.ID, in.Body.Value)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{ Body OfferPeriodDTO }{offerPeriodDTO(p)}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-offer-period-delete", Method: http.MethodDelete,
+		Path: "/api/v1/cashback/offer-periods/{id}", Summary: "Delete a period with its menu and selections", Tags: []string{"cashback"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID int64 `path:"id"`
+	}) (*struct{}, error) {
+		if err := s.DeleteOfferPeriod(ctx, auth.UserID(ctx), in.ID); err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{}{}, nil
+	})
+
 	// --- selections ---
 
 	huma.Register(api, huma.Operation{
@@ -594,11 +672,12 @@ func RegisterHTTP(api huma.API, s *Service) {
 		OfferPeriodID int64 `query:"offer_period_id" required:"true"`
 	}) (*struct {
 		Body struct {
-			OfferPeriodID int64          `json:"offer_period_id"`
-			CardLabel     string         `json:"card_label"`
-			SlotsUsed     int            `json:"slots_used"`
-			MaxCategories *int32         `json:"max_categories,omitempty"`
-			Rows          []HelperRowDTO `json:"rows"`
+			OfferPeriodID         int64          `json:"offer_period_id"`
+			CardLabel             string         `json:"card_label"`
+			SlotsUsed             int            `json:"slots_used"`
+			MaxCategories         *int32         `json:"max_categories,omitempty" doc:"effective limit: period override, else tier default"`
+			MaxCategoriesOverride *int32         `json:"max_categories_override,omitempty"`
+			Rows                  []HelperRowDTO `json:"rows"`
 		}
 	}, error) {
 		res, err := s.HelperContext(ctx, auth.UserID(ctx), in.OfferPeriodID)
@@ -607,17 +686,19 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		out := &struct {
 			Body struct {
-				OfferPeriodID int64          `json:"offer_period_id"`
-				CardLabel     string         `json:"card_label"`
-				SlotsUsed     int            `json:"slots_used"`
-				MaxCategories *int32         `json:"max_categories,omitempty"`
-				Rows          []HelperRowDTO `json:"rows"`
+				OfferPeriodID         int64          `json:"offer_period_id"`
+				CardLabel             string         `json:"card_label"`
+				SlotsUsed             int            `json:"slots_used"`
+				MaxCategories         *int32         `json:"max_categories,omitempty" doc:"effective limit: period override, else tier default"`
+				MaxCategoriesOverride *int32         `json:"max_categories_override,omitempty"`
+				Rows                  []HelperRowDTO `json:"rows"`
 			}
 		}{}
 		out.Body.OfferPeriodID = res.Period.ID
 		out.Body.CardLabel = cardLabel(res.Period.BankName, res.Period.Last4Digits)
 		out.Body.SlotsUsed = res.SlotsUsed
 		out.Body.MaxCategories = res.MaxCategories
+		out.Body.MaxCategoriesOverride = res.Override
 		for _, r := range res.Rows {
 			dto := HelperRowDTO{
 				CategoryOfferID: r.Offer.ID, RawTitle: r.Offer.RawTitle,

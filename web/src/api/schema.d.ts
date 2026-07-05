@@ -176,6 +176,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cashback/category-offers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit a menu row (full replace of mutable fields) */
+        put: operations["cashback-category-offer-update"];
+        post?: never;
+        /** Delete a menu row (with its selection) */
+        delete: operations["cashback-category-offer-delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cashback/helper-context": {
         parameters: {
             query?: never;
@@ -238,6 +256,24 @@ export interface paths {
         /** Selection period with its menu */
         get: operations["cashback-offer-period-get"];
         put?: never;
+        post?: never;
+        /** Delete a period with its menu and selections */
+        delete: operations["cashback-offer-period-delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cashback/offer-periods/{id}/max-categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set the period's slot count (null resets to the tier default) */
+        put: operations["cashback-offer-period-slots"];
         post?: never;
         delete?: never;
         options?: never;
@@ -502,8 +538,13 @@ export interface components {
              */
             readonly $schema?: string;
             card_label: string;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description effective limit: period override, else tier default
+             */
             max_categories?: number;
+            /** Format: int32 */
+            max_categories_override?: number;
             /** Format: int64 */
             offer_period_id: number;
             rows: components["schemas"]["HelperRowDTO"][] | null;
@@ -552,9 +593,21 @@ export interface components {
             card_id: number;
             /** Format: int64 */
             id: number;
+            /** Format: int32 */
+            max_categories_override?: number;
             offers: components["schemas"]["CategoryOfferDTO"][] | null;
             period_end: string;
             period_start: string;
+        };
+        "Cashback-offer-period-slotsRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Cashback-offer-period-slotsRequest.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            value: number | null;
         };
         "Cashback-partner-offer-createRequest": {
             /**
@@ -603,6 +656,24 @@ export interface components {
             id: number;
             /** Format: date-time */
             selected_at: string;
+        };
+        CategoryOfferBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CategoryOfferBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            canonical_category_id?: number;
+            /**
+             * @default regular
+             * @enum {string}
+             */
+            kind: "regular" | "special";
+            notes?: string;
+            percent?: string;
+            raw_title: string;
         };
         CategoryOfferDTO: {
             /**
@@ -727,6 +798,8 @@ export interface components {
             card_id: number;
             /** Format: int64 */
             id: number;
+            /** Format: int32 */
+            max_categories_override?: number;
             period_end: string;
             period_start: string;
         };
@@ -736,6 +809,8 @@ export interface components {
             card_id: number;
             /** Format: int64 */
             id: number;
+            /** Format: int32 */
+            max_categories_override?: number;
             period_end: string;
             period_start: string;
         };
@@ -1243,6 +1318,70 @@ export interface operations {
             };
         };
     };
+    "cashback-category-offer-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryOfferBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryOfferDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-category-offer-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "cashback-helper-context": {
         parameters: {
             query: {
@@ -1390,6 +1529,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Cashback-offer-period-getResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-offer-period-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-offer-period-slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Cashback-offer-period-slotsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferPeriodDTO"];
                 };
             };
             /** @description Error */

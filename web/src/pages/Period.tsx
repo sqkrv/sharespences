@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
-import { api, unwrap, attachmentURL, ApiError, type HelperRow } from "../api/client";
+import { useNavigate, useParams } from "react-router-dom";
+import { api, unwrap, attachmentURL, ApiError, type CanonicalCategory, type CategoryOffer, type HelperRow } from "../api/client";
 import { useCategories } from "../hooks";
 import { Badge, Btn, Empty, ErrMsg, Field, Input, Section, Select, Spinner } from "../components/ui";
 import { fmtPercent, fmtRange } from "../lib";
@@ -24,6 +24,15 @@ function useHelper(id: number) {
         }),
       ),
   });
+}
+
+async function suggestCanonical(periodID: number, rawTitle: string) {
+  const res = unwrap(
+    await api.GET("/api/v1/cashback/alias-suggestion", {
+      params: { query: { offer_period_id: periodID, raw_title: rawTitle } },
+    }),
+  );
+  return res.suggestion ?? null;
 }
 
 // S1 menu entry: raw title (alias table pre-suggests the canonical
@@ -51,13 +60,9 @@ function AddOfferForm({ periodID }: { periodID: number }) {
     }
     const t = setTimeout(async () => {
       try {
-        const res = unwrap(
-          await api.GET("/api/v1/cashback/alias-suggestion", {
-            params: { query: { offer_period_id: periodID, raw_title: rawTitle } },
-          }),
-        );
-        setSuggestion(res.suggestion ?? null);
-        if (res.suggestion && !canonicalTouched) setCanonicalID(String(res.suggestion.id));
+        const s = await suggestCanonical(periodID, rawTitle);
+        setSuggestion(s);
+        if (s && !canonicalTouched) setCanonicalID(String(s.id));
       } catch {
         // suggestion is best-effort; entry must never block on it
       }
@@ -76,6 +81,17 @@ function AddOfferForm({ periodID }: { periodID: number }) {
         );
         catID = created.id;
         qc.invalidateQueries({ queryKey: ["categories"] });
+      }
+      // The debounce may not have fired yet (fast submit) — resolve the
+      // suggestion synchronously so the row doesn't silently lose its
+      // canonical mapping and vanish from «Какой картой?».
+      if (catID == null && !newCat && !canonicalTouched) {
+        try {
+          const s = await suggestCanonical(periodID, rawTitle);
+          if (s) catID = s.id;
+        } catch {
+          // best effort
+        }
       }
       return unwrap(
         await api.POST("/api/v1/cashback/category-offers", {
@@ -171,13 +187,186 @@ function AddOfferForm({ periodID }: { periodID: number }) {
   );
 }
 
+// Inline editor for an existing row (owner feedback 2026-07-04: entered
+// rows must be correctable — fixing the canonical mapping here is what
+// makes the row appear in «Какой картой?»).
+function EditOfferForm({
+  offer,
+  categories,
+  onDone,
+}: {
+  offer: CategoryOffer;
+  categories: CanonicalCategory[];
+  onDone: () => void;
+}) {
+  const qc = useQueryClient();
+  const [rawTitle, setRawTitle] = useState(offer.raw_title);
+  const [canonicalID, setCanonicalID] = useState(offer.canonical_category_id != null ? String(offer.canonical_category_id) : "");
+  const [percent, setPercent] = useState(offer.percent ?? "");
+  const [special, setSpecial] = useState(offer.kind === "special");
+  const [notes, setNotes] = useState(offer.notes ?? "");
+
+  const save = useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await api.PUT("/api/v1/cashback/category-offers/{id}", {
+          params: { path: { id: offer.id } },
+          body: {
+            raw_title: rawTitle,
+            ...(canonicalID ? { canonical_category_id: Number(canonicalID) } : {}),
+            ...(percent ? { percent } : {}),
+            kind: special ? "special" : "regular",
+            ...(notes ? { notes } : {}),
+          },
+        }),
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["period", offer.offer_period_id] });
+      qc.invalidateQueries({ queryKey: ["helper", offer.offer_period_id] });
+      qc.invalidateQueries({ queryKey: ["lookup"] });
+      onDone();
+    },
+  });
+
+  return (
+    <form
+      className="mt-3 space-y-3 rounded-lg bg-slate-50 p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate();
+      }}
+    >
+      <Field label="Название">
+        <Input required value={rawTitle} onChange={(e) => setRawTitle(e.target.value)} />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Каноническая категория">
+          <Select value={canonicalID} onChange={(e) => setCanonicalID(e.target.value)}>
+            <option value="">— без категории —</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title_ru}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Процент">
+          <Input inputMode="decimal" value={percent} onChange={(e) => setPercent(e.target.value)} />
+        </Field>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={special} onChange={(e) => setSpecial(e.target.checked)} />
+          спец
+        </label>
+        <Input placeholder="Заметки" value={notes} onChange={(e) => setNotes(e.target.value)} className="flex-1" />
+      </div>
+      <div className="flex gap-2">
+        <Btn type="submit" disabled={save.isPending}>
+          Сохранить
+        </Btn>
+        <Btn type="button" variant="ghost" onClick={onDone}>
+          Отмена
+        </Btn>
+      </div>
+      <ErrMsg error={save.error} />
+    </form>
+  );
+}
+
+// Editable slot count (owner feedback 2026-07-04: the offered number of
+// categories is not constant — override per period, null = tier default).
+function SlotsEditor({
+  periodID,
+  used,
+  max,
+  override,
+}: {
+  periodID: number;
+  used: number;
+  max?: number | null;
+  override?: number | null;
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(max != null ? String(max) : "");
+
+  const save = useMutation({
+    mutationFn: async (v: number | null) =>
+      unwrap(
+        await api.PUT("/api/v1/cashback/offer-periods/{id}/max-categories", {
+          params: { path: { id: periodID } },
+          body: { value: v },
+        }),
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["period", periodID] });
+      qc.invalidateQueries({ queryKey: ["helper", periodID] });
+      setEditing(false);
+    },
+  });
+
+  if (editing) {
+    return (
+      <form
+        className="flex items-center justify-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate(value === "" ? null : Number(value));
+        }}
+      >
+        <Input
+          type="number"
+          min={1}
+          inputMode="numeric"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="w-20"
+          placeholder="—"
+        />
+        <Btn type="submit" disabled={save.isPending}>
+          ОК
+        </Btn>
+        {override != null && (
+          <Btn type="button" variant="ghost" onClick={() => save.mutate(null)} title="Вернуть значение тарифа">
+            Сброс
+          </Btn>
+        )}
+        <Btn type="button" variant="ghost" onClick={() => setEditing(false)}>
+          ✕
+        </Btn>
+      </form>
+    );
+  }
+  return (
+    <p className="text-sm font-semibold">
+      Выбрано {used}
+      {max != null && ` из ${max}`}
+      {override != null && <span className="font-normal text-slate-400"> (вручную)</span>}{" "}
+      <button
+        type="button"
+        className="text-xs font-normal text-indigo-600 hover:underline"
+        onClick={() => {
+          setValue(max != null ? String(max) : "");
+          setEditing(true);
+        }}
+      >
+        изменить
+      </button>
+    </p>
+  );
+}
+
 export default function Period() {
   const id = Number(useParams().id);
   const period = usePeriod(id);
   const helper = useHelper(id);
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const categories = useCategories();
   const [backfill, setBackfill] = useState(false);
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
+  const [editingID, setEditingID] = useState<number | null>(null);
 
   const helperByOffer = useMemo(() => {
     const m = new Map<number, HelperRow>();
@@ -219,6 +408,21 @@ export default function Period() {
     onSuccess: invalidate,
   });
 
+  const removeOffer = useMutation({
+    mutationFn: async (offerID: number) =>
+      unwrap(await api.DELETE("/api/v1/cashback/category-offers/{id}", { params: { path: { id: offerID } } })),
+    onSuccess: invalidate,
+  });
+
+  const removePeriod = useMutation({
+    mutationFn: async () =>
+      unwrap(await api.DELETE("/api/v1/cashback/offer-periods/{id}", { params: { path: { id } } })),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["periods"] });
+      navigate("/");
+    },
+  });
+
   if (period.isPending || helper.isPending) return <Spinner />;
   if (period.isError) return <ErrMsg error={period.error} />;
   if (helper.isError) return <ErrMsg error={helper.error} />;
@@ -236,11 +440,8 @@ export default function Period() {
             <p className="text-sm text-slate-500">{fmtRange(p.period_start, p.period_end)}</p>
           </div>
           <div className="text-right">
-            <p className="text-sm font-semibold">
-              Выбрано {h.slots_used}
-              {h.max_categories != null && ` из ${h.max_categories}`}
-            </p>
-            <label className="flex items-center gap-1 text-xs text-slate-500">
+            <SlotsEditor periodID={id} used={h.slots_used} max={h.max_categories} override={h.max_categories_override} />
+            <label className="flex items-center justify-end gap-1 text-xs text-slate-500">
               <input type="checkbox" checked={backfill} onChange={(e) => setBackfill(e.target.checked)} />
               бэкфилл (ввод истории)
             </label>
@@ -264,6 +465,7 @@ export default function Period() {
             const hrow = helperByOffer.get(offer.id);
             const selected = offer.selection_id != null;
             const isSpecial = offer.kind === "special";
+            const unmapped = !isSpecial && offer.canonical_category_id == null;
             const blocked = !selected && !isSpecial && slotsFull;
             return (
               <li key={offer.id} className={`rounded-lg border p-3 ${selected ? "border-emerald-300 bg-emerald-50/50" : "border-slate-200"}`}>
@@ -280,20 +482,47 @@ export default function Period() {
                       </p>
                     )}
                   </div>
-                  {selected ? (
-                    <Btn variant="danger" onClick={() => unselect.mutate(offer.selection_id!)} disabled={unselect.isPending}>
-                      Снять
-                    </Btn>
-                  ) : (
-                    <Btn
-                      onClick={() => select.mutate(offer.id)}
-                      disabled={select.isPending || blocked}
-                      title={blocked ? "Лимит категорий исчерпан" : undefined}
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-100"
+                      onClick={() => setEditingID(editingID === offer.id ? null : offer.id)}
+                      title="Редактировать"
                     >
-                      Выбрать
-                    </Btn>
-                  )}
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                      onClick={() => {
+                        if (window.confirm(`Удалить «${offer.raw_title}»${selected ? " вместе с выбором" : ""}?`)) {
+                          removeOffer.mutate(offer.id);
+                        }
+                      }}
+                      title="Удалить"
+                    >
+                      🗑
+                    </button>
+                    {selected ? (
+                      <Btn variant="danger" onClick={() => unselect.mutate(offer.selection_id!)} disabled={unselect.isPending}>
+                        Снять
+                      </Btn>
+                    ) : (
+                      <Btn
+                        onClick={() => select.mutate(offer.id)}
+                        disabled={select.isPending || blocked}
+                        title={blocked ? "Лимит категорий исчерпан" : undefined}
+                      >
+                        Выбрать
+                      </Btn>
+                    )}
+                  </div>
                 </div>
+                {unmapped && (
+                  <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                    без канонической категории — не попадёт в «Какой картой?»; нажмите ✎, чтобы сопоставить
+                  </p>
+                )}
                 {blocked && <p className="mt-1 text-xs text-slate-400">лимит категорий исчерпан</p>}
                 {rowErrors[offer.id] && <p className="mt-2 rounded bg-rose-50 px-2 py-1 text-xs text-rose-700">{rowErrors[offer.id]}</p>}
                 {(hrow?.collisions ?? []).map((c, i) => (
@@ -309,11 +538,25 @@ export default function Period() {
                       .join(" · ")}
                   </p>
                 )}
+                {editingID === offer.id && (
+                  <EditOfferForm offer={offer} categories={categories.data ?? []} onDone={() => setEditingID(null)} />
+                )}
               </li>
             );
           })}
         </ul>
         <AddOfferForm periodID={id} />
+        <div className="mt-4 border-t border-slate-100 pt-3 text-right">
+          <Btn
+            variant="danger"
+            onClick={() => {
+              if (window.confirm("Удалить период целиком — с меню и выборами?")) removePeriod.mutate();
+            }}
+            disabled={removePeriod.isPending}
+          >
+            Удалить период
+          </Btn>
+        </div>
       </Section>
     </>
   );

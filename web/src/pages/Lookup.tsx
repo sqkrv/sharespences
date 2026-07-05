@@ -73,7 +73,13 @@ export default function Lookup() {
           {lookup.data && (
             <>
               {lookup.data.message ? (
-                <Empty>{lookup.data.message}</Empty>
+                <>
+                  <Empty>{lookup.data.message}</Empty>
+                  <p className="mt-2 text-xs text-slate-400">
+                    Карта попадает сюда, когда в её периоде есть строка меню, сопоставленная с этой канонической
+                    категорией, и она <b>выбрана</b>. Строки «без категории» отмечены в периоде предупреждением.
+                  </p>
+                </>
               ) : (
                 <ul className="space-y-2">
                   {(lookup.data.ranked ?? []).map((e, i) => (

@@ -540,6 +540,8 @@ type OfferPeriod struct {
 	CardID      int32
 	PeriodStart time.Time
 	PeriodEnd   time.Time
+	// Per-period slot count; null = use tier.max_categories (invariant 1 uses the effective value)
+	MaxCategoriesOverride *int32
 }
 
 type OfferPeriodAttachment struct {

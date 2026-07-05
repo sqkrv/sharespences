@@ -138,6 +138,55 @@ insert into category_offer (offer_period_id, raw_title, canonical_category_id, p
 values ($1, $2, $3, $4, $5, $6)
 returning *;
 
+-- name: UpdateCategoryOfferForUser :one
+update category_offer co
+set raw_title             = $3,
+    canonical_category_id = $4,
+    percent               = $5,
+    kind                  = $6,
+    notes                 = $7
+from offer_period op,
+     bank_card bc
+where co.id = $1
+  and op.id = co.offer_period_id
+  and bc.id = op.card_id
+  and bc.user_id = $2
+returning co.*;
+
+-- name: DeleteSelectionByOffer :exec
+delete
+from selection
+where category_offer_id = $1;
+
+-- name: DeleteCategoryOffer :exec
+delete
+from category_offer
+where id = $1;
+
+-- name: SetOfferPeriodMaxOverride :one
+update offer_period op
+set max_categories_override = $3
+from bank_card bc
+where op.id = $1
+  and bc.id = op.card_id
+  and bc.user_id = $2
+returning op.*;
+
+-- name: ListOfferIDsForPeriod :many
+select id
+from category_offer
+where offer_period_id = $1;
+
+-- name: DeleteOfferPeriodAttachments :exec
+delete
+from offer_period_attachment
+where offer_period_id = $1;
+
+-- name: DeleteOfferPeriod :exec
+delete
+from offer_period
+where id = $1;
+
 -- name: ListOffersForPeriod :many
 select co.*, s.id as selection_id, s.selected_at
 from category_offer co
@@ -150,6 +199,7 @@ select co.*,
        op.card_id,
        op.period_start,
        op.period_end,
+       op.max_categories_override,
        bc.bank_id,
        bc.program_tier_id,
        (s.id is not null)::bool as already_selected
