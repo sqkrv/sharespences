@@ -122,18 +122,18 @@ function AddOfferForm({ periodID }: { periodID: number }) {
 
   return (
     <form
-      className="space-y-3 border-t border-slate-100 pt-4"
+      className="space-y-3 border-t border-slate-100 dark:border-slate-800 pt-4"
       onSubmit={(e) => {
         e.preventDefault();
         create.mutate();
       }}
     >
-      <h3 className="text-sm font-semibold text-slate-600">Добавить категорию из меню банка</h3>
+      <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-300">Добавить категорию из меню банка</h3>
       <Field label="Название — как в приложении банка">
         <Input required value={rawTitle} onChange={(e) => setRawTitle(e.target.value)} placeholder="Супермаркеты" />
       </Field>
       {suggestion && (
-        <p className="text-xs text-emerald-700">
+        <p className="text-xs text-emerald-700 dark:text-emerald-400">
           ≈ распознано: <b>{suggestion.title_ru}</b>
         </p>
       )}
@@ -230,7 +230,7 @@ function EditOfferForm({
 
   return (
     <form
-      className="mt-3 space-y-3 rounded-lg bg-slate-50 p-3"
+      className="mt-3 space-y-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3"
       onSubmit={(e) => {
         e.preventDefault();
         save.mutate();
@@ -342,10 +342,10 @@ function SlotsEditor({
     <p className="text-sm font-semibold">
       Выбрано {used}
       {max != null && ` из ${max}`}
-      {override != null && <span className="font-normal text-slate-400"> (вручную)</span>}{" "}
+      {override != null && <span className="font-normal text-slate-400 dark:text-slate-500"> (вручную)</span>}{" "}
       <button
         type="button"
-        className="text-xs font-normal text-indigo-600 hover:underline"
+        className="text-xs font-normal text-indigo-600 dark:text-indigo-400 hover:underline"
         onClick={() => {
           setValue(max != null ? String(max) : "");
           setEditing(true);
@@ -437,11 +437,11 @@ export default function Period() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-lg font-bold">{h.card_label}</h1>
-            <p className="text-sm text-slate-500">{fmtRange(p.period_start, p.period_end)}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{fmtRange(p.period_start, p.period_end)}</p>
           </div>
           <div className="text-right">
             <SlotsEditor periodID={id} used={h.slots_used} max={h.max_categories} override={h.max_categories_override} />
-            <label className="flex items-center justify-end gap-1 text-xs text-slate-500">
+            <label className="flex items-center justify-end gap-1 text-xs text-slate-500 dark:text-slate-400">
               <input type="checkbox" checked={backfill} onChange={(e) => setBackfill(e.target.checked)} />
               бэкфилл (ввод истории)
             </label>
@@ -451,7 +451,7 @@ export default function Period() {
           <div className="mt-3 flex gap-2 overflow-x-auto">
             {(p.attachment_ids ?? []).map((aid) => (
               <a key={aid} href={attachmentURL(aid)} target="_blank" rel="noreferrer">
-                <img src={attachmentURL(aid)} alt="скриншот меню" className="h-20 rounded-lg border border-slate-200 object-cover" />
+                <img src={attachmentURL(aid)} alt="скриншот меню" className="h-20 rounded-lg border border-slate-200 dark:border-slate-800 object-cover" />
               </a>
             ))}
           </div>
@@ -468,16 +468,16 @@ export default function Period() {
             const unmapped = !isSpecial && offer.canonical_category_id == null;
             const blocked = !selected && !isSpecial && slotsFull;
             return (
-              <li key={offer.id} className={`rounded-lg border p-3 ${selected ? "border-emerald-300 bg-emerald-50/50" : "border-slate-200"}`}>
+              <li key={offer.id} className={`rounded-lg border p-3 ${selected ? "border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/30" : "border-slate-200 dark:border-slate-800"}`}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-medium">
                       {offer.raw_title}{" "}
-                      <span className="text-slate-400">{fmtPercent(offer.percent)}</span>{" "}
+                      <span className="text-slate-400 dark:text-slate-500">{fmtPercent(offer.percent)}</span>{" "}
                       {isSpecial && <Badge tone="amber">спец</Badge>}
                     </p>
                     {selected && offer.selected_at && (
-                      <p className="text-xs text-emerald-700">
+                      <p className="text-xs text-emerald-700 dark:text-emerald-400">
                         выбрано {new Date(offer.selected_at).toLocaleDateString("ru-RU")}
                       </p>
                     )}
@@ -485,7 +485,7 @@ export default function Period() {
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-100"
+                      className="rounded px-2 py-1 text-xs text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
                       onClick={() => setEditingID(editingID === offer.id ? null : offer.id)}
                       title="Редактировать"
                     >
@@ -493,7 +493,7 @@ export default function Period() {
                     </button>
                     <button
                       type="button"
-                      className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                      className="rounded px-2 py-1 text-xs text-slate-400 dark:text-slate-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-600 dark:hover:text-rose-400"
                       onClick={() => {
                         if (window.confirm(`Удалить «${offer.raw_title}»${selected ? " вместе с выбором" : ""}?`)) {
                           removeOffer.mutate(offer.id);
@@ -519,19 +519,19 @@ export default function Period() {
                   </div>
                 </div>
                 {unmapped && (
-                  <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                  <p className="mt-2 rounded bg-amber-50 dark:bg-amber-950/50 px-2 py-1 text-xs text-amber-800 dark:text-amber-300">
                     без канонической категории — не попадёт в «Какой картой?»; нажмите ✎, чтобы сопоставить
                   </p>
                 )}
-                {blocked && <p className="mt-1 text-xs text-slate-400">лимит категорий исчерпан</p>}
-                {rowErrors[offer.id] && <p className="mt-2 rounded bg-rose-50 px-2 py-1 text-xs text-rose-700">{rowErrors[offer.id]}</p>}
+                {blocked && <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">лимит категорий исчерпан</p>}
+                {rowErrors[offer.id] && <p className="mt-2 rounded bg-rose-50 dark:bg-rose-950/60 px-2 py-1 text-xs text-rose-700 dark:text-rose-300">{rowErrors[offer.id]}</p>}
                 {(hrow?.collisions ?? []).map((c, i) => (
-                  <p key={i} className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                  <p key={i} className="mt-2 rounded bg-amber-50 dark:bg-amber-950/50 px-2 py-1 text-xs text-amber-800 dark:text-amber-300">
                     ⚠ {c.message}
                   </p>
                 ))}
                 {(hrow?.comparisons ?? []).length > 0 && (
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                     Сравнение:{" "}
                     {(hrow?.comparisons ?? [])
                       .map((cmp) => `${cmp.card_label} — ${fmtPercent(cmp.percent)}`)
@@ -546,7 +546,7 @@ export default function Period() {
           })}
         </ul>
         <AddOfferForm periodID={id} />
-        <div className="mt-4 border-t border-slate-100 pt-3 text-right">
+        <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-3 text-right">
           <Btn
             variant="danger"
             onClick={() => {

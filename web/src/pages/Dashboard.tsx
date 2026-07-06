@@ -44,7 +44,7 @@ function AddCardForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form
-      className="mt-3 space-y-3 border-t border-slate-100 pt-3"
+      className="mt-3 space-y-3 border-t border-slate-100 dark:border-slate-800 pt-3"
       onSubmit={(e) => {
         e.preventDefault();
         create.mutate();
@@ -130,14 +130,14 @@ export default function Dashboard() {
               (p) => p.card_id === card.id && coversToday(p.period_start, p.period_end),
             );
             return (
-              <li key={card.id} className="rounded-lg border border-slate-200 p-3">
+              <li key={card.id} className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="font-medium">
-                      {card.bank_name} <span className="text-slate-400">··{String(card.last_4_digits).padStart(4, "0")}</span>
+                      {card.bank_name} <span className="text-slate-400 dark:text-slate-500">··{String(card.last_4_digits).padStart(4, "0")}</span>
                     </p>
                     {tierInfo && (
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         {tierInfo.tier.name}
                         {tierInfo.tier.is_paid_subscription && " · подписка"}
                         {tierInfo.tier.max_categories != null && ` · ${tierInfo.tier.max_categories} кат.`}
@@ -171,12 +171,12 @@ export default function Dashboard() {
         {(periods.data ?? []).length === 0 ? (
           <Empty>Периодов пока нет. Откройте период на карте — это шаг 1 ежемесячного ритуала.</Empty>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {(periods.data ?? []).map((p) => (
               <li key={p.id}>
-                <Link to={`/periods/${p.id}`} className="flex justify-between py-2 text-sm hover:bg-slate-50">
+                <Link to={`/periods/${p.id}`} className="flex justify-between py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50">
                   <span>{p.bank_name}</span>
-                  <span className="text-slate-500">{fmtRange(p.period_start, p.period_end)}</span>
+                  <span className="text-slate-500 dark:text-slate-400">{fmtRange(p.period_start, p.period_end)}</span>
                 </Link>
               </li>
             ))}

@@ -22,9 +22,9 @@ export default function Register() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center p-4">
-      <h1 className="mb-6 text-center text-2xl font-bold text-indigo-700">Регистрация</h1>
+      <h1 className="mb-6 text-center text-2xl font-bold text-indigo-700 dark:text-indigo-400">Регистрация</h1>
       <form
-        className="space-y-3 rounded-xl bg-white p-5 shadow-sm"
+        className="space-y-3 rounded-xl bg-white dark:bg-slate-900 p-5 shadow-sm"
         onSubmit={(e) => {
           e.preventDefault();
           register.mutate();
@@ -53,9 +53,9 @@ export default function Register() {
           Создать аккаунт
         </Btn>
         <ErrMsg error={register.error} />
-        <p className="text-center text-sm text-slate-500">
+        <p className="text-center text-sm text-slate-500 dark:text-slate-400">
           Уже есть аккаунт?{" "}
-          <Link className="font-medium text-indigo-600" to="/login">
+          <Link className="font-medium text-indigo-600 dark:text-indigo-400" to="/login">
             Войти
           </Link>
         </p>

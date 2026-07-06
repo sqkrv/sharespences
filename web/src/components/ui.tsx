@@ -3,8 +3,12 @@ import { ApiError } from "../api/client";
 
 export function Section({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <section className="rounded-xl bg-white p-4 shadow-sm">
-      {title && <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h2>}
+    <section className="rounded-xl bg-white p-4 shadow-sm dark:bg-slate-900">
+      {title && (
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          {title}
+        </h2>
+      )}
       {children}
     </section>
   );
@@ -16,9 +20,12 @@ export function Btn({
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" }) {
   const styles = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-slate-300",
-    ghost: "bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:text-slate-400",
-    danger: "bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:text-slate-400",
+    primary:
+      "bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-slate-300 dark:bg-indigo-500 dark:hover:bg-indigo-400 dark:disabled:bg-slate-700",
+    ghost:
+      "bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:text-slate-400 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:disabled:text-slate-500",
+    danger:
+      "bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:text-slate-400 dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-900/60 dark:disabled:text-slate-500",
   }[variant];
   return (
     <button
@@ -33,14 +40,14 @@ export function Btn({
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-500">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</span>
       {children}
     </label>
   );
 }
 
 const inputCls =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none";
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800";
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${inputCls} ${props.className ?? ""}`} />;
@@ -52,10 +59,10 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 
 export function Badge({ children, tone = "slate" }: { children: ReactNode; tone?: "slate" | "amber" | "green" | "indigo" }) {
   const tones = {
-    slate: "bg-slate-100 text-slate-600",
-    amber: "bg-amber-100 text-amber-800",
-    green: "bg-emerald-100 text-emerald-800",
-    indigo: "bg-indigo-100 text-indigo-800",
+    slate: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+    amber: "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300",
+    green: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300",
+    indigo: "bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300",
   }[tone];
   return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${tones}`}>{children}</span>;
 }
@@ -63,13 +70,21 @@ export function Badge({ children, tone = "slate" }: { children: ReactNode; tone?
 export function ErrMsg({ error }: { error: unknown }) {
   if (!error) return null;
   const msg = error instanceof ApiError ? error.message : error instanceof Error ? error.message : String(error);
-  return <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{msg}</p>;
+  return (
+    <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+      {msg}
+    </p>
+  );
 }
 
 export function Spinner() {
-  return <p className="p-6 text-center text-sm text-slate-400">Загрузка…</p>;
+  return <p className="p-6 text-center text-sm text-slate-400 dark:text-slate-500">Загрузка…</p>;
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-sm text-slate-500">{children}</p>;
+  return (
+    <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-sm text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+      {children}
+    </p>
+  );
 }

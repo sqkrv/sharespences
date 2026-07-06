@@ -8,19 +8,19 @@ import { capNote, currencyBadge, fmtPercent, fmtRange, todayISO } from "../lib";
 function EntryCard({ e, rank }: { e: LookupEntry; rank?: number }) {
   const cap = capNote(e);
   return (
-    <li className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+    <li className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-800 p-3">
       <div>
         <p className="font-medium">
-          {rank != null && <span className="mr-1 text-slate-400">{rank}.</span>}
+          {rank != null && <span className="mr-1 text-slate-400 dark:text-slate-500">{rank}.</span>}
           {e.card_label}
         </p>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           {fmtRange(e.period_start, e.period_end)}
           {cap && ` · ${cap}`}
         </p>
       </div>
       <div className="text-right">
-        <p className="text-xl font-bold text-indigo-700">{fmtPercent(e.percent)}</p>
+        <p className="text-xl font-bold text-indigo-700 dark:text-indigo-400">{fmtPercent(e.percent)}</p>
         <Badge tone={e.currency_kind === "points" ? "indigo" : "green"}>
           {currencyBadge(e.currency_kind, e.points_label)}
         </Badge>
@@ -75,7 +75,7 @@ export default function Lookup() {
               {lookup.data.message ? (
                 <>
                   <Empty>{lookup.data.message}</Empty>
-                  <p className="mt-2 text-xs text-slate-400">
+                  <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
                     Карта попадает сюда, когда в её периоде есть строка меню, сопоставленная с этой канонической
                     категорией, и она <b>выбрана</b>. Строки «без категории» отмечены в периоде предупреждением.
                   </p>
@@ -89,7 +89,7 @@ export default function Lookup() {
               )}
               {(lookup.data.special ?? []).length > 0 && (
                 <>
-                  <h3 className="mt-4 mb-2 text-sm font-semibold text-amber-700">Спец-предложения (вне рейтинга)</h3>
+                  <h3 className="mt-4 mb-2 text-sm font-semibold text-amber-700 dark:text-amber-400">Спец-предложения (вне рейтинга)</h3>
                   <ul className="space-y-2">
                     {(lookup.data.special ?? []).map((e, i) => (
                       <EntryCard key={`s-${i}`} e={e} />
@@ -98,10 +98,10 @@ export default function Lookup() {
                 </>
               )}
               {(lookup.data.partner ?? []).length > 0 && (
-                <div className="mt-4 border-t border-slate-100 pt-3">
-                  <h3 className="mb-1 text-xs font-semibold uppercase text-slate-400">Партнёрские (справочно)</h3>
+                <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-3">
+                  <h3 className="mb-1 text-xs font-semibold uppercase text-slate-400 dark:text-slate-500">Партнёрские (справочно)</h3>
                   {(lookup.data.partner ?? []).map((p) => (
-                    <p key={p.id} className="text-sm text-slate-600">
+                    <p key={p.id} className="text-sm text-slate-600 dark:text-slate-300">
                       {p.merchant_title} — {fmtPercent(p.percent)} ({p.bank_name}
                       {p.valid_to && ` · до ${p.valid_to}`})
                     </p>

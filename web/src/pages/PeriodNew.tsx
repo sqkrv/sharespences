@@ -89,7 +89,7 @@ export default function PeriodNew() {
             onChange={(e) => setFiles([...(e.target.files ?? [])])}
           />
         </Field>
-        {files.length > 0 && <p className="text-xs text-slate-500">{files.length} файл(ов) будет загружено</p>}
+        {files.length > 0 && <p className="text-xs text-slate-500 dark:text-slate-400">{files.length} файл(ов) будет загружено</p>}
         <Btn type="submit" disabled={create.isPending || !cardID}>
           {create.isPending ? "Создание…" : "Открыть период"}
         </Btn>

@@ -21,9 +21,9 @@ export default function Login() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-sm flex-col justify-center p-4">
-      <h1 className="mb-6 text-center text-2xl font-bold text-indigo-700">Sharespences</h1>
+      <h1 className="mb-6 text-center text-2xl font-bold text-indigo-700 dark:text-indigo-400">Sharespences</h1>
       <form
-        className="space-y-3 rounded-xl bg-white p-5 shadow-sm"
+        className="space-y-3 rounded-xl bg-white dark:bg-slate-900 p-5 shadow-sm"
         onSubmit={(e) => {
           e.preventDefault();
           login.mutate();
@@ -45,9 +45,9 @@ export default function Login() {
           Войти
         </Btn>
         <ErrMsg error={login.error} />
-        <p className="text-center text-sm text-slate-500">
+        <p className="text-center text-sm text-slate-500 dark:text-slate-400">
           Нет аккаунта?{" "}
-          <Link className="font-medium text-indigo-600" to="/register">
+          <Link className="font-medium text-indigo-600 dark:text-indigo-400" to="/register">
             Регистрация
           </Link>
         </p>

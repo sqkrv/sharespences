@@ -3,7 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title>Sharespences</title>
+    <script>
+      // Theme before first paint (no FOUC): stored override wins; otherwise
+      // follow the system, falling back to DARK when the OS expresses no
+      // light preference (dark-first, docs/design/ui-preferences.md).
+      (function () {
+        var t = localStorage.getItem("theme");
+        var dark =
+          t === "dark" ||
+          (t !== "light" && !window.matchMedia("(prefers-color-scheme: light)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -73,12 +73,12 @@ export default function Partners() {
         {offers.data && offers.data.length === 0 && <Empty>Пока не записано ни одного предложения.</Empty>}
         <ul className="space-y-2">
           {(offers.data ?? []).map((o) => (
-            <li key={o.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+            <li key={o.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-800 p-3">
               <div>
                 <p className="font-medium">
-                  {o.merchant_title} <span className="text-indigo-700">{fmtPercent(o.percent)}</span>
+                  {o.merchant_title} <span className="text-indigo-700 dark:text-indigo-400">{fmtPercent(o.percent)}</span>
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {o.bank_name}
                   {o.valid_to && ` · до ${fmtDate(o.valid_to)}`}
                   {o.notes && ` · ${o.notes}`}
