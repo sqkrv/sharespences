@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -429,6 +430,199 @@ func (s *Service) HelperContext(ctx context.Context, userID uuid.UUID, offerPeri
 			hr.Comparisons = ComparableOffers(candidateView, pool)
 		}
 		res.Rows = append(res.Rows, hr)
+	}
+	return res, nil
+}
+
+// OverviewCategoryGroup is one row of the «Категории» cut: the category and
+// its best active card. «Best» = first by the domain ranking (rubles group
+// before points, percent desc within a group) — deliberately NOT a numeric
+// cross-currency comparison (invariant 5); rubles win by list position only.
+type OverviewCategoryGroup struct {
+	CategoryID  int64
+	Slug        string
+	TitleRu     string
+	Best        LookupEntry
+	OthersCount int
+}
+
+// OverviewSelectedRow is a selected menu row shown as a chip on a card.
+type OverviewSelectedRow struct {
+	OfferID  int64
+	RawTitle string
+	Percent  *decimal.Decimal
+}
+
+// OverviewCard is one row of the «Карты» cut. Period is nil when the card
+// has no offer_period covering the date («нет периода», the design's dashed
+// card with «Добавить»).
+type OverviewCard struct {
+	CardID        int32
+	BankID        int16
+	BankName      string
+	Last4Digits   int32
+	TierName      *string
+	IsPaidTier    bool
+	CapValue      *decimal.Decimal
+	CapScope      CapScope
+	CapPerCat     *decimal.Decimal
+	CurrencyKind  CurrencyKind
+	PointsLabel   string
+	SelectionMode string
+	PeriodID      *int64
+	PeriodStart   *time.Time
+	PeriodEnd     *time.Time
+	SlotsUsed     int
+	MaxCategories *int32 // effective: period override, else tier
+	Selected      []OverviewSelectedRow
+	Specials      []OverviewSelectedRow
+}
+
+// OverviewResult answers GET /cashback/overview: the design's two cuts of
+// the same month (screens 01/02), plus the passive «selection opens» day.
+type OverviewResult struct {
+	Categories        []OverviewCategoryGroup
+	Cards             []OverviewCard
+	SelectionOpensDay *int32 // earliest across the user's cards' programs
+}
+
+// Overview builds both cuts for the date. No spend model, no remaining-cap
+// math — everything here is recorded selections plus configured tier data.
+func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Time) (OverviewResult, error) {
+	offers, err := s.Q.ListUserOffers(ctx, userID)
+	if err != nil {
+		return OverviewResult{}, err
+	}
+	cards, err := s.Q.ListCardsForUser(ctx, userID)
+	if err != nil {
+		return OverviewResult{}, err
+	}
+	cats, err := s.Q.ListCanonicalCategories(ctx)
+	if err != nil {
+		return OverviewResult{}, err
+	}
+	catByID := make(map[int64]db.CanonicalCategory, len(cats))
+	for _, c := range cats {
+		catByID[c.ID] = c
+	}
+
+	var res OverviewResult
+
+	// --- «Категории»: group active selections by canonical category. ---
+	byCat := make(map[int64][]LookupEntry)
+	for _, o := range offers {
+		if !o.Selected || o.CanonicalCategoryID == nil {
+			continue
+		}
+		var capScope CapScope
+		if o.TierCapScope.Valid {
+			capScope = CapScope(o.TierCapScope.CashbackCapScope)
+		}
+		var pointsLabel string
+		if o.PointsLabel != nil {
+			pointsLabel = *o.PointsLabel
+		}
+		byCat[*o.CanonicalCategoryID] = append(byCat[*o.CanonicalCategoryID], LookupEntry{
+			CardID:         int64(o.CardID),
+			CardLabel:      cardLabel(o.BankName, o.Last4Digits),
+			BankName:       o.BankName,
+			Percent:        o.Percent,
+			CurrencyKind:   currencyOf(o),
+			Kind:           OfferKind(o.Kind),
+			Period:         rowRange(o.PeriodStart, o.PeriodEnd),
+			CapValue:       o.CapValue,
+			CapPerCategory: o.CapPerCategory,
+			CapScope:       capScope,
+			PointsLabel:    pointsLabel,
+		})
+	}
+	for catID, entries := range byCat {
+		ranked := RankActiveSelections(onDate, entries)
+		if len(ranked.Ranked) == 0 {
+			continue // only specials or nothing active — not a lookup answer (invariant 6)
+		}
+		cat, ok := catByID[catID]
+		if !ok {
+			continue
+		}
+		res.Categories = append(res.Categories, OverviewCategoryGroup{
+			CategoryID:  catID,
+			Slug:        cat.Slug,
+			TitleRu:     cat.TitleRu,
+			Best:        ranked.Ranked[0],
+			OthersCount: len(ranked.Ranked) - 1,
+		})
+	}
+	sort.SliceStable(res.Categories, func(i, j int) bool {
+		a, b := res.Categories[i].Best, res.Categories[j].Best
+		ca := map[CurrencyKind]int{CurrencyRub: 0, CurrencyPoints: 1}[a.CurrencyKind]
+		cb := map[CurrencyKind]int{CurrencyRub: 0, CurrencyPoints: 1}[b.CurrencyKind]
+		if ca != cb {
+			return ca < cb
+		}
+		if c := cmpPercentDesc(a.Percent, b.Percent); c != 0 {
+			return c < 0
+		}
+		return res.Categories[i].TitleRu < res.Categories[j].TitleRu
+	})
+
+	// --- «Карты»: every card, with its active period when one exists. ---
+	for _, card := range cards {
+		oc := OverviewCard{
+			CardID:       card.ID,
+			BankID:       card.BankID,
+			BankName:     card.BankName,
+			Last4Digits:  card.Last4Digits,
+			CurrencyKind: CurrencyUnknown,
+		}
+		if card.ProgramTierID != nil {
+			tier, err := s.Q.GetTier(ctx, *card.ProgramTierID)
+			if err != nil {
+				return OverviewResult{}, err
+			}
+			oc.TierName = &tier.Name
+			oc.IsPaidTier = tier.IsPaidSubscription
+			oc.CapValue = tier.CapValue
+			oc.CapScope = CapScope(tier.CapScope)
+			oc.CapPerCat = tier.CapPerCategory
+			oc.MaxCategories = tier.MaxCategories
+			program, err := s.Q.GetProgram(ctx, tier.ProgramID)
+			if err != nil {
+				return OverviewResult{}, err
+			}
+			oc.CurrencyKind = CurrencyKind(program.CurrencyKind)
+			if program.PointsLabel != nil {
+				oc.PointsLabel = *program.PointsLabel
+			}
+			oc.SelectionMode = string(program.SelectionMode)
+			if program.SelectionOpensDay != nil &&
+				(res.SelectionOpensDay == nil || *program.SelectionOpensDay < *res.SelectionOpensDay) {
+				res.SelectionOpensDay = program.SelectionOpensDay
+			}
+		}
+		for _, o := range offers {
+			if o.CardID != card.ID || !rowRange(o.PeriodStart, o.PeriodEnd).Contains(onDate) {
+				continue
+			}
+			if oc.PeriodID == nil {
+				id, start, end := o.OfferPeriodID, o.PeriodStart, o.PeriodEnd
+				oc.PeriodID, oc.PeriodStart, oc.PeriodEnd = &id, &start, &end
+				if o.MaxCategoriesOverride != nil {
+					oc.MaxCategories = o.MaxCategoriesOverride
+				}
+			}
+			if !o.Selected {
+				continue
+			}
+			row := OverviewSelectedRow{OfferID: o.CategoryOfferID, RawTitle: o.RawTitle, Percent: o.Percent}
+			if OfferKind(o.Kind) == OfferSpecial {
+				oc.Specials = append(oc.Specials, row)
+			} else {
+				oc.SlotsUsed++
+				oc.Selected = append(oc.Selected, row)
+			}
+		}
+		res.Cards = append(res.Cards, oc)
 	}
 	return res, nil
 }

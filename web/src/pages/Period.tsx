@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, unwrap, attachmentURL, ApiError, type CanonicalCategory, type CategoryOffer, type HelperRow } from "../api/client";
-import { useCategories } from "../hooks";
-import { Badge, Btn, Empty, ErrMsg, Field, Input, Section, Select, Spinner } from "../components/ui";
-import { fmtPercent, fmtRange } from "../lib";
+import { useCards, useCategories, useTierMap } from "../hooks";
+import { Badge, Btn, Card, CheckDot, ErrMsg, Field, GradientCard, Input, Pct, Select, Spinner } from "../components/ui";
+import { currencyBadge, fmtRange } from "../lib";
 
 function usePeriod(id: number) {
   return useQuery({
@@ -117,79 +117,82 @@ function AddOfferForm({ periodID }: { periodID: number }) {
       setNewTitle("");
       qc.invalidateQueries({ queryKey: ["period", periodID] });
       qc.invalidateQueries({ queryKey: ["helper", periodID] });
+      qc.invalidateQueries({ queryKey: ["overview"] });
     },
   });
 
   return (
-    <form
-      className="space-y-3 border-t border-slate-100 dark:border-slate-800 pt-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        create.mutate();
-      }}
-    >
-      <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-300">Добавить категорию из меню банка</h3>
-      <Field label="Название — как в приложении банка">
-        <Input required value={rawTitle} onChange={(e) => setRawTitle(e.target.value)} placeholder="Супермаркеты" />
-      </Field>
-      {suggestion && (
-        <p className="text-xs text-emerald-700 dark:text-emerald-400">
-          ≈ распознано: <b>{suggestion.title_ru}</b>
-        </p>
-      )}
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Каноническая категория">
-          <Select
-            value={canonicalID}
-            onChange={(e) => {
-              setCanonicalID(e.target.value);
-              setCanonicalTouched(true);
-            }}
-            disabled={newCat}
-          >
-            <option value="">— без категории —</option>
-            {(categories.data ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.title_ru}
-              </option>
-            ))}
-          </Select>
+    <Card className="p-4">
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          create.mutate();
+        }}
+      >
+        <h3 className="text-[13px] font-bold">Добавить категорию из меню банка</h3>
+        <Field label="Название — как в приложении банка">
+          <Input required value={rawTitle} onChange={(e) => setRawTitle(e.target.value)} placeholder="Супермаркеты" />
         </Field>
-        <Field label="Процент">
-          <Input inputMode="decimal" value={percent} onChange={(e) => setPercent(e.target.value)} placeholder="5" />
-        </Field>
-      </div>
-      <div className="flex flex-wrap items-center gap-4 text-sm">
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={special} onChange={(e) => setSpecial(e.target.checked)} />
-          спец-предложение (барабан / колесо / пятница)
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={newCat} onChange={(e) => setNewCat(e.target.checked)} />
-          новая каноническая категория
-        </label>
-      </div>
-      {newCat && (
+        {suggestion && (
+          <p className="text-xs font-medium text-mint">
+            ≈ распознано: <b>{suggestion.title_ru}</b>
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Slug (латиницей)">
-            <Input value={newSlug} onChange={(e) => setNewSlug(e.target.value)} pattern="[a-z0-9-]+" placeholder="coffee-shops" />
+          <Field label="Каноническая категория">
+            <Select
+              value={canonicalID}
+              onChange={(e) => {
+                setCanonicalID(e.target.value);
+                setCanonicalTouched(true);
+              }}
+              disabled={newCat}
+            >
+              <option value="">— без категории —</option>
+              {(categories.data ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title_ru}
+                </option>
+              ))}
+            </Select>
           </Field>
-          <Field label="Название (по-русски)">
-            <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Кофейни" />
+          <Field label="Процент">
+            <Input inputMode="decimal" value={percent} onChange={(e) => setPercent(e.target.value)} placeholder="5" />
           </Field>
         </div>
-      )}
-      <Btn type="submit" disabled={create.isPending || !rawTitle}>
-        Добавить
-      </Btn>
-      <ErrMsg error={create.error} />
-    </form>
+        <div className="flex flex-wrap items-center gap-4 text-[12px] font-medium text-tx2">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={special} onChange={(e) => setSpecial(e.target.checked)} />
+            спец (барабан / колесо / пятница)
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={newCat} onChange={(e) => setNewCat(e.target.checked)} />
+            новая категория
+          </label>
+        </div>
+        {newCat && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Slug (латиницей)">
+              <Input value={newSlug} onChange={(e) => setNewSlug(e.target.value)} pattern="[a-z0-9-]+" placeholder="coffee-shops" />
+            </Field>
+            <Field label="Название (по-русски)">
+              <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Кофейни" />
+            </Field>
+          </div>
+        )}
+        <Btn type="submit" disabled={create.isPending || !rawTitle}>
+          Добавить
+        </Btn>
+        <ErrMsg error={create.error} />
+      </form>
+    </Card>
   );
 }
 
 // Inline editor for an existing row (owner feedback 2026-07-04: entered
 // rows must be correctable — fixing the canonical mapping here is what
-// makes the row appear in «Какой картой?»).
+// makes the row appear in «Какой картой?»). Deletion lives here too.
 function EditOfferForm({
   offer,
   categories,
@@ -206,6 +209,13 @@ function EditOfferForm({
   const [special, setSpecial] = useState(offer.kind === "special");
   const [notes, setNotes] = useState(offer.notes ?? "");
 
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["period", offer.offer_period_id] });
+    qc.invalidateQueries({ queryKey: ["helper", offer.offer_period_id] });
+    qc.invalidateQueries({ queryKey: ["lookup"] });
+    qc.invalidateQueries({ queryKey: ["overview"] });
+  };
+
   const save = useMutation({
     mutationFn: async () =>
       unwrap(
@@ -221,16 +231,23 @@ function EditOfferForm({
         }),
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["period", offer.offer_period_id] });
-      qc.invalidateQueries({ queryKey: ["helper", offer.offer_period_id] });
-      qc.invalidateQueries({ queryKey: ["lookup"] });
+      invalidate();
+      onDone();
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: async () =>
+      unwrap(await api.DELETE("/api/v1/cashback/category-offers/{id}", { params: { path: { id: offer.id } } })),
+    onSuccess: () => {
+      invalidate();
       onDone();
     },
   });
 
   return (
     <form
-      className="mt-3 space-y-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3"
+      className="mt-3 space-y-3 rounded-xl bg-srf2 p-3"
       onSubmit={(e) => {
         e.preventDefault();
         save.mutate();
@@ -255,7 +272,7 @@ function EditOfferForm({
         </Field>
       </div>
       <div className="flex items-center justify-between gap-3">
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-[12px] font-medium text-tx2">
           <input type="checkbox" checked={special} onChange={(e) => setSpecial(e.target.checked)} />
           спец
         </label>
@@ -268,8 +285,21 @@ function EditOfferForm({
         <Btn type="button" variant="ghost" onClick={onDone}>
           Отмена
         </Btn>
+        <span className="flex-1" />
+        <Btn
+          type="button"
+          variant="danger"
+          disabled={remove.isPending}
+          onClick={() => {
+            if (window.confirm(`Удалить «${offer.raw_title}»${offer.selection_id != null ? " вместе с выбором" : ""}?`)) {
+              remove.mutate();
+            }
+          }}
+        >
+          Удалить
+        </Btn>
       </div>
-      <ErrMsg error={save.error} />
+      <ErrMsg error={save.error ?? remove.error} />
     </form>
   );
 }
@@ -302,6 +332,7 @@ function SlotsEditor({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["period", periodID] });
       qc.invalidateQueries({ queryKey: ["helper", periodID] });
+      qc.invalidateQueries({ queryKey: ["overview"] });
       setEditing(false);
     },
   });
@@ -309,51 +340,40 @@ function SlotsEditor({
   if (editing) {
     return (
       <form
-        className="flex items-center justify-end gap-2"
+        className="flex items-center gap-1.5"
         onSubmit={(e) => {
           e.preventDefault();
           save.mutate(value === "" ? null : Number(value));
         }}
       >
-        <Input
-          type="number"
-          min={1}
-          inputMode="numeric"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className="w-20"
-          placeholder="—"
-        />
-        <Btn type="submit" disabled={save.isPending}>
+        <Input type="number" min={1} inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value)} className="w-16 !py-1.5" placeholder="—" />
+        <Btn type="submit" disabled={save.isPending} className="!px-2.5 !py-1.5 text-xs">
           ОК
         </Btn>
         {override != null && (
-          <Btn type="button" variant="ghost" onClick={() => save.mutate(null)} title="Вернуть значение тарифа">
+          <Btn type="button" variant="ghost" className="!px-2.5 !py-1.5 text-xs" onClick={() => save.mutate(null)} title="Вернуть значение тарифа">
             Сброс
           </Btn>
         )}
-        <Btn type="button" variant="ghost" onClick={() => setEditing(false)}>
+        <Btn type="button" variant="ghost" className="!px-2.5 !py-1.5 text-xs" onClick={() => setEditing(false)}>
           ✕
         </Btn>
       </form>
     );
   }
   return (
-    <p className="text-sm font-semibold">
-      Выбрано {used}
-      {max != null && ` из ${max}`}
-      {override != null && <span className="font-normal text-slate-400 dark:text-slate-500"> (вручную)</span>}{" "}
-      <button
-        type="button"
-        className="text-xs font-normal text-indigo-600 dark:text-indigo-400 hover:underline"
-        onClick={() => {
-          setValue(max != null ? String(max) : "");
-          setEditing(true);
-        }}
-      >
-        изменить
-      </button>
-    </p>
+    <button
+      type="button"
+      className="text-[11px] font-semibold text-tx3"
+      onClick={() => {
+        setValue(max != null ? String(max) : "");
+        setEditing(true);
+      }}
+    >
+      выбрано <b className="text-tx">{used}</b>
+      {max != null && <> из {max}</>}
+      {override != null && <span className="font-medium text-tx4"> (вручную)</span>} <span className="text-tx4">✎</span>
+    </button>
   );
 }
 
@@ -361,6 +381,8 @@ export default function Period() {
   const id = Number(useParams().id);
   const period = usePeriod(id);
   const helper = useHelper(id);
+  const cards = useCards();
+  const tierMap = useTierMap();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const categories = useCategories();
@@ -378,6 +400,7 @@ export default function Period() {
     qc.invalidateQueries({ queryKey: ["period", id] });
     qc.invalidateQueries({ queryKey: ["helper", id] });
     qc.invalidateQueries({ queryKey: ["lookup"] });
+    qc.invalidateQueries({ queryKey: ["overview"] });
   };
 
   const select = useMutation({
@@ -408,17 +431,11 @@ export default function Period() {
     onSuccess: invalidate,
   });
 
-  const removeOffer = useMutation({
-    mutationFn: async (offerID: number) =>
-      unwrap(await api.DELETE("/api/v1/cashback/category-offers/{id}", { params: { path: { id: offerID } } })),
-    onSuccess: invalidate,
-  });
-
   const removePeriod = useMutation({
     mutationFn: async () =>
       unwrap(await api.DELETE("/api/v1/cashback/offer-periods/{id}", { params: { path: { id } } })),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["periods"] });
+      qc.invalidateQueries({ queryKey: ["overview"] });
       navigate("/");
     },
   });
@@ -430,134 +447,202 @@ export default function Period() {
   const p = period.data;
   const h = helper.data;
   const slotsFull = h.max_categories != null && h.slots_used >= h.max_categories;
+  const collisionCount = (h.rows ?? []).filter((r) => (r.collisions ?? []).length > 0).length;
+
+  const card = (cards.data ?? []).find((c) => c.id === p.card_id);
+  const tierInfo = card?.program_tier_id != null ? tierMap.data?.get(card.program_tier_id) : undefined;
+  const currency = tierInfo ? tierInfo.program.currency_kind : undefined;
 
   return (
     <>
-      <Section>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-lg font-bold">{h.card_label}</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{fmtRange(p.period_start, p.period_end)}</p>
-          </div>
-          <div className="text-right">
-            <SlotsEditor periodID={id} used={h.slots_used} max={h.max_categories} override={h.max_categories_override} />
-            <label className="flex items-center justify-end gap-1 text-xs text-slate-500 dark:text-slate-400">
-              <input type="checkbox" checked={backfill} onChange={(e) => setBackfill(e.target.checked)} />
-              бэкфилл (ввод истории)
-            </label>
-          </div>
-        </div>
-        {(p.attachment_ids ?? []).length > 0 && (
-          <div className="mt-3 flex gap-2 overflow-x-auto">
-            {(p.attachment_ids ?? []).map((aid) => (
-              <a key={aid} href={attachmentURL(aid)} target="_blank" rel="noreferrer">
-                <img src={attachmentURL(aid)} alt="скриншот меню" className="h-20 rounded-lg border border-slate-200 dark:border-slate-800 object-cover" />
-              </a>
-            ))}
-          </div>
-        )}
-      </Section>
+      <div className="flex items-center gap-2.5">
+        <Link to="/" className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-brd bg-srf">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-tx2">
+            <path d="M14.5 5 8 12l6.5 7" />
+          </svg>
+        </Link>
+        <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">{p.bank_name}</h1>
+        {tierInfo && <Badge tone="indigo">{tierInfo.tier.name}</Badge>}
+      </div>
 
-      <Section title="Меню категорий">
-        {(p.offers ?? []).length === 0 && <Empty>Введите категории из приложения банка — как на скриншоте.</Empty>}
-        <ul className="space-y-3">
-          {(p.offers ?? []).map((offer) => {
-            const hrow = helperByOffer.get(offer.id);
-            const selected = offer.selection_id != null;
-            const isSpecial = offer.kind === "special";
-            const unmapped = !isSpecial && offer.canonical_category_id == null;
-            const blocked = !selected && !isSpecial && slotsFull;
-            return (
-              <li key={offer.id} className={`rounded-lg border p-3 ${selected ? "border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/30" : "border-slate-200 dark:border-slate-800"}`}>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-medium">
-                      {offer.raw_title}{" "}
-                      <span className="text-slate-400 dark:text-slate-500">{fmtPercent(offer.percent)}</span>{" "}
-                      {isSpecial && <Badge tone="amber">спец</Badge>}
-                    </p>
-                    {selected && offer.selected_at && (
-                      <p className="text-xs text-emerald-700 dark:text-emerald-400">
-                        выбрано {new Date(offer.selected_at).toLocaleDateString("ru-RU")}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      className="rounded px-2 py-1 text-xs text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-                      onClick={() => setEditingID(editingID === offer.id ? null : offer.id)}
-                      title="Редактировать"
-                    >
-                      ✎
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded px-2 py-1 text-xs text-slate-400 dark:text-slate-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-600 dark:hover:text-rose-400"
-                      onClick={() => {
-                        if (window.confirm(`Удалить «${offer.raw_title}»${selected ? " вместе с выбором" : ""}?`)) {
-                          removeOffer.mutate(offer.id);
-                        }
-                      }}
-                      title="Удалить"
-                    >
-                      🗑
-                    </button>
-                    {selected ? (
-                      <Btn variant="danger" onClick={() => unselect.mutate(offer.selection_id!)} disabled={unselect.isPending}>
-                        Снять
-                      </Btn>
-                    ) : (
-                      <Btn
-                        onClick={() => select.mutate(offer.id)}
-                        disabled={select.isPending || blocked}
-                        title={blocked ? "Лимит категорий исчерпан" : undefined}
-                      >
-                        Выбрать
-                      </Btn>
-                    )}
-                  </div>
-                </div>
-                {unmapped && (
-                  <p className="mt-2 rounded bg-amber-50 dark:bg-amber-950/50 px-2 py-1 text-xs text-amber-800 dark:text-amber-300">
-                    без канонической категории — не попадёт в «Какой картой?»; нажмите ✎, чтобы сопоставить
-                  </p>
-                )}
-                {blocked && <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">лимит категорий исчерпан</p>}
-                {rowErrors[offer.id] && <p className="mt-2 rounded bg-rose-50 dark:bg-rose-950/60 px-2 py-1 text-xs text-rose-700 dark:text-rose-300">{rowErrors[offer.id]}</p>}
-                {(hrow?.collisions ?? []).map((c, i) => (
-                  <p key={i} className="mt-2 rounded bg-amber-50 dark:bg-amber-950/50 px-2 py-1 text-xs text-amber-800 dark:text-amber-300">
-                    ⚠ {c.message}
-                  </p>
-                ))}
-                {(hrow?.comparisons ?? []).length > 0 && (
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    Сравнение:{" "}
-                    {(hrow?.comparisons ?? [])
-                      .map((cmp) => `${cmp.card_label} — ${fmtPercent(cmp.percent)}`)
-                      .join(" · ")}
-                  </p>
-                )}
-                {editingID === offer.id && (
-                  <EditOfferForm offer={offer} categories={categories.data ?? []} onDone={() => setEditingID(null)} />
-                )}
-              </li>
-            );
-          })}
-        </ul>
-        <AddOfferForm periodID={id} />
-        <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-3 text-right">
-          <Btn
-            variant="danger"
-            onClick={() => {
-              if (window.confirm("Удалить период целиком — с меню и выборами?")) removePeriod.mutate();
-            }}
-            disabled={removePeriod.isPending}
-          >
-            Удалить период
-          </Btn>
+      {tierInfo && (
+        <GradientCard className="p-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-[9.5px] font-bold uppercase tracking-[.14em] text-white/70">
+                {tierInfo.tier.base_percent != null ? "Базовая ставка" : "Тариф"}
+              </p>
+              <p className="mt-1.5 text-[34px] leading-none font-extrabold tracking-tight">
+                {tierInfo.tier.base_percent != null ? `${tierInfo.tier.base_percent}%` : tierInfo.tier.name}
+              </p>
+              <p className="mt-2 text-[11px] font-semibold text-white/85">
+                ···· {String(card!.last_4_digits).padStart(4, "0")} · {currencyBadge(currency, tierInfo.program.points_label ?? undefined) === "₽" ? "рубли" : currencyBadge(currency, tierInfo.program.points_label ?? undefined)}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[9.5px] font-bold uppercase tracking-[.1em] text-white/70">Лимит</p>
+              <p className="mt-1.5 text-lg font-extrabold whitespace-nowrap">
+                {tierInfo.tier.cap_value ?? "—"}
+                {currency === "rub" ? " ₽" : ""}
+              </p>
+              {h.max_categories != null && (
+                <span className="mt-2 inline-flex rounded-lg bg-white/20 px-2 py-1 text-[10px] font-bold">до {h.max_categories} категорий</span>
+              )}
+            </div>
+          </div>
+        </GradientCard>
+      )}
+
+      <div className="flex items-baseline justify-between px-0.5">
+        <span className="text-[13px] font-bold">Меню · {fmtRange(p.period_start, p.period_end)}</span>
+        <SlotsEditor periodID={id} used={h.slots_used} max={h.max_categories} override={h.max_categories_override} />
+      </div>
+
+      {(p.attachment_ids ?? []).length > 0 && (
+        <div className="flex gap-2 overflow-x-auto">
+          {(p.attachment_ids ?? []).map((aid) => (
+            <a key={aid} href={attachmentURL(aid)} target="_blank" rel="noreferrer">
+              <img src={attachmentURL(aid)} alt="скриншот меню" className="h-20 rounded-xl border border-brd object-cover" />
+            </a>
+          ))}
         </div>
-      </Section>
+      )}
+
+      <div className="space-y-1.5">
+        {(p.offers ?? []).length === 0 && (
+          <p className="rounded-xl border border-brd bg-srf px-3 py-4 text-center text-sm font-medium text-tx3">
+            Введите категории из приложения банка — как на скриншоте.
+          </p>
+        )}
+        {(p.offers ?? []).map((offer) => {
+          const hrow = helperByOffer.get(offer.id);
+          const selected = offer.selection_id != null;
+          const isSpecial = offer.kind === "special";
+          const unmapped = !isSpecial && offer.canonical_category_id == null;
+          const blocked = !selected && !isSpecial && slotsFull;
+          const canonTitle = (categories.data ?? []).find((c) => c.id === offer.canonical_category_id)?.title_ru;
+          if (isSpecial) {
+            return (
+              <div key={offer.id} className="rounded-xl border border-dashed border-gold/30 bg-gold/5 px-3 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md bg-gold/15 text-[11px] font-extrabold text-gold">★</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[12.5px] font-semibold text-gold">{offer.raw_title} · спец</p>
+                    <p className="text-[9.5px] font-medium text-tx4">не занимает слот · сверх меню</p>
+                  </div>
+                  {selected ? (
+                    <Btn variant="danger" className="!px-2.5 !py-1.5 text-xs" onClick={() => unselect.mutate(offer.selection_id!)}>
+                      Снять
+                    </Btn>
+                  ) : (
+                    <Btn variant="soft" className="!px-2.5 !py-1.5 text-xs" onClick={() => select.mutate(offer.id)}>
+                      Отметить
+                    </Btn>
+                  )}
+                  <button type="button" className="px-1 text-tx4" onClick={() => setEditingID(editingID === offer.id ? null : offer.id)} title="Редактировать">
+                    ✎
+                  </button>
+                </div>
+                {editingID === offer.id && <EditOfferForm offer={offer} categories={categories.data ?? []} onDone={() => setEditingID(null)} />}
+              </div>
+            );
+          }
+          return (
+            <div key={offer.id} className={`rounded-xl border px-3 py-2.5 ${selected ? "border-brd bg-srf" : "border-brd2 bg-transparent"}`}>
+              <div className="flex items-center gap-2.5">
+                <CheckDot checked={selected} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold">
+                    {offer.raw_title}
+                    {canonTitle && canonTitle !== offer.raw_title && <span className="text-[10px] font-medium text-tx4"> → {canonTitle}</span>}
+                  </p>
+                  {unmapped && (
+                    <p className="mt-0.5 flex items-center gap-1.5 text-[9.5px] font-semibold text-warn">
+                      <span className="h-[5px] w-[5px] rounded-full bg-warn" />
+                      сопоставьте категорию — не попадёт в «Какой картой?»
+                    </p>
+                  )}
+                  {selected && offer.selected_at && (
+                    <p className="mt-0.5 text-[9.5px] font-medium text-tx4">выбрано {new Date(offer.selected_at).toLocaleDateString("ru-RU")}</p>
+                  )}
+                </div>
+                {selected ? (
+                  <>
+                    <Pct percent={offer.percent} currency={currency} className="text-[14px]" />
+                    <Btn variant="danger" className="!px-2.5 !py-1.5 text-xs" onClick={() => unselect.mutate(offer.selection_id!)} disabled={unselect.isPending}>
+                      Снять
+                    </Btn>
+                  </>
+                ) : (
+                  <Btn
+                    variant="soft"
+                    className="!px-2.5 !py-1.5 text-xs whitespace-nowrap"
+                    onClick={() => select.mutate(offer.id)}
+                    disabled={select.isPending || blocked}
+                    title={blocked ? "Лимит категорий исчерпан" : undefined}
+                  >
+                    выбрать {offer.percent != null ? `${offer.percent}%` : ""}
+                  </Btn>
+                )}
+                <button type="button" className="px-1 text-tx4" onClick={() => setEditingID(editingID === offer.id ? null : offer.id)} title="Редактировать">
+                  ✎
+                </button>
+              </div>
+              {blocked && <p className="mt-1 ml-8 text-[10px] font-medium text-tx4">лимит категорий исчерпан</p>}
+              {rowErrors[offer.id] && <p className="mt-1.5 ml-8 rounded-lg bg-warn/10 px-2 py-1 text-[10.5px] font-medium text-warn">{rowErrors[offer.id]}</p>}
+              {(hrow?.collisions ?? []).map((c, i) => (
+                <p key={i} className="mt-1.5 ml-8 flex items-center gap-1.5 rounded-lg border border-gold/25 bg-gold/10 px-2 py-1 text-[10px] font-medium text-gold">
+                  <span className="h-[5px] w-[5px] flex-none rounded-full bg-gold" />
+                  {c.message}
+                </p>
+              ))}
+              {(hrow?.comparisons ?? []).length > 0 && (
+                <p className="mt-1.5 ml-8 text-[10px] font-medium text-tx4">
+                  Сравнение: {(hrow?.comparisons ?? []).map((cmp) => `${cmp.card_label} — ${cmp.percent != null ? cmp.percent + "%" : "—"}`).join(" · ")}
+                </p>
+              )}
+              {editingID === offer.id && <EditOfferForm offer={offer} categories={categories.data ?? []} onDone={() => setEditingID(null)} />}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="sticky bottom-[92px] z-10 flex items-center gap-2.5 rounded-2xl border border-brd2 bg-srf2/95 px-3.5 py-2.5 backdrop-blur">
+        <span className="text-[11px] font-bold text-accl">
+          Слоты {h.slots_used}
+          {h.max_categories != null && `/${h.max_categories}`}
+        </span>
+        {collisionCount > 0 && (
+          <>
+            <span className="h-3.5 w-px bg-brd" />
+            <span className="text-[11px] font-semibold text-gold">
+              {collisionCount} совпаден{collisionCount === 1 ? "ие" : collisionCount < 5 ? "ия" : "ий"}
+            </span>
+          </>
+        )}
+        <span className="flex-1" />
+        <label className="flex items-center gap-1 text-[10px] font-medium text-tx4">
+          <input type="checkbox" checked={backfill} onChange={(e) => setBackfill(e.target.checked)} />
+          бэкфилл
+        </label>
+        <Btn className="!px-4 !py-1.5 text-xs" onClick={() => navigate("/")}>
+          Готово
+        </Btn>
+      </div>
+
+      <AddOfferForm periodID={id} />
+
+      <div className="pt-1 text-right">
+        <Btn
+          variant="danger"
+          onClick={() => {
+            if (window.confirm("Удалить период целиком — с меню и выборами?")) removePeriod.mutate();
+          }}
+          disabled={removePeriod.isPending}
+        >
+          Удалить период
+        </Btn>
+      </div>
     </>
   );
 }

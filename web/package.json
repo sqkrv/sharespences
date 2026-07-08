@@ -9,6 +9,7 @@
     "gen": "openapi-typescript openapi.json -o src/api/schema.d.ts"
   },
   "dependencies": {
+    "@fontsource/golos-text": "^5.2.8",
     "@tanstack/react-query": "^5.101.2",
     "openapi-fetch": "^0.17.0",
     "react": "^19.2.7",

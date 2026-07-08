@@ -75,3 +75,22 @@ export function capNote(e: {
 export function fmtPercent(p?: string): string {
   return p != null ? `${p}%` : "—%";
 }
+
+const MONTHS_NOM = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+
+// «июль 2026» — the overview header chip.
+export function fmtMonthYear(d = new Date()): string {
+  return `${MONTHS_NOM[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// «Выбор категорий на август откроется 25 июля» — passive display of the
+// program's selection_opens_day (spec: dates shown, never pushed).
+export function opensStripText(day: number, now = new Date()): string {
+  let opens = new Date(now.getFullYear(), now.getMonth(), day);
+  if (opens < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+    opens = new Date(now.getFullYear(), now.getMonth() + 1, day);
+  }
+  const target = new Date(opens.getFullYear(), opens.getMonth() + 1, 1);
+  return `Выбор категорий на ${MONTHS_NOM[target.getMonth()]} откроется ${day} ${MONTHS_GEN[opens.getMonth()]}`;
+}

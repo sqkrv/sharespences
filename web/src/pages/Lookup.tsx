@@ -1,116 +1,247 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { api, unwrap, type LookupEntry } from "../api/client";
 import { useCategories } from "../hooks";
-import { Badge, Empty, ErrMsg, Field, Input, Section, Select, Spinner } from "../components/ui";
-import { capNote, currencyBadge, fmtPercent, fmtRange, todayISO } from "../lib";
+import { BankBadge, Btn, Card, ErrMsg, GradientCard, Pct, SegTabs, Spinner } from "../components/ui";
+import { capNote, currencyBadge, fmtPercent } from "../lib";
 
-function EntryCard({ e, rank }: { e: LookupEntry; rank?: number }) {
-  const cap = capNote(e);
+type Mode = "near" | "search" | "cat";
+
+// The design's map placeholder: striped blocks, two «roads», pulsing dot.
+function MapStub() {
   return (
-    <li className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-800 p-3">
-      <div>
-        <p className="font-medium">
-          {rank != null && <span className="mr-1 text-slate-400 dark:text-slate-500">{rank}.</span>}
-          {e.card_label}
-        </p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          {fmtRange(e.period_start, e.period_end)}
-          {cap && ` · ${cap}`}
-        </p>
+    <div className="relative h-16 overflow-hidden rounded-2xl border border-brd" style={{ background: "repeating-linear-gradient(126deg, var(--t-srf2) 0 13px, var(--t-srf) 13px 26px)" }}>
+      <div className="absolute top-[58%] -right-[12%] -left-[12%] h-2 -rotate-[9deg] bg-inset" />
+      <div className="absolute -top-1/4 -bottom-1/4 left-2/3 w-2 rotate-[7deg] bg-inset" />
+      <div className="absolute top-1/2 left-1/2">
+        <span className="absolute top-1/2 left-1/2 h-[22px] w-[22px] rounded-full bg-acc" style={{ animation: "locpulse 2.2s ease-out infinite" }} />
+        <span className="absolute top-1/2 left-1/2 h-[15px] w-[15px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[2.5px] border-white bg-acc shadow-[0_4px_12px_-2px_rgba(139,111,255,.9)]" />
       </div>
-      <div className="text-right">
-        <p className="text-xl font-bold text-indigo-700 dark:text-indigo-400">{fmtPercent(e.percent)}</p>
-        <Badge tone={e.currency_kind === "points" ? "indigo" : "green"}>
-          {currencyBadge(e.currency_kind, e.points_label)}
-        </Badge>
-      </div>
-    </li>
+      <span className="absolute bottom-2 left-2.5 rounded-md bg-bg/70 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-tx3">гео · скоро</span>
+    </div>
   );
 }
 
-// S3: «Каким банком платить?» — category-level lookup of active selections.
+function ComingSoon({ text, onPickCategory }: { text: string; onPickCategory: () => void }) {
+  return (
+    <Card className="space-y-3 p-4 text-center">
+      <p className="text-sm font-medium text-tx3">{text}</p>
+      <Btn variant="soft" onClick={onPickCategory}>
+        Выбрать категорию вручную
+      </Btn>
+    </Card>
+  );
+}
+
+function OtherCardRow({ e }: { e: LookupEntry }) {
+  const cap = capNote(e);
+  return (
+    <div className="flex items-center gap-2.5 rounded-xl border border-brd bg-srf px-3 py-2.5">
+      <BankBadge name={e.bank_name} size={26} />
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-semibold">{e.bank_name}</p>
+        <p className="text-[10px] font-medium text-tx4">{cap || currencyBadge(e.currency_kind, e.points_label)}</p>
+      </div>
+      <Pct percent={e.percent} currency={e.currency_kind} className="text-[14px]" />
+    </div>
+  );
+}
+
+// «Какой картой платить?» — design screens 04–06. «Рядом» and «Поиск» need
+// a places/MCC base the backend doesn't have yet (OUT of v1) — they render
+// the designed shell with an honest «скоро»; «Категория» is fully wired.
 export default function Lookup() {
   const categories = useCategories();
-  const [slug, setSlug] = useState("");
-  const [date, setDate] = useState(todayISO());
+  const [params, setParams] = useSearchParams();
+  const preselect = params.get("cat") ?? "";
+  const [mode, setMode] = useState<Mode>("cat");
+  const [slug, setSlug] = useState(preselect);
+  const [showAll, setShowAll] = useState(false);
+
+  // Categories with active selections come first — those are the answers
+  // the owner actually taps mid-month (design 06 shows the common ones).
+  const overview = useQuery({
+    queryKey: ["overview"],
+    queryFn: async () => unwrap(await api.GET("/api/v1/cashback/overview")),
+    staleTime: 60_000,
+  });
 
   const lookup = useQuery({
-    queryKey: ["lookup", slug, date],
+    queryKey: ["lookup", slug],
     enabled: slug !== "",
     queryFn: async () =>
       unwrap(
         await api.GET("/api/v1/cashback/lookup", {
-          params: { query: { category: slug, date } },
+          params: { query: { category: slug } },
         }),
       ),
   });
 
+  const pick = (s: string) => {
+    setSlug(s);
+    setParams(s ? { cat: s } : {}, { replace: true });
+  };
+
+  const activeSlugs = (overview.data?.categories ?? []).map((g) => g.slug);
+  const cats = [...(categories.data ?? [])].sort((a, b) => {
+    const ai = activeSlugs.indexOf(a.slug);
+    const bi = activeSlugs.indexOf(b.slug);
+    if (ai !== -1 || bi !== -1) return (ai === -1 ? 1e9 : ai) - (bi === -1 ? 1e9 : bi);
+    return a.title_ru.localeCompare(b.title_ru, "ru");
+  });
+  const mustShow = slug !== "" && cats.findIndex((c) => c.slug === slug) >= 8;
+  const shown = showAll || mustShow ? cats : cats.slice(0, 8);
+  const selectedCat = cats.find((c) => c.slug === slug);
+  const best = (lookup.data?.ranked ?? [])[0];
+  const others = (lookup.data?.ranked ?? []).slice(1);
+
   return (
     <>
-      <Section title="Какой картой платить?">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Категория">
-            <Select value={slug} onChange={(e) => setSlug(e.target.value)}>
-              <option value="">— выберите —</option>
-              {(categories.data ?? []).map((c) => (
-                <option key={c.id} value={c.slug}>
-                  {c.title_ru}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Дата">
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </Field>
-        </div>
-      </Section>
+      <h1 className="text-[22px] font-extrabold tracking-tight">Какой картой платить?</h1>
 
-      {slug !== "" && (
-        <Section>
-          {lookup.isPending && <Spinner />}
-          {lookup.isError && <ErrMsg error={lookup.error} />}
-          {lookup.data && (
+      <SegTabs
+        value={mode}
+        onChange={setMode}
+        options={[
+          { value: "near", label: "Рядом" },
+          { value: "search", label: "Поиск" },
+          { value: "cat", label: "Категория" },
+        ]}
+      />
+
+      {mode === "near" && (
+        <>
+          <MapStub />
+          <ComingSoon
+            text="Определение места по геолокации появится вместе с базой точек и MCC — пока подскажем по категории."
+            onPickCategory={() => setMode("cat")}
+          />
+        </>
+      )}
+
+      {mode === "search" && (
+        <>
+          <div className="flex items-center gap-2.5 rounded-xl border border-brd2 bg-srf2 px-3 py-2.5">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-none text-tx4">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.4-3.4" />
+            </svg>
+            <input disabled placeholder="Название, сайт или адрес" className="flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-tx4" />
+          </div>
+          <p className="mx-1 text-[10.5px] leading-snug font-medium text-tx4">Онлайн-оплата? Гео не нужно — поиск по названию или сайту (как mcc-codes.ru).</p>
+          <ComingSoon text="Поиск мест появится вместе с базой точек и MCC — пока подскажем по категории." onPickCategory={() => setMode("cat")} />
+        </>
+      )}
+
+      {mode === "cat" && (
+        <>
+          <p className="mx-0.5 text-[11px] font-semibold text-tx3">Категория покупки</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {shown.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => pick(c.slug)}
+                className={`rounded-xl px-1 py-2.5 text-center text-[11.5px] transition ${
+                  slug === c.slug
+                    ? "grad-acc font-bold text-white shadow-[0_8px_18px_-8px_rgba(139,111,255,.9)]"
+                    : "border border-brd bg-srf font-semibold text-tx2"
+                }`}
+              >
+                {c.title_ru}
+              </button>
+            ))}
+            {!showAll && !mustShow && cats.length > 8 && (
+              <button type="button" onClick={() => setShowAll(true)} className="rounded-xl border border-brd bg-srf px-1 py-2.5 text-center text-[11.5px] font-semibold text-tx3">
+                Ещё…
+              </button>
+            )}
+          </div>
+
+          {slug !== "" && (
             <>
-              {lookup.data.message ? (
+              {lookup.isPending && <Spinner />}
+              {lookup.isError && <ErrMsg error={lookup.error} />}
+              {lookup.data && (
                 <>
-                  <Empty>{lookup.data.message}</Empty>
-                  <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
-                    Карта попадает сюда, когда в её периоде есть строка меню, сопоставленная с этой канонической
-                    категорией, и она <b>выбрана</b>. Строки «без категории» отмечены в периоде предупреждением.
-                  </p>
+                  {lookup.data.message ? (
+                    <Card className="space-y-1.5 p-4 text-center">
+                      <p className="text-sm font-semibold text-tx2">{lookup.data.message}</p>
+                      <p className="text-[10.5px] font-medium text-tx4">
+                        Карта попадает сюда, когда в её периоде есть строка с этой категорией и она выбрана.
+                      </p>
+                    </Card>
+                  ) : (
+                    best && (
+                      <>
+                        <p className="mx-0.5 text-[11px] font-semibold text-tx3">Лучшая карта · {selectedCat?.title_ru}</p>
+                        <GradientCard className="p-4">
+                          <p className="text-[9.5px] font-bold uppercase tracking-[.16em] text-white/75">Платите этой картой</p>
+                          <div className="mt-3 flex items-end justify-between">
+                            <div className="min-w-0">
+                              <p className="text-[22px] leading-none font-extrabold tracking-tight">{best.bank_name}</p>
+                              <p className="mt-1.5 text-[11px] font-semibold text-white/85">
+                                ····{best.card_label.replace(best.bank_name, "").replace(/[·\s]+/g, "").trim()}
+                              </p>
+                              {capNote(best) && (
+                                <span className="mt-2.5 inline-flex rounded-[10px] bg-white/20 px-2.5 py-1 text-[10.5px] font-bold">{capNote(best)}</span>
+                              )}
+                            </div>
+                            <div className="flex-none text-right">
+                              <p className="text-[44px] leading-[.8] font-extrabold tracking-tighter">{fmtPercent(best.percent)}</p>
+                              <p className="mt-1.5 text-[10.5px] font-semibold text-white/85">
+                                {best.currency_kind === "rub" ? "рублями" : best.points_label || "баллами"}
+                              </p>
+                            </div>
+                          </div>
+                        </GradientCard>
+                      </>
+                    )
+                  )}
+
+                  {others.length > 0 && (
+                    <>
+                      <p className="mx-0.5 text-[11px] font-semibold text-tx3">Другие карты для «{selectedCat?.title_ru}»</p>
+                      <div className="space-y-1.5">
+                        {others.map((e, i) => (
+                          <OtherCardRow key={i} e={e} />
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {(lookup.data.special ?? []).length > 0 && (
+                    <>
+                      <p className="mx-0.5 text-[11px] font-semibold text-gold">Спец-предложения (вне рейтинга)</p>
+                      <div className="space-y-1.5">
+                        {(lookup.data.special ?? []).map((e, i) => (
+                          <div key={i} className="flex items-center gap-2.5 rounded-xl border border-dashed border-gold/30 bg-gold/5 px-3 py-2.5">
+                            <BankBadge name={e.bank_name} size={26} />
+                            <span className="flex-1 text-[13px] font-semibold">{e.bank_name}</span>
+                            <span className="text-[13px] font-extrabold text-gold">{fmtPercent(e.percent)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {(lookup.data.partner ?? []).length > 0 && (
+                    <div className="border-t border-brd pt-2">
+                      <p className="mx-0.5 mb-1.5 text-[10px] font-semibold tracking-wide text-tx4 uppercase">Партнёрские (справочно)</p>
+                      {(lookup.data.partner ?? []).map((p) => (
+                        <p key={p.id} className="text-[12.5px] font-medium text-tx3">
+                          {p.merchant_title} — {fmtPercent(p.percent)} ({p.bank_name}
+                          {p.valid_to && ` · до ${p.valid_to}`})
+                        </p>
+                      ))}
+                    </div>
+                  )}
                 </>
-              ) : (
-                <ul className="space-y-2">
-                  {(lookup.data.ranked ?? []).map((e, i) => (
-                    <EntryCard key={`${e.card_label}-${i}`} e={e} rank={i + 1} />
-                  ))}
-                </ul>
-              )}
-              {(lookup.data.special ?? []).length > 0 && (
-                <>
-                  <h3 className="mt-4 mb-2 text-sm font-semibold text-amber-700 dark:text-amber-400">Спец-предложения (вне рейтинга)</h3>
-                  <ul className="space-y-2">
-                    {(lookup.data.special ?? []).map((e, i) => (
-                      <EntryCard key={`s-${i}`} e={e} />
-                    ))}
-                  </ul>
-                </>
-              )}
-              {(lookup.data.partner ?? []).length > 0 && (
-                <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-3">
-                  <h3 className="mb-1 text-xs font-semibold uppercase text-slate-400 dark:text-slate-500">Партнёрские (справочно)</h3>
-                  {(lookup.data.partner ?? []).map((p) => (
-                    <p key={p.id} className="text-sm text-slate-600 dark:text-slate-300">
-                      {p.merchant_title} — {fmtPercent(p.percent)} ({p.bank_name}
-                      {p.valid_to && ` · до ${p.valid_to}`})
-                    </p>
-                  ))}
-                </div>
               )}
             </>
           )}
-        </Section>
+        </>
       )}
     </>
   );

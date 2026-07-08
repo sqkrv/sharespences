@@ -281,6 +281,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cashback/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Обзор кешбека: лучшие карты по категориям и срез по картам */
+        get: operations["cashback-overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cashback/partner-offers": {
         parameters: {
             query?: never;
@@ -609,6 +626,19 @@ export interface components {
             /** Format: int32 */
             value: number | null;
         };
+        "Cashback-overviewResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Cashback-overviewResponse.json
+             */
+            readonly $schema?: string;
+            cards: components["schemas"]["OverviewCardDTO"][] | null;
+            categories: components["schemas"]["OverviewCategoryDTO"][] | null;
+            date: string;
+            /** Format: int32 */
+            selection_opens_day?: number;
+        };
         "Cashback-partner-offer-createRequest": {
             /**
              * Format: uri
@@ -813,6 +843,48 @@ export interface components {
             max_categories_override?: number;
             period_end: string;
             period_start: string;
+        };
+        OverviewCardDTO: {
+            /** Format: int32 */
+            bank_id: number;
+            bank_name: string;
+            cap_per_category?: string;
+            cap_scope?: string;
+            cap_value?: string;
+            /** Format: int32 */
+            card_id: number;
+            currency_kind: string;
+            is_paid_tier?: boolean;
+            /** Format: int32 */
+            last_4_digits: number;
+            /** Format: int32 */
+            max_categories?: number;
+            period_end?: string;
+            /** Format: int64 */
+            period_id?: number;
+            period_start?: string;
+            points_label?: string;
+            selected: components["schemas"]["OverviewChipDTO"][] | null;
+            selection_mode?: string;
+            /** Format: int64 */
+            slots_used: number;
+            specials?: components["schemas"]["OverviewChipDTO"][] | null;
+            tier_name?: string;
+        };
+        OverviewCategoryDTO: {
+            best: components["schemas"]["LookupEntryDTO"];
+            /** Format: int64 */
+            category_id: number;
+            /** Format: int64 */
+            others_count: number;
+            slug: string;
+            title_ru: string;
+        };
+        OverviewChipDTO: {
+            /** Format: int64 */
+            offer_id: number;
+            percent?: string;
+            raw_title: string;
         };
         PartnerOfferDTO: {
             /**
@@ -1593,6 +1665,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OfferPeriodDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-overview": {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM-DD; defaults to today */
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cashback-overviewResponse"];
                 };
             };
             /** @description Error */

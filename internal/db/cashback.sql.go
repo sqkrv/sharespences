@@ -973,6 +973,7 @@ select co.id                     as category_offer_id,
        op.card_id,
        op.period_start,
        op.period_end,
+       op.max_categories_override,
        bc.last_4_digits,
        b.name                    as bank_name,
        pt.cap_value,
@@ -994,25 +995,26 @@ where bc.user_id = $1
 `
 
 type ListUserOffersRow struct {
-	CategoryOfferID     int64
-	RawTitle            string
-	CanonicalCategoryID *int64
-	Percent             *decimal.Decimal
-	Kind                CashbackOfferKind
-	OfferPeriodID       int64
-	CardID              int32
-	PeriodStart         time.Time
-	PeriodEnd           time.Time
-	Last4Digits         int32
-	BankName            string
-	CapValue            *decimal.Decimal
-	TierCapScope        NullCashbackCapScope
-	CapPerCategory      *decimal.Decimal
-	MaxCategories       *int32
-	ProgramCurrencyKind NullCashbackCurrencyKind
-	PointsLabel         *string
-	Selected            bool
-	SelectedAt          *time.Time
+	CategoryOfferID       int64
+	RawTitle              string
+	CanonicalCategoryID   *int64
+	Percent               *decimal.Decimal
+	Kind                  CashbackOfferKind
+	OfferPeriodID         int64
+	CardID                int32
+	PeriodStart           time.Time
+	PeriodEnd             time.Time
+	MaxCategoriesOverride *int32
+	Last4Digits           int32
+	BankName              string
+	CapValue              *decimal.Decimal
+	TierCapScope          NullCashbackCapScope
+	CapPerCategory        *decimal.Decimal
+	MaxCategories         *int32
+	ProgramCurrencyKind   NullCashbackCurrencyKind
+	PointsLabel           *string
+	Selected              bool
+	SelectedAt            *time.Time
 }
 
 // ListUserOffers is the helper/lookup workhorse: every menu row of the
@@ -1038,6 +1040,7 @@ func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListU
 			&i.CardID,
 			&i.PeriodStart,
 			&i.PeriodEnd,
+			&i.MaxCategoriesOverride,
 			&i.Last4Digits,
 			&i.BankName,
 			&i.CapValue,

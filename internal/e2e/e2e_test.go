@@ -433,6 +433,82 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("flowers after mapping+selecting = %+v, want Альфа-Банк ranked", lookup.Ranked)
 	}
 
+	// Overview (design screens 01/02): both cuts in one response.
+	var banks []struct {
+		ID   int32  `json:"id"`
+		Name string `json:"name"`
+	}
+	owner.must("GET", "/api/v1/banks", nil, &banks, http.StatusOK)
+	var vtbID int32
+	for _, b := range banks {
+		if b.Name == "ВТБ" {
+			vtbID = b.ID
+		}
+	}
+	owner.must("POST", "/api/v1/cards", map[string]any{
+		"bank_id": vtbID, "last_4_digits": 9012, "payment_system": "mir",
+	}, nil, http.StatusCreated)
+
+	var overview struct {
+		Categories []struct {
+			Slug        string `json:"slug"`
+			OthersCount int    `json:"others_count"`
+			Best        struct {
+				BankName string `json:"bank_name"`
+			} `json:"best"`
+		} `json:"categories"`
+		Cards []struct {
+			BankName      string  `json:"bank_name"`
+			PeriodID      *int64  `json:"period_id"`
+			SlotsUsed     int     `json:"slots_used"`
+			MaxCategories *int32  `json:"max_categories"`
+			TierName      *string `json:"tier_name"`
+		} `json:"cards"`
+		SelectionOpensDay *int32 `json:"selection_opens_day"`
+	}
+	owner.must("GET", "/api/v1/cashback/overview?date=2026-07-15", nil, &overview, http.StatusOK)
+	// Транспорт is selected but unmapped → invisible here, like in lookup.
+	if len(overview.Categories) != 4 {
+		t.Fatalf("overview categories = %d, want 4 (supermarkets, gas-stations, pharmacies, flowers)", len(overview.Categories))
+	}
+	var superRow *struct {
+		Slug        string `json:"slug"`
+		OthersCount int    `json:"others_count"`
+		Best        struct {
+			BankName string `json:"bank_name"`
+		} `json:"best"`
+	}
+	for i := range overview.Categories {
+		if overview.Categories[i].Slug == "supermarkets" {
+			superRow = &overview.Categories[i]
+		}
+	}
+	if superRow == nil || superRow.Best.BankName != "Альфа-Банк" || superRow.OthersCount != 1 {
+		t.Fatalf("overview supermarkets = %+v, want best Альфа-Банк with 1 other", superRow)
+	}
+	if len(overview.Cards) != 3 {
+		t.Fatalf("overview cards = %d, want 3", len(overview.Cards))
+	}
+	for _, c := range overview.Cards {
+		switch c.BankName {
+		case "Альфа-Банк":
+			if c.PeriodID == nil || c.SlotsUsed != 4 || c.MaxCategories == nil || *c.MaxCategories != 4 {
+				t.Fatalf("overview Альфа-Банк = %+v, want active period 4/4", c)
+			}
+		case "Озон Банк":
+			if c.SlotsUsed != 4 || c.MaxCategories == nil || *c.MaxCategories != 5 {
+				t.Fatalf("overview Озон = %+v, want 4/5 (override)", c)
+			}
+		case "ВТБ":
+			if c.PeriodID != nil || c.TierName != nil {
+				t.Fatalf("overview ВТБ = %+v, want no period, no tier", c)
+			}
+		}
+	}
+	if overview.SelectionOpensDay == nil || *overview.SelectionOpensDay != 25 {
+		t.Fatalf("selection_opens_day = %v, want 25", overview.SelectionOpensDay)
+	}
+
 	// A whole mistaken period can be deleted with everything under it.
 	var scratch periodJSON
 	owner.must("POST", "/api/v1/cashback/offer-periods", map[string]any{

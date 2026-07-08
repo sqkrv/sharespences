@@ -1,15 +1,107 @@
 @import "tailwindcss";
+@import "@fontsource/golos-text/400.css";
+@import "@fontsource/golos-text/500.css";
+@import "@fontsource/golos-text/600.css";
+@import "@fontsource/golos-text/700.css";
+@import "@fontsource/golos-text/800.css";
 
 /* Class-driven dark mode (three-state theme control, dark-first). */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Palette from the Claude Design «Кэшбеки - Модуль» doc
+ * (docs/claude-design/Sharespences-design.zip). Dark IS the design;
+ * light is a derived variant so the System/Light/Dark toggle survives.
+ * Semantics: mint = кешбек рублями, lilac (accl) = баллами, gold = спец.
+ */
 :root {
+  --t-bg: #f2f0f8;
+  --t-srf: #ffffff;
+  --t-srf2: #f6f4fb;
+  --t-inset: #ece8f6;
+  --t-brd: #e3def0;
+  --t-brd2: #e9e5f4;
+  --t-dash: #c9c2e0;
+  --t-tx: #191330;
+  --t-tx2: #4a4468;
+  --t-tx3: #6f6890;
+  --t-tx4: #9a93b8;
+  --t-acc: #6a4ce6;
+  --t-acc2: #5b3fe0;
+  --t-accl: #6f4fe0;
+  --t-mint: #0c9f78;
+  --t-gold: #a8821b;
+  --t-warn: #c25454;
+  --t-glow: radial-gradient(120% 78% at 50% -12%, #ece7fa 0%, #f2f0f8 58%);
   color-scheme: light;
 }
 .dark {
+  --t-bg: #0f0b1c;
+  --t-srf: #181227;
+  --t-srf2: #161029;
+  --t-inset: #221a3a;
+  --t-brd: #271f42;
+  --t-brd2: #262041;
+  --t-dash: #322a4e;
+  --t-tx: #ece9f6;
+  --t-tx2: #b7b1ce;
+  --t-tx3: #8d86a8;
+  --t-tx4: #6f688c;
+  --t-acc: #8b6fff;
+  --t-acc2: #5b3fe0;
+  --t-accl: #bcb4ff;
+  --t-mint: #6fe9c0;
+  --t-gold: #e7ce86;
+  --t-warn: #e29b9b;
+  --t-glow: radial-gradient(120% 78% at 50% -12%, #241c3e 0%, #0f0b1c 58%);
   color-scheme: dark;
 }
 
+@theme inline {
+  --font-sans: "Golos Text", system-ui, -apple-system, sans-serif;
+  --color-bg: var(--t-bg);
+  --color-srf: var(--t-srf);
+  --color-srf2: var(--t-srf2);
+  --color-inset: var(--t-inset);
+  --color-brd: var(--t-brd);
+  --color-brd2: var(--t-brd2);
+  --color-dash: var(--t-dash);
+  --color-tx: var(--t-tx);
+  --color-tx2: var(--t-tx2);
+  --color-tx3: var(--t-tx3);
+  --color-tx4: var(--t-tx4);
+  --color-acc: var(--t-acc);
+  --color-acc2: var(--t-acc2);
+  --color-accl: var(--t-accl);
+  --color-mint: var(--t-mint);
+  --color-gold: var(--t-gold);
+  --color-warn: var(--t-warn);
+}
+
 body {
-  @apply bg-slate-100 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+  @apply bg-bg text-tx antialiased;
+  background-image: var(--t-glow);
+  background-repeat: no-repeat;
+  background-size: 100% 100vh;
+}
+
+/* Accent gradient (identical in both themes — white text sits on it). */
+.grad-acc {
+  background: linear-gradient(140deg, #8b6fff, #5b3fe0);
+}
+
+@keyframes locpulse {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.5;
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(2.6);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
 }

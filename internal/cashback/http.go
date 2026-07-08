@@ -248,6 +248,46 @@ type CanonicalCategoryDTO struct {
 	TitleRu string `json:"title_ru"`
 }
 
+// OverviewCategoryDTO is one «Категории» row: category + its best card.
+type OverviewCategoryDTO struct {
+	CategoryID  int64          `json:"category_id"`
+	Slug        string         `json:"slug"`
+	TitleRu     string         `json:"title_ru"`
+	Best        LookupEntryDTO `json:"best"`
+	OthersCount int            `json:"others_count"`
+}
+
+// OverviewChipDTO is a selected menu row rendered as a chip on a card.
+type OverviewChipDTO struct {
+	OfferID  int64   `json:"offer_id"`
+	RawTitle string  `json:"raw_title"`
+	Percent  *string `json:"percent,omitempty"`
+}
+
+// OverviewCardDTO is one «Карты» row; period fields are null when the card
+// has no offer_period covering the date.
+type OverviewCardDTO struct {
+	CardID         int32             `json:"card_id"`
+	BankID         int32             `json:"bank_id"`
+	BankName       string            `json:"bank_name"`
+	Last4Digits    int32             `json:"last_4_digits"`
+	TierName       *string           `json:"tier_name,omitempty"`
+	IsPaidTier     bool              `json:"is_paid_tier,omitempty"`
+	CapValue       *string           `json:"cap_value,omitempty"`
+	CapPerCategory *string           `json:"cap_per_category,omitempty"`
+	CapScope       string            `json:"cap_scope,omitempty"`
+	CurrencyKind   string            `json:"currency_kind"`
+	PointsLabel    string            `json:"points_label,omitempty"`
+	SelectionMode  string            `json:"selection_mode,omitempty"`
+	PeriodID       *int64            `json:"period_id,omitempty"`
+	PeriodStart    *string           `json:"period_start,omitempty"`
+	PeriodEnd      *string           `json:"period_end,omitempty"`
+	SlotsUsed      int               `json:"slots_used"`
+	MaxCategories  *int32            `json:"max_categories,omitempty"`
+	Selected       []OverviewChipDTO `json:"selected"`
+	Specials       []OverviewChipDTO `json:"specials,omitempty"`
+}
+
 // RegisterHTTP mounts the module's API (spec «Interfaces & files»).
 func RegisterHTTP(api huma.API, s *Service) {
 	// --- programs / tiers (admin-ish reference data, shared across users) ---
@@ -733,6 +773,79 @@ func RegisterHTTP(api huma.API, s *Service) {
 				})
 			}
 			out.Body.Rows = append(out.Body.Rows, dto)
+		}
+		return out, nil
+	})
+
+	// --- overview (design screens 01/02: Категории / Карты cuts) ---
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-overview", Method: http.MethodGet,
+		Path: "/api/v1/cashback/overview", Summary: "Обзор кешбека: лучшие карты по категориям и срез по картам", Tags: []string{"cashback"},
+	}, func(ctx context.Context, in *struct {
+		Date string `query:"date" doc:"YYYY-MM-DD; defaults to today"`
+	}) (*struct {
+		Body struct {
+			Date              string                `json:"date"`
+			Categories        []OverviewCategoryDTO `json:"categories"`
+			Cards             []OverviewCardDTO     `json:"cards"`
+			SelectionOpensDay *int32                `json:"selection_opens_day,omitempty"`
+		}
+	}, error) {
+		onDate := time.Now()
+		if in.Date != "" {
+			var err error
+			if onDate, err = parseDate(in.Date, "date"); err != nil {
+				return nil, err
+			}
+		}
+		res, err := s.Overview(ctx, auth.UserID(ctx), onDate)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		out := &struct {
+			Body struct {
+				Date              string                `json:"date"`
+				Categories        []OverviewCategoryDTO `json:"categories"`
+				Cards             []OverviewCardDTO     `json:"cards"`
+				SelectionOpensDay *int32                `json:"selection_opens_day,omitempty"`
+			}
+		}{}
+		out.Body.Date = onDate.Format("2006-01-02")
+		out.Body.SelectionOpensDay = res.SelectionOpensDay
+		out.Body.Categories = make([]OverviewCategoryDTO, len(res.Categories))
+		for i, g := range res.Categories {
+			out.Body.Categories[i] = OverviewCategoryDTO{
+				CategoryID: g.CategoryID, Slug: g.Slug, TitleRu: g.TitleRu,
+				Best: lookupEntryDTO(g.Best), OthersCount: g.OthersCount,
+			}
+		}
+		out.Body.Cards = make([]OverviewCardDTO, len(res.Cards))
+		for i, c := range res.Cards {
+			dto := OverviewCardDTO{
+				CardID: c.CardID, BankID: int32(c.BankID), BankName: c.BankName,
+				Last4Digits: c.Last4Digits, TierName: c.TierName, IsPaidTier: c.IsPaidTier,
+				CapValue: decToStr(c.CapValue), CapPerCategory: decToStr(c.CapPerCat),
+				CapScope: string(c.CapScope), CurrencyKind: string(c.CurrencyKind),
+				PointsLabel: c.PointsLabel, SelectionMode: c.SelectionMode,
+				PeriodID: c.PeriodID, SlotsUsed: c.SlotsUsed, MaxCategories: c.MaxCategories,
+			}
+			if c.PeriodStart != nil {
+				s := c.PeriodStart.Format("2006-01-02")
+				dto.PeriodStart = &s
+			}
+			if c.PeriodEnd != nil {
+				e := c.PeriodEnd.Format("2006-01-02")
+				dto.PeriodEnd = &e
+			}
+			dto.Selected = make([]OverviewChipDTO, len(c.Selected))
+			for j, r := range c.Selected {
+				dto.Selected[j] = OverviewChipDTO{OfferID: r.OfferID, RawTitle: r.RawTitle, Percent: decToStr(r.Percent)}
+			}
+			for _, r := range c.Specials {
+				dto.Specials = append(dto.Specials, OverviewChipDTO{OfferID: r.OfferID, RawTitle: r.RawTitle, Percent: decToStr(r.Percent)})
+			}
+			out.Body.Cards[i] = dto
 		}
 		return out, nil
 	})
