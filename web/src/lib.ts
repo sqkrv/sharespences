@@ -84,13 +84,31 @@ export function fmtMonthYear(d = new Date()): string {
   return `${MONTHS_NOM[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-// «Выбор категорий на август откроется 25 июля» — passive display of the
-// program's selection_opens_day (spec: dates shown, never pushed).
-export function opensStripText(day: number, now = new Date()): string {
+// «Выбор категорий на август откроется **25 июля**» — passive display of
+// the program's selection_opens_day (spec: dates shown, never pushed).
+// Returns the date part separately: the design renders it bold.
+export function opensStripParts(day: number, now = new Date()): { text: string; date: string } {
   let opens = new Date(now.getFullYear(), now.getMonth(), day);
   if (opens < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
     opens = new Date(now.getFullYear(), now.getMonth() + 1, day);
   }
   const target = new Date(opens.getFullYear(), opens.getMonth() + 1, 1);
-  return `Выбор категорий на ${MONTHS_NOM[target.getMonth()]} откроется ${day} ${MONTHS_GEN[opens.getMonth()]}`;
+  return {
+    text: `Выбор категорий на ${MONTHS_NOM[target.getMonth()]} откроется`,
+    date: `${day} ${MONTHS_GEN[opens.getMonth()]}`,
+  };
+}
+
+// Recent months for the overview period picker: current month first,
+// value = mid-month ISO date the API's ?date= accepts.
+export function monthOptions(count = 12, now = new Date()): { value: string; label: string }[] {
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 15);
+    return { value: isoDate(d), label: fmtMonthYear(d) };
+  });
+}
+
+// The month word of an ISO date («июль» for 2026-07-15).
+export function monthNameOf(iso: string): string {
+  return MONTHS_NOM[Number(iso.slice(5, 7)) - 1];
 }

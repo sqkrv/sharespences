@@ -4,15 +4,15 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import { useBanks, usePrograms, useTierMap } from "../hooks";
 import { BankBadge, Btn, Card, ErrMsg, Field, Input, Pct, SegTabs, Select, Spinner, Badge } from "../components/ui";
-import { capNote, fmtMonthYear, opensStripText } from "../lib";
+import { capNote, monthNameOf, monthOptions, opensStripParts } from "../lib";
 
 const PAYMENT_SYSTEMS = ["mir", "visa", "mastercard", "unionpay", "american_express"] as const;
 type PaySystem = (typeof PAYMENT_SYSTEMS)[number];
 
-function useOverview() {
+function useOverview(date: string) {
   return useQuery({
-    queryKey: ["overview"],
-    queryFn: async () => unwrap(await api.GET("/api/v1/cashback/overview")),
+    queryKey: ["overview", date],
+    queryFn: async () => unwrap(await api.GET("/api/v1/cashback/overview", { params: { query: { date } } })),
   });
 }
 
@@ -123,7 +123,11 @@ function AddCardForm({ onDone }: { onDone: () => void }) {
 export default function Overview() {
   const [cut, setCut] = useState<"cats" | "cards">("cats");
   const [addingCard, setAddingCard] = useState(false);
-  const overview = useOverview();
+  const months = monthOptions();
+  const [monthDate, setMonthDate] = useState(months[0].value);
+  const isCurrentMonth = monthDate === months[0].value;
+  const monthName = monthNameOf(monthDate);
+  const overview = useOverview(monthDate);
   const navigate = useNavigate();
 
   if (overview.isPending) return <Spinner />;
@@ -136,7 +140,21 @@ export default function Overview() {
     <>
       <div className="flex items-baseline justify-between">
         <h1 className="text-[25px] font-extrabold tracking-tight">Кешбек</h1>
-        <span className="text-xs font-medium text-tx3">{fmtMonthYear()}</span>
+        {/* The month chip is a period picker: browse past periods (owner 2026-07-09). */}
+        <span className="flex items-center gap-1 text-xs font-medium text-tx3">
+          <select
+            value={monthDate}
+            onChange={(e) => setMonthDate(e.target.value)}
+            className="appearance-none rounded-lg bg-transparent text-right text-xs font-medium text-tx3 focus:outline-none"
+          >
+            {months.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <span className="text-[9px] text-tx4">▾</span>
+        </span>
       </div>
 
       <SegTabs
@@ -152,7 +170,7 @@ export default function Overview() {
         <>
           <div className="mx-0.5 flex items-center justify-between">
             <span className="text-[11px] font-semibold text-tx3">Лучшая карта по категории</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-tx4">{fmtMonthYear().split(" ")[0]}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-tx4">{monthName}</span>
           </div>
           <Card className="px-4 py-1">
             {categories.length === 0 ? (
@@ -193,10 +211,12 @@ export default function Overview() {
 
       {cut === "cards" && (
         <div className="space-y-2.5">
-          {data.selection_opens_day != null && (
+          {data.selection_opens_day != null && isCurrentMonth && (
             <div className="flex items-center gap-2 rounded-xl border border-acc/25 bg-acc/10 px-3 py-2">
               <span className="h-1.5 w-1.5 flex-none rounded-full bg-acc" />
-              <span className="text-[11px] font-medium text-tx2">{opensStripText(data.selection_opens_day)}</span>
+              <span className="text-[11px] font-medium text-tx2">
+                {opensStripParts(data.selection_opens_day).text} <b className="font-bold text-tx">{opensStripParts(data.selection_opens_day).date}</b>
+              </span>
             </div>
           )}
           {cards.map((c) =>
@@ -210,7 +230,9 @@ export default function Overview() {
                   <div className="flex items-center gap-2.5">
                     <BankBadge name={c.bank_name} />
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13.5px] font-bold">{c.bank_name}</p>
+                      <p className="text-[13.5px] font-bold">
+                        {c.bank_name} <span className="font-semibold text-tx4">··{String(c.last_4_digits).padStart(4, "0")}</span>
+                      </p>
                       <p className="mt-px truncate text-[10.5px] font-medium text-tx4">
                         {[c.tier_name, capNote(c)].filter(Boolean).join(" · ") || "без тарифа"}
                         {c.selection_mode === "incremental" && " · инкрементально"}
@@ -245,8 +267,10 @@ export default function Overview() {
               <div key={c.card_id} className="flex items-center gap-2.5 rounded-2xl border border-dashed border-dash bg-srf/50 p-3.5">
                 <BankBadge name={c.bank_name} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13.5px] font-bold text-tx3">{c.bank_name}</p>
-                  <p className="mt-px text-[10.5px] font-medium text-tx4">нет периода на {fmtMonthYear().split(" ")[0]}</p>
+                  <p className="text-[13.5px] font-bold text-tx3">
+                    {c.bank_name} <span className="font-semibold text-tx4">··{String(c.last_4_digits).padStart(4, "0")}</span>
+                  </p>
+                  <p className="mt-px text-[10.5px] font-medium text-tx4">нет периода на {monthName}</p>
                 </div>
                 <Btn variant="soft" onClick={() => navigate(`/periods/new?card=${c.card_id}`)}>
                   Добавить
