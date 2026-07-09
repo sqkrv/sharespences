@@ -124,6 +124,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cards/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit a card (holder, tier) */
+        put: operations["card-update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cashback/alias-suggestion": {
         parameters: {
             query?: never;
@@ -517,10 +534,23 @@ export interface components {
             readonly $schema?: string;
             /** Format: int32 */
             bank_id: number;
+            /** @description whose plastic this is («Мама»); omit for your own */
+            holder_label?: string;
             /** Format: int32 */
             last_4_digits: number;
             /** @enum {string} */
             payment_system: "visa" | "mastercard" | "mir" | "unionpay" | "american_express";
+            /** Format: int64 */
+            program_tier_id?: number;
+        };
+        "Card-updateRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Card-updateRequest.json
+             */
+            readonly $schema?: string;
+            holder_label?: string;
             /** Format: int64 */
             program_tier_id?: number;
         };
@@ -534,6 +564,7 @@ export interface components {
             /** Format: int32 */
             bank_id: number;
             bank_name?: string;
+            holder_label?: string;
             /** Format: int32 */
             id: number;
             /** Format: int32 */
@@ -574,7 +605,7 @@ export interface components {
              * @default regular
              * @enum {string}
              */
-            kind: "regular" | "special";
+            kind: "regular" | "special" | "base";
             notes?: string;
             /** Format: int64 */
             offer_period_id: number;
@@ -611,6 +642,8 @@ export interface components {
             readonly $schema?: string;
             category: components["schemas"]["CanonicalCategoryDTO"];
             date: string;
+            /** @description base rates — pay with these when nothing ranks */
+            fallback?: components["schemas"]["LookupEntryDTO"][] | null;
             message?: string;
             partner?: components["schemas"]["PartnerOfferDTO"][] | null;
             ranked: components["schemas"]["LookupEntryDTO"][] | null;
@@ -676,6 +709,7 @@ export interface components {
              * @example https://example.com/schemas/Cashback-overviewResponse.json
              */
             readonly $schema?: string;
+            base?: components["schemas"]["OverviewBaseDTO"];
             cards: components["schemas"]["OverviewCardDTO"][] | null;
             categories: components["schemas"]["OverviewCategoryDTO"][] | null;
             date: string;
@@ -743,7 +777,7 @@ export interface components {
              * @default regular
              * @enum {string}
              */
-            kind: "regular" | "special";
+            kind: "regular" | "special" | "base";
             notes?: string;
             percent?: string;
             raw_title: string;
@@ -774,6 +808,7 @@ export interface components {
             bank_name: string;
             cap_note?: string;
             card_label: string;
+            holder_label?: string;
             message: string;
             percent?: string;
         };
@@ -855,6 +890,7 @@ export interface components {
             cap_value?: string;
             card_label: string;
             currency_kind: string;
+            holder_label?: string;
             percent?: string;
             period_end: string;
             period_start: string;
@@ -887,6 +923,11 @@ export interface components {
             period_end: string;
             period_start: string;
         };
+        OverviewBaseDTO: {
+            best: components["schemas"]["LookupEntryDTO"];
+            /** Format: int64 */
+            others_count: number;
+        };
         OverviewCardDTO: {
             /** Format: int32 */
             bank_id: number;
@@ -897,6 +938,7 @@ export interface components {
             /** Format: int32 */
             card_id: number;
             currency_kind: string;
+            holder_label?: string;
             is_paid_tier?: boolean;
             /** Format: int32 */
             last_4_digits: number;
@@ -1288,6 +1330,41 @@ export interface operations {
         responses: {
             /** @description Created */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "card-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Card-updateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

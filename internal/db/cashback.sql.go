@@ -474,7 +474,7 @@ func (q *Queries) GetCanonicalCategoryBySlug(ctx context.Context, slug string) (
 }
 
 const getOfferPeriodForUser = `-- name: GetOfferPeriodForUser :one
-select op.id, op.card_id, op.period_start, op.period_end, op.max_categories_override, bc.bank_id, bc.last_4_digits, bc.program_tier_id, b.name as bank_name
+select op.id, op.card_id, op.period_start, op.period_end, op.max_categories_override, bc.bank_id, bc.last_4_digits, bc.holder_label, bc.program_tier_id, b.name as bank_name
 from offer_period op
          join bank_card bc on bc.id = op.card_id
          join bank b on b.id = bc.bank_id
@@ -495,6 +495,7 @@ type GetOfferPeriodForUserRow struct {
 	MaxCategoriesOverride *int32
 	BankID                int16
 	Last4Digits           int32
+	HolderLabel           *string
 	ProgramTierID         *int64
 	BankName              string
 }
@@ -510,6 +511,7 @@ func (q *Queries) GetOfferPeriodForUser(ctx context.Context, arg GetOfferPeriodF
 		&i.MaxCategoriesOverride,
 		&i.BankID,
 		&i.Last4Digits,
+		&i.HolderLabel,
 		&i.ProgramTierID,
 		&i.BankName,
 	)
@@ -1019,6 +1021,7 @@ select co.id                     as category_offer_id,
        op.period_end,
        op.max_categories_override,
        bc.last_4_digits,
+       bc.holder_label,
        b.name                    as bank_name,
        pt.cap_value,
        pt.cap_scope              as tier_cap_scope,
@@ -1050,6 +1053,7 @@ type ListUserOffersRow struct {
 	PeriodEnd             time.Time
 	MaxCategoriesOverride *int32
 	Last4Digits           int32
+	HolderLabel           *string
 	BankName              string
 	CapValue              *decimal.Decimal
 	TierCapScope          NullCashbackCapScope
@@ -1086,6 +1090,7 @@ func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListU
 			&i.PeriodEnd,
 			&i.MaxCategoriesOverride,
 			&i.Last4Digits,
+			&i.HolderLabel,
 			&i.BankName,
 			&i.CapValue,
 			&i.TierCapScope,

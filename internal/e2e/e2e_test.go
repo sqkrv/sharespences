@@ -173,11 +173,16 @@ type helperJSON struct {
 type lookupJSON struct {
 	Ranked []struct {
 		BankName     string  `json:"bank_name"`
+		HolderLabel  string  `json:"holder_label"`
 		Percent      *string `json:"percent"`
 		CurrencyKind string  `json:"currency_kind"`
 		CapValue     *string `json:"cap_value"`
 	} `json:"ranked"`
-	Special []any  `json:"special"`
+	Special  []any `json:"special"`
+	Fallback []struct {
+		BankName string  `json:"bank_name"`
+		Percent  *string `json:"percent"`
+	} `json:"fallback"`
 	Message string `json:"message"`
 }
 
@@ -276,6 +281,7 @@ func TestCashbackE2E(t *testing.T) {
 	var alfaCard, ozonCard cardJSON
 	owner.must("POST", "/api/v1/cards", map[string]any{
 		"bank_id": alfa.BankID, "last_4_digits": 1234, "payment_system": "mir", "program_tier_id": alfaSmart.ID,
+		"holder_label": "Мама",
 	}, &alfaCard, http.StatusCreated)
 	owner.must("POST", "/api/v1/cards", map[string]any{
 		"bank_id": ozon.BankID, "last_4_digits": 5678, "payment_system": "mir", "program_tier_id": ozonStd.ID,
@@ -496,11 +502,18 @@ func TestCashbackE2E(t *testing.T) {
 		} `json:"categories"`
 		Cards []struct {
 			BankName      string  `json:"bank_name"`
+			HolderLabel   *string `json:"holder_label"`
 			PeriodID      *int64  `json:"period_id"`
 			SlotsUsed     int     `json:"slots_used"`
 			MaxCategories *int32  `json:"max_categories"`
 			TierName      *string `json:"tier_name"`
 		} `json:"cards"`
+		Base *struct {
+			Best struct {
+				BankName string  `json:"bank_name"`
+				Percent  *string `json:"percent"`
+			} `json:"best"`
+		} `json:"base"`
 		SelectionOpensDay *int32 `json:"selection_opens_day"`
 	}
 	owner.must("GET", "/api/v1/cashback/overview?date=2026-07-15", nil, &overview, http.StatusOK)
@@ -531,6 +544,9 @@ func TestCashbackE2E(t *testing.T) {
 		case "Альфа-Банк":
 			if c.PeriodID == nil || c.SlotsUsed != 4 || c.MaxCategories == nil || *c.MaxCategories != 4 {
 				t.Fatalf("overview Альфа-Банк = %+v, want active period 4/4", c)
+			}
+			if c.HolderLabel == nil || *c.HolderLabel != "Мама" {
+				t.Fatalf("overview Альфа-Банк holder = %v, want Мама", c.HolderLabel)
 			}
 		case "Озон Банк":
 			if c.SlotsUsed != 4 || c.MaxCategories == nil || *c.MaxCategories != 5 {
@@ -568,6 +584,50 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("orphaned attachment content: status %d, want 404", got)
 	}
 
+	// Base category «За все покупки» (owner 2026-07-09): slot-free even at
+	// 4/4, never collides, answers lookups as the fallback and the
+	// overview's «Остальное» row.
+	var allPurchasesID int64
+	for _, c := range cats {
+		if c.Slug == "all-purchases" {
+			allPurchasesID = c.ID
+		}
+	}
+	baseOffer := struct {
+		ID int64 `json:"id"`
+	}{}
+	owner.must("POST", "/api/v1/cashback/category-offers", map[string]any{
+		"offer_period_id": alfaPeriod.ID, "raw_title": "За все покупки", "percent": "1",
+		"canonical_category_id": allPurchasesID, "kind": "base",
+	}, &baseOffer, http.StatusCreated)
+	if got := sel(baseOffer.ID, july10); got != http.StatusCreated {
+		t.Fatalf("selecting base row at full slots: %d, want 201 (slot-free)", got)
+	}
+	owner.must("GET", "/api/v1/cashback/lookup?category=taxi&date=2026-07-15", nil, &lookup, http.StatusOK)
+	if len(lookup.Ranked) != 0 || lookup.Message != "нет активных выборов" {
+		t.Fatalf("taxi after base row: ranked=%d msg=%q, want empty + message", len(lookup.Ranked), lookup.Message)
+	}
+	if len(lookup.Fallback) != 1 || lookup.Fallback[0].BankName != "Альфа-Банк" || *lookup.Fallback[0].Percent != "1" {
+		t.Fatalf("taxi fallback = %+v, want Альфа-Банк 1%% base", lookup.Fallback)
+	}
+	owner.must("GET", "/api/v1/cashback/overview?date=2026-07-15", nil, &overview, http.StatusOK)
+	if overview.Base == nil || overview.Base.Best.BankName != "Альфа-Банк" || *overview.Base.Best.Percent != "1" {
+		t.Fatalf("overview base = %+v, want Альфа-Банк 1%%", overview.Base)
+	}
+	if len(overview.Categories) != 4 {
+		t.Fatalf("base row must not appear among categories, got %d", len(overview.Categories))
+	}
+
+	// Holder is editable (PUT /cards/{id}).
+	owner.must("PUT", fmt.Sprintf("/api/v1/cards/%d", ozonCard.ID),
+		map[string]any{"holder_label": "Стас", "program_tier_id": ozonStd.ID}, nil, http.StatusOK)
+	owner.must("GET", "/api/v1/cashback/overview?date=2026-07-15", nil, &overview, http.StatusOK)
+	for _, c := range overview.Cards {
+		if c.BankName == "Озон Банк" && (c.HolderLabel == nil || *c.HolderLabel != "Стас") {
+			t.Fatalf("Озон holder after PUT = %v, want Стас", c.HolderLabel)
+		}
+	}
+
 	// A whole mistaken period can be deleted with everything under it.
 	var scratch periodJSON
 	owner.must("POST", "/api/v1/cashback/offer-periods", map[string]any{
@@ -596,6 +656,9 @@ func TestCashbackE2E(t *testing.T) {
 		}
 		if e.BankName == "Альфа-Банк" && (e.CapValue == nil || *e.CapValue != "7000") {
 			t.Fatalf("Альфа-Банк cap = %v, want static 7000", e.CapValue)
+		}
+		if e.BankName == "Альфа-Банк" && e.HolderLabel != "Мама" {
+			t.Fatalf("Альфа-Банк holder = %q, want Мама (whose plastic to pull out)", e.HolderLabel)
 		}
 	}
 	if !names["Альфа-Банк"] || !names["Озон Банк"] {

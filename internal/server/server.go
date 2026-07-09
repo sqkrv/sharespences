@@ -229,12 +229,13 @@ type BankDTO struct {
 }
 
 type CardDTO struct {
-	ID            int32  `json:"id"`
-	BankID        int16  `json:"bank_id"`
-	BankName      string `json:"bank_name,omitempty"`
-	Last4Digits   int32  `json:"last_4_digits"`
-	PaymentSystem string `json:"payment_system"`
-	ProgramTierID *int64 `json:"program_tier_id,omitempty"`
+	ID            int32   `json:"id"`
+	BankID        int16   `json:"bank_id"`
+	BankName      string  `json:"bank_name,omitempty"`
+	Last4Digits   int32   `json:"last_4_digits"`
+	PaymentSystem string  `json:"payment_system"`
+	ProgramTierID *int64  `json:"program_tier_id,omitempty"`
+	HolderLabel   *string `json:"holder_label,omitempty"`
 }
 
 func registerBanks(api huma.API, q *db.Queries) {
@@ -259,10 +260,11 @@ func registerBanks(api huma.API, q *db.Queries) {
 		DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, in *struct {
 		Body struct {
-			BankID        int16  `json:"bank_id"`
-			Last4Digits   int32  `json:"last_4_digits" minimum:"0" maximum:"9999"`
-			PaymentSystem string `json:"payment_system" enum:"visa,mastercard,mir,unionpay,american_express"`
-			ProgramTierID *int64 `json:"program_tier_id,omitempty"`
+			BankID        int16   `json:"bank_id"`
+			Last4Digits   int32   `json:"last_4_digits" minimum:"0" maximum:"9999"`
+			PaymentSystem string  `json:"payment_system" enum:"visa,mastercard,mir,unionpay,american_express"`
+			ProgramTierID *int64  `json:"program_tier_id,omitempty"`
+			HolderLabel   *string `json:"holder_label,omitempty" doc:"whose plastic this is («Мама»); omit for your own"`
 		}
 	}) (*struct{ Body CardDTO }, error) {
 		c, err := q.CreateCard(ctx, db.CreateCardParams{
@@ -270,6 +272,7 @@ func registerBanks(api huma.API, q *db.Queries) {
 			Last4Digits:   in.Body.Last4Digits,
 			PaymentSystem: db.PaymentSystem(in.Body.PaymentSystem),
 			ProgramTierID: in.Body.ProgramTierID,
+			HolderLabel:   in.Body.HolderLabel,
 		})
 		if err != nil {
 			return nil, err
@@ -277,6 +280,31 @@ func registerBanks(api huma.API, q *db.Queries) {
 		return &struct{ Body CardDTO }{CardDTO{
 			ID: c.ID, BankID: c.BankID, Last4Digits: c.Last4Digits,
 			PaymentSystem: string(c.PaymentSystem), ProgramTierID: c.ProgramTierID,
+			HolderLabel: c.HolderLabel,
+		}}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "card-update", Method: http.MethodPut,
+		Path: "/api/v1/cards/{id}", Summary: "Edit a card (holder, tier)", Tags: []string{"banks"},
+	}, func(ctx context.Context, in *struct {
+		ID   int32 `path:"id"`
+		Body struct {
+			HolderLabel   *string `json:"holder_label,omitempty"`
+			ProgramTierID *int64  `json:"program_tier_id,omitempty"`
+		}
+	}) (*struct{ Body CardDTO }, error) {
+		c, err := q.UpdateCardForUser(ctx, db.UpdateCardForUserParams{
+			ID: in.ID, UserID: auth.UserID(ctx),
+			HolderLabel: in.Body.HolderLabel, ProgramTierID: in.Body.ProgramTierID,
+		})
+		if err != nil {
+			return nil, huma.Error404NotFound("not found")
+		}
+		return &struct{ Body CardDTO }{CardDTO{
+			ID: c.ID, BankID: c.BankID, Last4Digits: c.Last4Digits,
+			PaymentSystem: string(c.PaymentSystem), ProgramTierID: c.ProgramTierID,
+			HolderLabel: c.HolderLabel,
 		}}, nil
 	})
 
@@ -293,6 +321,7 @@ func registerBanks(api huma.API, q *db.Queries) {
 			out[i] = CardDTO{
 				ID: c.ID, BankID: c.BankID, BankName: c.BankName, Last4Digits: c.Last4Digits,
 				PaymentSystem: string(c.PaymentSystem), ProgramTierID: c.ProgramTierID,
+				HolderLabel: c.HolderLabel,
 			}
 		}
 		return &struct{ Body []CardDTO }{out}, nil

@@ -147,7 +147,7 @@ type categoryOfferBody struct {
 	RawTitle            string  `json:"raw_title" minLength:"1"`
 	CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
 	Percent             *string `json:"percent,omitempty"`
-	Kind                string  `json:"kind,omitempty" enum:"regular,special" default:"regular"`
+	Kind                string  `json:"kind,omitempty" enum:"regular,special,base" default:"regular"`
 	Notes               *string `json:"notes,omitempty"`
 }
 
@@ -182,11 +182,12 @@ type HelperRowDTO struct {
 }
 
 type CollisionDTO struct {
-	BankName  string  `json:"bank_name"`
-	CardLabel string  `json:"card_label"`
-	Percent   *string `json:"percent,omitempty"`
-	CapNote   string  `json:"cap_note,omitempty"`
-	Message   string  `json:"message"`
+	BankName    string  `json:"bank_name"`
+	CardLabel   string  `json:"card_label"`
+	HolderLabel string  `json:"holder_label,omitempty"`
+	Percent     *string `json:"percent,omitempty"`
+	CapNote     string  `json:"cap_note,omitempty"`
+	Message     string  `json:"message"`
 }
 
 type ComparisonDTO struct {
@@ -200,6 +201,7 @@ type ComparisonDTO struct {
 type LookupEntryDTO struct {
 	BankName       string  `json:"bank_name"`
 	CardLabel      string  `json:"card_label"`
+	HolderLabel    string  `json:"holder_label,omitempty"`
 	Percent        *string `json:"percent,omitempty"`
 	CurrencyKind   string  `json:"currency_kind"`
 	PointsLabel    string  `json:"points_label,omitempty"`
@@ -212,7 +214,7 @@ type LookupEntryDTO struct {
 
 func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 	return LookupEntryDTO{
-		BankName: e.BankName, CardLabel: e.CardLabel, Percent: decToStr(e.Percent),
+		BankName: e.BankName, CardLabel: e.CardLabel, HolderLabel: e.HolderLabel, Percent: decToStr(e.Percent),
 		CurrencyKind: string(e.CurrencyKind), PointsLabel: e.PointsLabel,
 		CapValue: decToStr(e.CapValue), CapPerCategory: decToStr(e.CapPerCategory),
 		CapScope:    string(e.CapScope),
@@ -266,11 +268,18 @@ type OverviewChipDTO struct {
 
 // OverviewCardDTO is one «Карты» row; period fields are null when the card
 // has no offer_period covering the date.
+// OverviewBaseDTO is the «Остальное» row: the best base rate across cards.
+type OverviewBaseDTO struct {
+	Best        LookupEntryDTO `json:"best"`
+	OthersCount int            `json:"others_count"`
+}
+
 type OverviewCardDTO struct {
 	CardID         int32             `json:"card_id"`
 	BankID         int32             `json:"bank_id"`
 	BankName       string            `json:"bank_name"`
 	Last4Digits    int32             `json:"last_4_digits"`
+	HolderLabel    *string           `json:"holder_label,omitempty"`
 	TierName       *string           `json:"tier_name,omitempty"`
 	IsPaidTier     bool              `json:"is_paid_tier,omitempty"`
 	CapValue       *string           `json:"cap_value,omitempty"`
@@ -589,7 +598,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			RawTitle            string  `json:"raw_title" minLength:"1"`
 			CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
 			Percent             *string `json:"percent,omitempty"`
-			Kind                string  `json:"kind,omitempty" enum:"regular,special" default:"regular"`
+			Kind                string  `json:"kind,omitempty" enum:"regular,special,base" default:"regular"`
 			Notes               *string `json:"notes,omitempty"`
 		}
 	}) (*struct{ Body CategoryOfferDTO }, error) {
@@ -776,7 +785,11 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Selected: r.Offer.SelectionID != nil,
 			}
 			for _, c := range r.Collisions {
-				msg := fmt.Sprintf("«%s» уже выбраны на %s", r.Offer.RawTitle, c.Other.BankName)
+				onWhom := c.Other.BankName
+				if c.Other.HolderLabel != "" {
+					onWhom += " (" + c.Other.HolderLabel + ")"
+				}
+				msg := fmt.Sprintf("«%s» уже выбраны на %s", r.Offer.RawTitle, onWhom)
 				var details []string
 				if c.Other.Percent != nil {
 					details = append(details, c.Other.Percent.String()+"%")
@@ -792,7 +805,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 					msg += ")"
 				}
 				dto.Collisions = append(dto.Collisions, CollisionDTO{
-					BankName: c.Other.BankName, CardLabel: c.Other.CardLabel,
+					BankName: c.Other.BankName, CardLabel: c.Other.CardLabel, HolderLabel: c.Other.HolderLabel,
 					Percent: decToStr(c.Other.Percent), CapNote: c.Other.CapNote, Message: msg,
 				})
 			}
@@ -818,6 +831,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		Body struct {
 			Date              string                `json:"date"`
 			Categories        []OverviewCategoryDTO `json:"categories"`
+			Base              *OverviewBaseDTO      `json:"base,omitempty"`
 			Cards             []OverviewCardDTO     `json:"cards"`
 			SelectionOpensDay *int32                `json:"selection_opens_day,omitempty"`
 		}
@@ -837,12 +851,16 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Body struct {
 				Date              string                `json:"date"`
 				Categories        []OverviewCategoryDTO `json:"categories"`
+				Base              *OverviewBaseDTO      `json:"base,omitempty"`
 				Cards             []OverviewCardDTO     `json:"cards"`
 				SelectionOpensDay *int32                `json:"selection_opens_day,omitempty"`
 			}
 		}{}
 		out.Body.Date = onDate.Format("2006-01-02")
 		out.Body.SelectionOpensDay = res.SelectionOpensDay
+		if res.Base != nil {
+			out.Body.Base = &OverviewBaseDTO{Best: lookupEntryDTO(res.Base.Best), OthersCount: res.Base.OthersCount}
+		}
 		out.Body.Categories = make([]OverviewCategoryDTO, len(res.Categories))
 		for i, g := range res.Categories {
 			out.Body.Categories[i] = OverviewCategoryDTO{
@@ -854,7 +872,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		for i, c := range res.Cards {
 			dto := OverviewCardDTO{
 				CardID: c.CardID, BankID: int32(c.BankID), BankName: c.BankName,
-				Last4Digits: c.Last4Digits, TierName: c.TierName, IsPaidTier: c.IsPaidTier,
+				Last4Digits: c.Last4Digits, HolderLabel: c.HolderLabel, TierName: c.TierName, IsPaidTier: c.IsPaidTier,
 				CapValue: decToStr(c.CapValue), CapPerCategory: decToStr(c.CapPerCat),
 				CapScope: string(c.CapScope), CurrencyKind: string(c.CurrencyKind),
 				PointsLabel: c.PointsLabel, SelectionMode: c.SelectionMode,
@@ -894,6 +912,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Date     string               `json:"date"`
 			Ranked   []LookupEntryDTO     `json:"ranked"`
 			Special  []LookupEntryDTO     `json:"special,omitempty"`
+			Fallback []LookupEntryDTO     `json:"fallback,omitempty" doc:"base rates — pay with these when nothing ranks"`
 			Partner  []PartnerOfferDTO    `json:"partner,omitempty"`
 			Message  string               `json:"message,omitempty"`
 		}
@@ -915,6 +934,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Date     string               `json:"date"`
 				Ranked   []LookupEntryDTO     `json:"ranked"`
 				Special  []LookupEntryDTO     `json:"special,omitempty"`
+				Fallback []LookupEntryDTO     `json:"fallback,omitempty" doc:"base rates — pay with these when nothing ranks"`
 				Partner  []PartnerOfferDTO    `json:"partner,omitempty"`
 				Message  string               `json:"message,omitempty"`
 			}
@@ -927,6 +947,9 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		for _, e := range res.Special {
 			out.Body.Special = append(out.Body.Special, lookupEntryDTO(e))
+		}
+		for _, e := range res.Fallback {
+			out.Body.Fallback = append(out.Body.Fallback, lookupEntryDTO(e))
 		}
 		for _, p := range res.Partner {
 			out.Body.Partner = append(out.Body.Partner, PartnerOfferDTO{

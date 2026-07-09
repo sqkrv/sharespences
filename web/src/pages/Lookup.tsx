@@ -40,7 +40,10 @@ function OtherCardRow({ e }: { e: LookupEntry }) {
     <div className="flex items-center gap-2.5 rounded-xl border border-brd bg-srf px-3 py-2.5">
       <BankBadge name={e.bank_name} size={26} />
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-semibold">{e.bank_name}</p>
+        <p className="text-[13px] font-semibold">
+          {e.bank_name}
+          {e.holder_label && <span className="font-medium text-tx4"> · {e.holder_label}</span>}
+        </p>
         <p className="text-[10px] font-medium text-tx4">{cap || currencyBadge(e.currency_kind, e.points_label)}</p>
       </div>
       <Pct percent={e.percent} currency={e.currency_kind} className="text-[14px]" />
@@ -183,6 +186,7 @@ export default function Lookup() {
                               <p className="text-[22px] leading-none font-extrabold tracking-tight">{best.bank_name}</p>
                               <p className="mt-1.5 text-[11px] font-semibold text-white/85">
                                 ····{best.card_label.replace(best.bank_name, "").replace(/[·\s]+/g, "").trim()}
+                                {best.holder_label && ` · ${best.holder_label}`}
                               </p>
                               {capNote(best) && (
                                 <span className="mt-2.5 inline-flex rounded-[10px] bg-white/20 px-2.5 py-1 text-[10.5px] font-bold">{capNote(best)}</span>
@@ -221,6 +225,17 @@ export default function Lookup() {
                             <span className="flex-1 text-[13px] font-semibold">{e.bank_name}</span>
                             <span className="text-[13px] font-extrabold text-gold">{fmtPercent(e.percent)}</span>
                           </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {(lookup.data.fallback ?? []).length > 0 && (
+                    <>
+                      <p className="mx-0.5 text-[11px] font-semibold text-tx3">Остальное — базовая ставка</p>
+                      <div className="space-y-1.5">
+                        {(lookup.data.fallback ?? []).map((e, i) => (
+                          <OtherCardRow key={`f-${i}`} e={e} />
                         ))}
                       </div>
                     </>

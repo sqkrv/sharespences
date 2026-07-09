@@ -46,7 +46,7 @@ function AddOfferForm({ periodID }: { periodID: number }) {
   const [canonicalTouched, setCanonicalTouched] = useState(false);
   const [suggestion, setSuggestion] = useState<{ id: number; title_ru: string } | null>(null);
   const [percent, setPercent] = useState("");
-  const [special, setSpecial] = useState(false);
+  const [kind, setKind] = useState<"regular" | "special" | "base">("regular");
   const [newCat, setNewCat] = useState(false);
   const [newSlug, setNewSlug] = useState("");
   const [newTitle, setNewTitle] = useState("");
@@ -100,7 +100,7 @@ function AddOfferForm({ periodID }: { periodID: number }) {
             raw_title: rawTitle,
             ...(catID != null ? { canonical_category_id: catID } : {}),
             ...(percent ? { percent } : {}),
-            kind: special ? "special" : "regular",
+            kind,
           },
         }),
       );
@@ -111,7 +111,7 @@ function AddOfferForm({ periodID }: { periodID: number }) {
       setCanonicalTouched(false);
       setSuggestion(null);
       setPercent("");
-      setSpecial(false);
+      setKind("regular");
       setNewCat(false);
       setNewSlug("");
       setNewTitle("");
@@ -161,11 +161,25 @@ function AddOfferForm({ periodID }: { periodID: number }) {
             <Input inputMode="decimal" value={percent} onChange={(e) => setPercent(e.target.value)} placeholder="5" />
           </Field>
         </div>
-        <div className="flex flex-wrap items-center gap-4 text-[12px] font-medium text-tx2">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={special} onChange={(e) => setSpecial(e.target.checked)} />
-            спец (барабан / колесо / пятница)
-          </label>
+        <div className="flex flex-wrap items-center gap-3 text-[12px] font-medium text-tx2">
+          <span className="inline-flex overflow-hidden rounded-lg border border-brd2">
+            {(
+              [
+                ["regular", "обычная"],
+                ["special", "спец"],
+                ["base", "база"],
+              ] as const
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setKind(k)}
+                className={`px-2.5 py-1.5 text-[11px] font-semibold ${kind === k ? "grad-acc text-white" : "bg-srf2 text-tx3"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </span>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={newCat} onChange={(e) => setNewCat(e.target.checked)} />
             новая категория
@@ -206,7 +220,7 @@ function EditOfferForm({
   const [rawTitle, setRawTitle] = useState(offer.raw_title);
   const [canonicalID, setCanonicalID] = useState(offer.canonical_category_id != null ? String(offer.canonical_category_id) : "");
   const [percent, setPercent] = useState(offer.percent ?? "");
-  const [special, setSpecial] = useState(offer.kind === "special");
+  const [kind, setKind] = useState(offer.kind);
   const [notes, setNotes] = useState(offer.notes ?? "");
 
   const invalidate = () => {
@@ -225,7 +239,7 @@ function EditOfferForm({
             raw_title: rawTitle,
             ...(canonicalID ? { canonical_category_id: Number(canonicalID) } : {}),
             ...(percent ? { percent } : {}),
-            kind: special ? "special" : "regular",
+            kind: kind as "regular" | "special" | "base",
             ...(notes ? { notes } : {}),
           },
         }),
@@ -272,10 +286,11 @@ function EditOfferForm({
         </Field>
       </div>
       <div className="flex items-center justify-between gap-3">
-        <label className="flex items-center gap-2 text-[12px] font-medium text-tx2">
-          <input type="checkbox" checked={special} onChange={(e) => setSpecial(e.target.checked)} />
-          спец
-        </label>
+        <Select value={kind} onChange={(e) => setKind(e.target.value)} className="w-32">
+          <option value="regular">обычная</option>
+          <option value="special">спец</option>
+          <option value="base">база</option>
+        </Select>
         <Input placeholder="Заметки" value={notes} onChange={(e) => setNotes(e.target.value)} className="flex-1" />
       </div>
       <div className="flex gap-2">
@@ -573,9 +588,38 @@ export default function Period() {
           const hrow = helperByOffer.get(offer.id);
           const selected = offer.selection_id != null;
           const isSpecial = offer.kind === "special";
-          const unmapped = !isSpecial && offer.canonical_category_id == null;
-          const blocked = !selected && !isSpecial && slotsFull;
+          const isBase = offer.kind === "base";
+          const unmapped = !isSpecial && !isBase && offer.canonical_category_id == null;
+          const blocked = !selected && !isSpecial && !isBase && slotsFull;
           const canonTitle = (categories.data ?? []).find((c) => c.id === offer.canonical_category_id)?.title_ru;
+          if (isBase) {
+            return (
+              <div key={offer.id} className="rounded-xl border border-dashed border-brd px-3 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md bg-acc/10 text-[10px] font-extrabold text-accl">Б</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[12.5px] font-semibold text-tx2">{offer.raw_title}</p>
+                    <p className="text-[9.5px] font-medium text-tx4">база · не занимает слот · на всё остальное</p>
+                  </div>
+                  <Pct percent={offer.percent} currency={currency} className="text-[13px]" />
+                  {selected ? (
+                    <Btn variant="danger" className="!px-2.5 !py-1.5 text-xs" onClick={() => unselect.mutate(offer.selection_id!)}>
+                      Снять
+                    </Btn>
+                  ) : (
+                    <Btn variant="soft" className="!px-2.5 !py-1.5 text-xs" onClick={() => select.mutate(offer.id)}>
+                      Активна
+                    </Btn>
+                  )}
+                  <button type="button" className="px-1 text-tx4" onClick={() => setEditingID(editingID === offer.id ? null : offer.id)} title="Редактировать">
+                    ✎
+                  </button>
+                </div>
+                {rowErrors[offer.id] && <p className="mt-1.5 ml-8 rounded-lg bg-warn/10 px-2 py-1 text-[10.5px] font-medium text-warn">{rowErrors[offer.id]}</p>}
+                {editingID === offer.id && <EditOfferForm offer={offer} categories={categories.data ?? []} onDone={() => setEditingID(null)} />}
+              </div>
+            );
+          }
           if (isSpecial) {
             return (
               <div key={offer.id} className="rounded-xl border border-dashed border-gold/30 bg-gold/5 px-3 py-2.5">

@@ -193,6 +193,27 @@ func TestDetectCollisions(t *testing.T) {
 			want: 0,
 		},
 		{
+			name: "base candidate never collides (every bank has one)",
+			candidate: CandidateSelection{
+				CardID:              cardOzon,
+				CanonicalCategoryID: catID(supermarketsID),
+				Period:              july2026,
+				Kind:                OfferBase,
+			},
+			others: []ActiveSelection{alfaSupermarkets()},
+			want:   0,
+		},
+		{
+			name:      "base existing selection → excluded",
+			candidate: base,
+			others: []ActiveSelection{func() ActiveSelection {
+				s := alfaSupermarkets()
+				s.Kind = OfferBase
+				return s
+			}()},
+			want: 0,
+		},
+		{
 			name:      "two colliding cards → two warnings",
 			candidate: base,
 			others: []ActiveSelection{alfaSupermarkets(), func() ActiveSelection {
@@ -264,6 +285,17 @@ func TestValidateSelection(t *testing.T) {
 				Period:               july2026,
 				SelectedAt:           Date(2026, time.July, 10),
 				OfferKind:            OfferSpecial,
+				MaxCategories:        maxCats(4),
+				RegularSelectedCount: 4,
+			},
+			wantErr: nil,
+		},
+		{
+			name: "base selection is slot-free too (granted outside the menu)",
+			check: SelectionCheck{
+				Period:               july2026,
+				SelectedAt:           Date(2026, time.July, 10),
+				OfferKind:            OfferBase,
 				MaxCategories:        maxCats(4),
 				RegularSelectedCount: 4,
 			},
@@ -507,6 +539,20 @@ func TestRankActiveSelections(t *testing.T) {
 	}
 	if len(got.Special) != 1 || got.Special[0].Kind != OfferSpecial {
 		t.Fatalf("Special = %+v, want exactly the one special offer, unranked", got.Special)
+	}
+
+	// Base rates route to Fallback («Остальное») — never among the ranked
+	// category answers, but present and date-filtered.
+	withBase := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
+		{CardID: cardAlfa, BankName: "Альфа-Банк", Percent: pct("1"), CurrencyKind: CurrencyRub, Kind: OfferBase, Period: july2026},
+		{CardID: cardOzon, BankName: "Озон Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{CardID: cardMKB, BankName: "МКБ", Percent: pct("1"), CurrencyKind: CurrencyPoints, Kind: OfferBase, Period: june2026}, // expired
+	})
+	if len(withBase.Ranked) != 1 || withBase.Ranked[0].Kind != OfferRegular {
+		t.Fatalf("Ranked with base present = %+v, want only the regular entry", withBase.Ranked)
+	}
+	if len(withBase.Fallback) != 1 || withBase.Fallback[0].BankName != "Альфа-Банк" {
+		t.Fatalf("Fallback = %+v, want the active Альфа-Банк base only (expired filtered)", withBase.Fallback)
 	}
 
 	empty := RankActiveSelections(Date(2026, time.July, 15), nil)

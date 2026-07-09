@@ -104,6 +104,7 @@ type CashbackOfferKind string
 const (
 	CashbackOfferKindRegular CashbackOfferKind = "regular"
 	CashbackOfferKindSpecial CashbackOfferKind = "special"
+	CashbackOfferKindBase    CashbackOfferKind = "base"
 )
 
 func (e *CashbackOfferKind) Scan(src interface{}) error {
@@ -472,6 +473,8 @@ type BankCard struct {
 	PaymentSystem PaymentSystem
 	ImageFilename *string
 	ProgramTierID *int64
+	// Family member holding this plastic; null = the account owner themselves
+	HolderLabel *string
 }
 
 type BankCategoryAlias struct {

@@ -9,8 +9,16 @@ from bank
 where name = $1;
 
 -- name: CreateCard :one
-insert into bank_card (bank_id, user_id, last_4_digits, payment_system, program_tier_id)
-values ($1, $2, $3, $4, $5)
+insert into bank_card (bank_id, user_id, last_4_digits, payment_system, program_tier_id, holder_label)
+values ($1, $2, $3, $4, $5, $6)
+returning *;
+
+-- name: UpdateCardForUser :one
+update bank_card
+set holder_label    = $3,
+    program_tier_id = $4
+where id = $1
+  and user_id = $2
 returning *;
 
 -- name: ListCardsForUser :many

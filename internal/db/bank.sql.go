@@ -12,9 +12,9 @@ import (
 )
 
 const createCard = `-- name: CreateCard :one
-insert into bank_card (bank_id, user_id, last_4_digits, payment_system, program_tier_id)
-values ($1, $2, $3, $4, $5)
-returning id, bank_id, user_id, last_4_digits, payment_system, image_filename, program_tier_id
+insert into bank_card (bank_id, user_id, last_4_digits, payment_system, program_tier_id, holder_label)
+values ($1, $2, $3, $4, $5, $6)
+returning id, bank_id, user_id, last_4_digits, payment_system, image_filename, program_tier_id, holder_label
 `
 
 type CreateCardParams struct {
@@ -23,6 +23,7 @@ type CreateCardParams struct {
 	Last4Digits   int32
 	PaymentSystem PaymentSystem
 	ProgramTierID *int64
+	HolderLabel   *string
 }
 
 func (q *Queries) CreateCard(ctx context.Context, arg CreateCardParams) (BankCard, error) {
@@ -32,6 +33,7 @@ func (q *Queries) CreateCard(ctx context.Context, arg CreateCardParams) (BankCar
 		arg.Last4Digits,
 		arg.PaymentSystem,
 		arg.ProgramTierID,
+		arg.HolderLabel,
 	)
 	var i BankCard
 	err := row.Scan(
@@ -42,6 +44,7 @@ func (q *Queries) CreateCard(ctx context.Context, arg CreateCardParams) (BankCar
 		&i.PaymentSystem,
 		&i.ImageFilename,
 		&i.ProgramTierID,
+		&i.HolderLabel,
 	)
 	return i, err
 }
@@ -65,7 +68,7 @@ func (q *Queries) GetBankByName(ctx context.Context, name string) (Bank, error) 
 }
 
 const getCardForUser = `-- name: GetCardForUser :one
-select bc.id, bc.bank_id, bc.user_id, bc.last_4_digits, bc.payment_system, bc.image_filename, bc.program_tier_id, b.name as bank_name
+select bc.id, bc.bank_id, bc.user_id, bc.last_4_digits, bc.payment_system, bc.image_filename, bc.program_tier_id, bc.holder_label, b.name as bank_name
 from bank_card bc
          join bank b on b.id = bc.bank_id
 where bc.id = $1
@@ -85,6 +88,7 @@ type GetCardForUserRow struct {
 	PaymentSystem PaymentSystem
 	ImageFilename *string
 	ProgramTierID *int64
+	HolderLabel   *string
 	BankName      string
 }
 
@@ -99,6 +103,7 @@ func (q *Queries) GetCardForUser(ctx context.Context, arg GetCardForUserParams) 
 		&i.PaymentSystem,
 		&i.ImageFilename,
 		&i.ProgramTierID,
+		&i.HolderLabel,
 		&i.BankName,
 	)
 	return i, err
@@ -136,7 +141,7 @@ func (q *Queries) ListBanks(ctx context.Context) ([]Bank, error) {
 }
 
 const listCardsForUser = `-- name: ListCardsForUser :many
-select bc.id, bc.bank_id, bc.user_id, bc.last_4_digits, bc.payment_system, bc.image_filename, bc.program_tier_id, b.name as bank_name
+select bc.id, bc.bank_id, bc.user_id, bc.last_4_digits, bc.payment_system, bc.image_filename, bc.program_tier_id, bc.holder_label, b.name as bank_name
 from bank_card bc
          join bank b on b.id = bc.bank_id
 where bc.user_id = $1
@@ -151,6 +156,7 @@ type ListCardsForUserRow struct {
 	PaymentSystem PaymentSystem
 	ImageFilename *string
 	ProgramTierID *int64
+	HolderLabel   *string
 	BankName      string
 }
 
@@ -171,6 +177,7 @@ func (q *Queries) ListCardsForUser(ctx context.Context, userID uuid.UUID) ([]Lis
 			&i.PaymentSystem,
 			&i.ImageFilename,
 			&i.ProgramTierID,
+			&i.HolderLabel,
 			&i.BankName,
 		); err != nil {
 			return nil, err
@@ -181,4 +188,41 @@ func (q *Queries) ListCardsForUser(ctx context.Context, userID uuid.UUID) ([]Lis
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateCardForUser = `-- name: UpdateCardForUser :one
+update bank_card
+set holder_label    = $3,
+    program_tier_id = $4
+where id = $1
+  and user_id = $2
+returning id, bank_id, user_id, last_4_digits, payment_system, image_filename, program_tier_id, holder_label
+`
+
+type UpdateCardForUserParams struct {
+	ID            int32
+	UserID        uuid.UUID
+	HolderLabel   *string
+	ProgramTierID *int64
+}
+
+func (q *Queries) UpdateCardForUser(ctx context.Context, arg UpdateCardForUserParams) (BankCard, error) {
+	row := q.db.QueryRow(ctx, updateCardForUser,
+		arg.ID,
+		arg.UserID,
+		arg.HolderLabel,
+		arg.ProgramTierID,
+	)
+	var i BankCard
+	err := row.Scan(
+		&i.ID,
+		&i.BankID,
+		&i.UserID,
+		&i.Last4Digits,
+		&i.PaymentSystem,
+		&i.ImageFilename,
+		&i.ProgramTierID,
+		&i.HolderLabel,
+	)
+	return i, err
 }

@@ -33,6 +33,13 @@ func cardLabel(bankName string, last4 int32) string {
 	return fmt.Sprintf("%s ··%04d", bankName, last4)
 }
 
+func holderOf(h *string) string {
+	if h == nil {
+		return ""
+	}
+	return *h
+}
+
 // capNote renders the static cap reference the helper and warnings display,
 // e.g. «лимит 1500₽/кат, всего 3000₽» (Озон), «лимит 7000₽» (Альфа-Смарт).
 func capNote(capValue, capPerCategory *decimal.Decimal, scope db.NullCashbackCapScope, currency db.NullCashbackCurrencyKind, pointsLabel *string) string {
@@ -76,11 +83,39 @@ func rowRange(start, end time.Time) DateRange {
 	return DateRange{Start: start, End: end}
 }
 
+// entryOf maps a ListUserOffers row into a lookup entry (shared by lookup,
+// overview and the base-rate fallback).
+func entryOf(o db.ListUserOffersRow) LookupEntry {
+	var capScope CapScope
+	if o.TierCapScope.Valid {
+		capScope = CapScope(o.TierCapScope.CashbackCapScope)
+	}
+	var pointsLabel string
+	if o.PointsLabel != nil {
+		pointsLabel = *o.PointsLabel
+	}
+	return LookupEntry{
+		CardID:         int64(o.CardID),
+		CardLabel:      cardLabel(o.BankName, o.Last4Digits),
+		HolderLabel:    holderOf(o.HolderLabel),
+		BankName:       o.BankName,
+		Percent:        o.Percent,
+		CurrencyKind:   currencyOf(o),
+		Kind:           OfferKind(o.Kind),
+		Period:         rowRange(o.PeriodStart, o.PeriodEnd),
+		CapValue:       o.CapValue,
+		CapPerCategory: o.CapPerCategory,
+		CapScope:       capScope,
+		PointsLabel:    pointsLabel,
+	}
+}
+
 // activeSelectionOf maps a selected ListUserOffers row into the domain view.
 func activeSelectionOf(row db.ListUserOffersRow) ActiveSelection {
 	return ActiveSelection{
 		CardID:              int64(row.CardID),
 		CardLabel:           cardLabel(row.BankName, row.Last4Digits),
+		HolderLabel:         holderOf(row.HolderLabel),
 		BankName:            row.BankName,
 		CanonicalCategoryID: row.CanonicalCategoryID,
 		Period:              rowRange(row.PeriodStart, row.PeriodEnd),
@@ -505,6 +540,7 @@ type OverviewCard struct {
 	BankID        int16
 	BankName      string
 	Last4Digits   int32
+	HolderLabel   *string
 	TierName      *string
 	IsPaidTier    bool
 	CapValue      *decimal.Decimal
@@ -522,12 +558,45 @@ type OverviewCard struct {
 	Specials      []OverviewSelectedRow
 }
 
+// OverviewBase is the «Остальное» row: the best base-rate card («За все
+// покупки» granted rows plus regular rows mapped to all-purchases).
+type OverviewBase struct {
+	Best        LookupEntry
+	OthersCount int
+}
+
 // OverviewResult answers GET /cashback/overview: the design's two cuts of
 // the same month (screens 01/02), plus the passive «selection opens» day.
 type OverviewResult struct {
 	Categories        []OverviewCategoryGroup
+	Base              *OverviewBase
 	Cards             []OverviewCard
 	SelectionOpensDay *int32 // earliest across the user's cards' programs
+}
+
+// fallbackEntries picks the selected rows that answer «а если категория не
+// выбрана нигде?»: kind=base rows (granted outside the menu) and regular
+// rows mapped to canonical all-purchases (banks where the base rate is a
+// selectable slot choice). exceptCat skips rows already listed as the
+// looked-up category itself.
+func fallbackEntries(offers []db.ListUserOffersRow, allPurposesID *int64, exceptCat *int64, build func(db.ListUserOffersRow) LookupEntry) []LookupEntry {
+	var out []LookupEntry
+	for _, o := range offers {
+		if !o.Selected {
+			continue
+		}
+		isBase := OfferKind(o.Kind) == OfferBase
+		isAllPurchases := allPurposesID != nil && o.CanonicalCategoryID != nil &&
+			*o.CanonicalCategoryID == *allPurposesID && OfferKind(o.Kind) == OfferRegular
+		if !isBase && !isAllPurchases {
+			continue
+		}
+		if exceptCat != nil && o.CanonicalCategoryID != nil && *o.CanonicalCategoryID == *exceptCat {
+			continue
+		}
+		out = append(out, build(o))
+	}
+	return out
 }
 
 // Overview builds both cuts for the date. No spend model, no remaining-cap
@@ -552,33 +621,25 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 
 	var res OverviewResult
 
-	// --- «Категории»: group active selections by canonical category. ---
+	var allPurposesID *int64
+	for _, c := range cats {
+		if c.Slug == "all-purchases" {
+			id := c.ID
+			allPurposesID = &id
+		}
+	}
+
+	// --- «Категории»: group active selections by canonical category.
+	// all-purchases rows are routed to the «Остальное» base row instead. ---
 	byCat := make(map[int64][]LookupEntry)
 	for _, o := range offers {
 		if !o.Selected || o.CanonicalCategoryID == nil {
 			continue
 		}
-		var capScope CapScope
-		if o.TierCapScope.Valid {
-			capScope = CapScope(o.TierCapScope.CashbackCapScope)
+		if allPurposesID != nil && *o.CanonicalCategoryID == *allPurposesID {
+			continue
 		}
-		var pointsLabel string
-		if o.PointsLabel != nil {
-			pointsLabel = *o.PointsLabel
-		}
-		byCat[*o.CanonicalCategoryID] = append(byCat[*o.CanonicalCategoryID], LookupEntry{
-			CardID:         int64(o.CardID),
-			CardLabel:      cardLabel(o.BankName, o.Last4Digits),
-			BankName:       o.BankName,
-			Percent:        o.Percent,
-			CurrencyKind:   currencyOf(o),
-			Kind:           OfferKind(o.Kind),
-			Period:         rowRange(o.PeriodStart, o.PeriodEnd),
-			CapValue:       o.CapValue,
-			CapPerCategory: o.CapPerCategory,
-			CapScope:       capScope,
-			PointsLabel:    pointsLabel,
-		})
+		byCat[*o.CanonicalCategoryID] = append(byCat[*o.CanonicalCategoryID], entryOf(o))
 	}
 	for catID, entries := range byCat {
 		ranked := RankActiveSelections(onDate, entries)
@@ -610,6 +671,12 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		return res.Categories[i].TitleRu < res.Categories[j].TitleRu
 	})
 
+	// «Остальное»: best base rate across cards (active on the date).
+	fb := RankActiveSelections(onDate, fallbackEntries(offers, allPurposesID, nil, entryOf))
+	if merged := append(fb.Ranked, fb.Fallback...); len(merged) > 0 {
+		res.Base = &OverviewBase{Best: merged[0], OthersCount: len(merged) - 1}
+	}
+
 	// --- «Карты»: every card, with its active period when one exists. ---
 	for _, card := range cards {
 		oc := OverviewCard{
@@ -617,6 +684,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			BankID:       card.BankID,
 			BankName:     card.BankName,
 			Last4Digits:  card.Last4Digits,
+			HolderLabel:  card.HolderLabel,
 			CurrencyKind: CurrencyUnknown,
 		}
 		if card.ProgramTierID != nil {
@@ -677,6 +745,7 @@ type LookupResultView struct {
 	Category db.CanonicalCategory
 	Ranked   []LookupEntry
 	Special  []LookupEntry
+	Fallback []LookupEntry // base rates — pay with these when nothing ranks
 	Partner  []db.ListPartnerOffersForUserRow
 }
 
@@ -694,29 +763,22 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 		if !o.Selected || o.CanonicalCategoryID == nil || *o.CanonicalCategoryID != cat.ID {
 			continue
 		}
-		var capScope CapScope
-		if o.TierCapScope.Valid {
-			capScope = CapScope(o.TierCapScope.CashbackCapScope)
-		}
-		var pointsLabel string
-		if o.PointsLabel != nil {
-			pointsLabel = *o.PointsLabel
-		}
-		entries = append(entries, LookupEntry{
-			CardID:         int64(o.CardID),
-			CardLabel:      cardLabel(o.BankName, o.Last4Digits),
-			BankName:       o.BankName,
-			Percent:        o.Percent,
-			CurrencyKind:   currencyOf(o),
-			Kind:           OfferKind(o.Kind),
-			Period:         rowRange(o.PeriodStart, o.PeriodEnd),
-			CapValue:       o.CapValue,
-			CapPerCategory: o.CapPerCategory,
-			CapScope:       capScope,
-			PointsLabel:    pointsLabel,
-		})
+		entries = append(entries, entryOf(o))
 	}
 	ranked := RankActiveSelections(onDate, entries)
+
+	// Base rates («За все покупки») answer the lookup when nothing ranks —
+	// and are worth showing alongside even when something does.
+	var allPurposesID *int64
+	if ap, err := s.Q.GetCanonicalCategoryBySlug(ctx, "all-purchases"); err == nil {
+		allPurposesID = &ap.ID
+	}
+	catID := cat.ID
+	fb := RankActiveSelections(onDate, fallbackEntries(all, allPurposesID, &catID, entryOf))
+	fallback := append(fb.Ranked, fb.Fallback...)
+	// The looked-up category's own base rows (X == all-purchases) land in
+	// ranked.Fallback — surface them the same way.
+	fallback = append(fallback, ranked.Fallback...)
 
 	partners, err := s.Q.ListPartnerOffersForUser(ctx, userID)
 	if err != nil {
@@ -739,7 +801,7 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 			footnote = append(footnote, p)
 		}
 	}
-	return LookupResultView{Category: cat, Ranked: ranked.Ranked, Special: ranked.Special, Partner: footnote}, nil
+	return LookupResultView{Category: cat, Ranked: ranked.Ranked, Special: ranked.Special, Fallback: fallback, Partner: footnote}, nil
 }
 
 func notFound(err error) error {

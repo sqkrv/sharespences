@@ -107,7 +107,7 @@ from offer_period
 where card_id = $1;
 
 -- name: GetOfferPeriodForUser :one
-select op.*, bc.bank_id, bc.last_4_digits, bc.program_tier_id, b.name as bank_name
+select op.*, bc.bank_id, bc.last_4_digits, bc.holder_label, bc.program_tier_id, b.name as bank_name
 from offer_period op
          join bank_card bc on bc.id = op.card_id
          join bank b on b.id = bc.bank_id
@@ -264,6 +264,7 @@ select co.id                     as category_offer_id,
        op.period_end,
        op.max_categories_override,
        bc.last_4_digits,
+       bc.holder_label,
        b.name                    as bank_name,
        pt.cap_value,
        pt.cap_scope              as tier_cap_scope,
