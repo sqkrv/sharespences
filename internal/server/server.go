@@ -67,7 +67,7 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 
 	authSvc := &auth.Service{Q: q}
 	store := &attach.Store{Q: q, Dir: cfg.AttachmentsDir}
-	cbSvc := &cashback.Service{Q: q}
+	cbSvc := &cashback.Service{Q: q, RemoveAttachmentFile: store.Remove}
 
 	registerAuth(api, sm, authSvc)
 	registerBanks(api, q)

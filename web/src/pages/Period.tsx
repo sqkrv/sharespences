@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, unwrap, attachmentURL, ApiError, type CanonicalCategory, type CategoryOffer, type HelperRow } from "../api/client";
+import { api, unwrap, attachmentURL, uploadAttachment, ApiError, type CanonicalCategory, type CategoryOffer, type HelperRow } from "../api/client";
 import { useCards, useCategories, useTierMap } from "../hooks";
 import { Badge, Btn, Card, CheckDot, ErrMsg, Field, GradientCard, Input, Pct, Select, Spinner } from "../components/ui";
 import { currencyBadge, fmtRange } from "../lib";
@@ -304,6 +304,69 @@ function EditOfferForm({
   );
 }
 
+// Screenshot evidence, editable after creation (owner 2026-07-09): add via
+// the dashed tile, remove via ✕ — a detached orphan file is cleaned up
+// server-side.
+function ScreenshotStrip({ periodID, attachmentIDs }: { periodID: number; attachmentIDs: string[] }) {
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["period", periodID] });
+
+  const add = useMutation({
+    mutationFn: async (files: File[]) => {
+      for (const f of files) {
+        const a = await uploadAttachment(f);
+        unwrap(
+          await api.POST("/api/v1/cashback/offer-periods/{id}/attachments", {
+            params: { path: { id: periodID } },
+            body: { attachment_id: a.id },
+          }),
+        );
+      }
+    },
+    onSuccess: invalidate,
+  });
+
+  const detach = useMutation({
+    mutationFn: async (attachmentID: string) =>
+      unwrap(
+        await api.DELETE("/api/v1/cashback/offer-periods/{id}/attachments/{attachment_id}", {
+          params: { path: { id: periodID, attachment_id: attachmentID } },
+        }),
+      ),
+    onSuccess: invalidate,
+  });
+
+  return (
+    <div>
+      <div className="flex gap-2 overflow-x-auto">
+        {attachmentIDs.map((aid) => (
+          <div key={aid} className="relative flex-none">
+            <a href={attachmentURL(aid)} target="_blank" rel="noreferrer">
+              <img src={attachmentURL(aid)} alt="скриншот меню" className="h-20 rounded-xl border border-brd object-cover" />
+            </a>
+            <button
+              type="button"
+              title="Убрать скриншот"
+              className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-brd bg-srf text-[10px] font-bold text-tx3 hover:text-warn"
+              onClick={() => {
+                if (window.confirm("Убрать скриншот?")) detach.mutate(aid);
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <label className="flex h-20 w-16 flex-none cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-dash text-tx4">
+          <span className="text-lg leading-none">+</span>
+          <span className="text-[9px] font-semibold">скрин</span>
+          <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files?.length && add.mutate([...e.target.files])} />
+        </label>
+      </div>
+      <ErrMsg error={add.error ?? detach.error} />
+    </div>
+  );
+}
+
 // Editable slot count (owner feedback 2026-07-04: the offered number of
 // categories is not constant — override per period, null = tier default).
 function SlotsEditor({
@@ -498,15 +561,7 @@ export default function Period() {
         <SlotsEditor periodID={id} used={h.slots_used} max={h.max_categories} override={h.max_categories_override} />
       </div>
 
-      {(p.attachment_ids ?? []).length > 0 && (
-        <div className="flex gap-2 overflow-x-auto">
-          {(p.attachment_ids ?? []).map((aid) => (
-            <a key={aid} href={attachmentURL(aid)} target="_blank" rel="noreferrer">
-              <img src={attachmentURL(aid)} alt="скриншот меню" className="h-20 rounded-xl border border-brd object-cover" />
-            </a>
-          ))}
-        </div>
-      )}
+      <ScreenshotStrip periodID={id} attachmentIDs={p.attachment_ids ?? []} />
 
       <div className="space-y-1.5">
         {(p.offers ?? []).length === 0 && (

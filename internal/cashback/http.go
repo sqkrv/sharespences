@@ -521,6 +521,36 @@ func RegisterHTTP(api huma.API, s *Service) {
 		return out, nil
 	})
 
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-offer-period-attach", Method: http.MethodPost,
+		Path: "/api/v1/cashback/offer-periods/{id}/attachments", Summary: "Attach a screenshot to the period", Tags: []string{"cashback"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID   int64 `path:"id"`
+		Body struct {
+			AttachmentID uuid.UUID `json:"attachment_id"`
+		}
+	}) (*struct{}, error) {
+		if err := s.AttachScreenshot(ctx, auth.UserID(ctx), in.ID, in.Body.AttachmentID); err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{}{}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-offer-period-detach", Method: http.MethodDelete,
+		Path: "/api/v1/cashback/offer-periods/{id}/attachments/{attachment_id}", Summary: "Detach a screenshot (orphaned file is removed)", Tags: []string{"cashback"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID           int64     `path:"id"`
+		AttachmentID uuid.UUID `path:"attachment_id"`
+	}) (*struct{}, error) {
+		if err := s.DetachScreenshot(ctx, auth.UserID(ctx), in.ID, in.AttachmentID); err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{}{}, nil
+	})
+
 	// --- alias suggestion + category offers ---
 
 	huma.Register(api, huma.Operation{

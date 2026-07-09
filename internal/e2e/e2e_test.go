@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -81,6 +82,42 @@ func (c *client) must(method, path string, body any, out any, wantStatus int) {
 	if got := c.do(method, path, body, out); got != wantStatus {
 		c.t.Fatalf("%s %s: status %d, want %d", method, path, got, wantStatus)
 	}
+}
+
+// upload posts a file through the multipart attachments endpoint.
+func (c *client) upload(filename string, content []byte) string {
+	c.t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, err := mw.CreateFormFile("file", filename)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	if _, err := fw.Write(content); err != nil {
+		c.t.Fatal(err)
+	}
+	_ = mw.Close()
+	req, err := http.NewRequest("POST", c.base+"/api/v1/attachments", &buf)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := c.http.Do(req)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusCreated {
+		data, _ := io.ReadAll(resp.Body)
+		c.t.Fatalf("upload: status %d: %s", resp.StatusCode, data)
+	}
+	var out struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		c.t.Fatal(err)
+	}
+	return out.ID
 }
 
 type programJSON struct {
@@ -507,6 +544,28 @@ func TestCashbackE2E(t *testing.T) {
 	}
 	if overview.SelectionOpensDay == nil || *overview.SelectionOpensDay != 25 {
 		t.Fatalf("selection_opens_day = %v, want 25", overview.SelectionOpensDay)
+	}
+
+	// Screenshots are editable after creation (owner 2026-07-09): upload →
+	// attach to an existing period → visible → detach → gone (row and file).
+	attID := owner.upload("menu.png", []byte("fake-png-bytes"))
+	owner.must("POST", fmt.Sprintf("/api/v1/cashback/offer-periods/%d/attachments", alfaPeriod.ID),
+		map[string]any{"attachment_id": attID}, nil, http.StatusNoContent)
+	var periodDetail struct {
+		AttachmentIDs []string `json:"attachment_ids"`
+	}
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/offer-periods/%d", alfaPeriod.ID), nil, &periodDetail, http.StatusOK)
+	if len(periodDetail.AttachmentIDs) != 1 || periodDetail.AttachmentIDs[0] != attID {
+		t.Fatalf("period attachments = %v, want [%s]", periodDetail.AttachmentIDs, attID)
+	}
+	owner.must("DELETE", fmt.Sprintf("/api/v1/cashback/offer-periods/%d/attachments/%s", alfaPeriod.ID, attID), nil, nil, http.StatusNoContent)
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/offer-periods/%d", alfaPeriod.ID), nil, &periodDetail, http.StatusOK)
+	if len(periodDetail.AttachmentIDs) != 0 {
+		t.Fatalf("period attachments after detach = %v, want empty", periodDetail.AttachmentIDs)
+	}
+	// Orphaned attachment row is gone: raw content endpoint 404s.
+	if got := owner.do("GET", "/api/v1/attachments/"+attID+"/content", nil, nil); got != http.StatusNotFound {
+		t.Fatalf("orphaned attachment content: status %d, want 404", got)
 	}
 
 	// A whole mistaken period can be deleted with everything under it.

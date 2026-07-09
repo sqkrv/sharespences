@@ -22,8 +22,11 @@ var ErrNotFound = errors.New("cashback: not found")
 
 // Service wires the domain rules to storage. Reference reads of bank /
 // bank_card are the seam decided at skeleton time (00003_cashback.sql).
+// RemoveAttachmentFile is injected at assembly (the attachment module owns
+// the disk store); called after an orphaned attachment row is deleted.
 type Service struct {
-	Q *db.Queries
+	Q                    *db.Queries
+	RemoveAttachmentFile func(id uuid.UUID) error
 }
 
 func cardLabel(bankName string, last4 int32) string {
@@ -121,6 +124,47 @@ func (s *Service) CreateOfferPeriod(ctx context.Context, userID uuid.UUID, cardI
 		}
 	}
 	return period, nil
+}
+
+// AttachScreenshot links an uploaded attachment to an existing period
+// (owner 2026-07-09: screenshots must be editable after creation, not only
+// at «Новый период»).
+func (s *Service) AttachScreenshot(ctx context.Context, userID uuid.UUID, periodID int64, attachmentID uuid.UUID) error {
+	if _, err := s.Q.GetOfferPeriodForUser(ctx, db.GetOfferPeriodForUserParams{ID: periodID, UserID: userID}); err != nil {
+		return notFound(err)
+	}
+	uid := userID
+	if _, err := s.Q.GetAttachmentForUser(ctx, db.GetAttachmentForUserParams{ID: attachmentID, UserID: &uid}); err != nil {
+		return notFound(err)
+	}
+	return s.Q.AttachToOfferPeriod(ctx, db.AttachToOfferPeriodParams{OfferPeriodID: periodID, AttachmentID: attachmentID})
+}
+
+// DetachScreenshot unlinks a screenshot from the period; when nothing else
+// references the attachment, its row and disk file are removed too.
+func (s *Service) DetachScreenshot(ctx context.Context, userID uuid.UUID, periodID int64, attachmentID uuid.UUID) error {
+	if _, err := s.Q.GetOfferPeriodForUser(ctx, db.GetOfferPeriodForUserParams{ID: periodID, UserID: userID}); err != nil {
+		return notFound(err)
+	}
+	n, err := s.Q.DetachFromOfferPeriod(ctx, db.DetachFromOfferPeriodParams{OfferPeriodID: periodID, AttachmentID: attachmentID})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	uid := userID
+	orphaned, err := s.Q.DeleteAttachmentIfOrphan(ctx, db.DeleteAttachmentIfOrphanParams{ID: attachmentID, UserID: &uid})
+	if err != nil {
+		return err
+	}
+	if orphaned > 0 && s.RemoveAttachmentFile != nil {
+		if err := s.RemoveAttachmentFile(attachmentID); err != nil {
+			// The row is gone; a stale file is a cleanup nit, not a failure.
+			return nil
+		}
+	}
+	return nil
 }
 
 // SuggestAlias implements the S1 pre-suggestion for a raw menu title on the

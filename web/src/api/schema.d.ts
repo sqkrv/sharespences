@@ -264,6 +264,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cashback/offer-periods/{id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach a screenshot to the period */
+        post: operations["cashback-offer-period-attach"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cashback/offer-periods/{id}/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Detach a screenshot (orphaned file is removed) */
+        delete: operations["cashback-offer-period-detach"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cashback/offer-periods/{id}/max-categories": {
         parameters: {
             query?: never;
@@ -581,6 +615,15 @@ export interface components {
             partner?: components["schemas"]["PartnerOfferDTO"][] | null;
             ranked: components["schemas"]["LookupEntryDTO"][] | null;
             special?: components["schemas"]["LookupEntryDTO"][] | null;
+        };
+        "Cashback-offer-period-attachRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Cashback-offer-period-attachRequest.json
+             */
+            readonly $schema?: string;
+            attachment_id: string;
         };
         "Cashback-offer-period-createRequest": {
             /**
@@ -1620,6 +1663,69 @@ export interface operations {
             header?: never;
             path: {
                 id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-offer-period-attach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Cashback-offer-period-attachRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-offer-period-detach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                attachment_id: string;
             };
             cookie?: never;
         };

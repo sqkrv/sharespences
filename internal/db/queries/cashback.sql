@@ -133,6 +133,22 @@ from attachment a
          join offer_period_attachment opa on opa.attachment_id = a.id
 where opa.offer_period_id = $1;
 
+-- name: DetachFromOfferPeriod :execrows
+delete
+from offer_period_attachment
+where offer_period_id = $1
+  and attachment_id = $2;
+
+-- DeleteAttachmentIfOrphan removes the attachment row once nothing links
+-- to it (period or partner joins); the caller then removes the disk file.
+-- name: DeleteAttachmentIfOrphan :execrows
+delete
+from attachment a
+where a.id = $1
+  and a.user_id = $2
+  and not exists (select 1 from offer_period_attachment where attachment_id = $1)
+  and not exists (select 1 from partner_offer_attachment where attachment_id = $1);
+
 -- name: CreateCategoryOffer :one
 insert into category_offer (offer_period_id, raw_title, canonical_category_id, percent, kind, notes)
 values ($1, $2, $3, $4, $5, $6)

@@ -300,6 +300,30 @@ func (q *Queries) CreateTier(ctx context.Context, arg CreateTierParams) (Program
 	return i, err
 }
 
+const deleteAttachmentIfOrphan = `-- name: DeleteAttachmentIfOrphan :execrows
+delete
+from attachment a
+where a.id = $1
+  and a.user_id = $2
+  and not exists (select 1 from offer_period_attachment where attachment_id = $1)
+  and not exists (select 1 from partner_offer_attachment where attachment_id = $1)
+`
+
+type DeleteAttachmentIfOrphanParams struct {
+	ID     uuid.UUID
+	UserID *uuid.UUID
+}
+
+// DeleteAttachmentIfOrphan removes the attachment row once nothing links
+// to it (period or partner joins); the caller then removes the disk file.
+func (q *Queries) DeleteAttachmentIfOrphan(ctx context.Context, arg DeleteAttachmentIfOrphanParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAttachmentIfOrphan, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteCategoryOffer = `-- name: DeleteCategoryOffer :exec
 delete
 from category_offer
@@ -410,6 +434,26 @@ where id = $1
 
 func (q *Queries) DeleteTier(ctx context.Context, id int64) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteTier, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const detachFromOfferPeriod = `-- name: DetachFromOfferPeriod :execrows
+delete
+from offer_period_attachment
+where offer_period_id = $1
+  and attachment_id = $2
+`
+
+type DetachFromOfferPeriodParams struct {
+	OfferPeriodID int64
+	AttachmentID  uuid.UUID
+}
+
+func (q *Queries) DetachFromOfferPeriod(ctx context.Context, arg DetachFromOfferPeriodParams) (int64, error) {
+	result, err := q.db.Exec(ctx, detachFromOfferPeriod, arg.OfferPeriodID, arg.AttachmentID)
 	if err != nil {
 		return 0, err
 	}

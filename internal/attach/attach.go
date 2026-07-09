@@ -65,3 +65,13 @@ func (s *Store) Get(ctx context.Context, userID, id uuid.UUID) (db.Attachment, e
 func (s *Store) Path(id uuid.UUID) string {
 	return filepath.Join(s.Dir, fmt.Sprintf("%s.bin", id))
 }
+
+// Remove deletes the attachment's bytes from disk (missing file is fine —
+// the row is already gone by the time callers get here).
+func (s *Store) Remove(id uuid.UUID) error {
+	err := os.Remove(s.Path(id))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
