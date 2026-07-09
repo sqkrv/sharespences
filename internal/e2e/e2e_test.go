@@ -584,9 +584,10 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("orphaned attachment content: status %d, want 404", got)
 	}
 
-	// Base category «За все покупки» (owner 2026-07-09): slot-free even at
-	// 4/4, never collides, answers lookups as the fallback and the
-	// overview's «Остальное» row.
+	// «За все покупки» (owner correction 2026-07-09): an ORDINARY selectable
+	// category — it consumes a slot like any other; its only quirk is that it
+	// pays when no other selected category matches, which the lookup shows as
+	// the fallback section and the overview as «Остальное».
 	var allPurchasesID int64
 	for _, c := range cats {
 		if c.Slug == "all-purchases" {
@@ -598,10 +599,16 @@ func TestCashbackE2E(t *testing.T) {
 	}{}
 	owner.must("POST", "/api/v1/cashback/category-offers", map[string]any{
 		"offer_period_id": alfaPeriod.ID, "raw_title": "За все покупки", "percent": "1",
-		"canonical_category_id": allPurchasesID, "kind": "base",
+		"canonical_category_id": allPurchasesID, "kind": "regular",
 	}, &baseOffer, http.StatusCreated)
+	if got := sel(baseOffer.ID, july10); got != http.StatusConflict {
+		t.Fatalf("«За все покупки» at full slots: %d, want 409 — it takes a slot like any category", got)
+	}
+	// Free a slot (drop the unmapped Транспорт row with its selection)…
+	owner.must("DELETE", fmt.Sprintf("/api/v1/cashback/category-offers/%d", transport.ID), nil, nil, http.StatusNoContent)
+	// …now it selects fine.
 	if got := sel(baseOffer.ID, july10); got != http.StatusCreated {
-		t.Fatalf("selecting base row at full slots: %d, want 201 (slot-free)", got)
+		t.Fatalf("«За все покупки» after freeing a slot: %d, want 201", got)
 	}
 	owner.must("GET", "/api/v1/cashback/lookup?category=taxi&date=2026-07-15", nil, &lookup, http.StatusOK)
 	if len(lookup.Ranked) != 0 || lookup.Message != "нет активных выборов" {

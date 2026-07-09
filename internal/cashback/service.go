@@ -575,23 +575,21 @@ type OverviewResult struct {
 }
 
 // fallbackEntries picks the selected rows that answer «а если категория не
-// выбрана нигде?»: kind=base rows (granted outside the menu) and regular
-// rows mapped to canonical all-purchases (banks where the base rate is a
-// selectable slot choice). exceptCat skips rows already listed as the
+// выбрана нигде?»: ordinary regular rows mapped to canonical all-purchases
+// («За все покупки» — a category like any other, owner 2026-07-09; it pays
+// only when no other selected category matches, which is why it doubles as
+// the «Остальное» display). exceptCat skips rows already listed as the
 // looked-up category itself.
 func fallbackEntries(offers []db.ListUserOffersRow, allPurposesID *int64, exceptCat *int64, build func(db.ListUserOffersRow) LookupEntry) []LookupEntry {
 	var out []LookupEntry
 	for _, o := range offers {
-		if !o.Selected {
+		if !o.Selected || allPurposesID == nil || o.CanonicalCategoryID == nil {
 			continue
 		}
-		isBase := OfferKind(o.Kind) == OfferBase
-		isAllPurchases := allPurposesID != nil && o.CanonicalCategoryID != nil &&
-			*o.CanonicalCategoryID == *allPurposesID && OfferKind(o.Kind) == OfferRegular
-		if !isBase && !isAllPurchases {
+		if *o.CanonicalCategoryID != *allPurposesID || OfferKind(o.Kind) != OfferRegular {
 			continue
 		}
-		if exceptCat != nil && o.CanonicalCategoryID != nil && *o.CanonicalCategoryID == *exceptCat {
+		if exceptCat != nil && *o.CanonicalCategoryID == *exceptCat {
 			continue
 		}
 		out = append(out, build(o))
@@ -671,10 +669,10 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		return res.Categories[i].TitleRu < res.Categories[j].TitleRu
 	})
 
-	// «Остальное»: best base rate across cards (active on the date).
+	// «Остальное»: best selected «За все покупки» across cards.
 	fb := RankActiveSelections(onDate, fallbackEntries(offers, allPurposesID, nil, entryOf))
-	if merged := append(fb.Ranked, fb.Fallback...); len(merged) > 0 {
-		res.Base = &OverviewBase{Best: merged[0], OthersCount: len(merged) - 1}
+	if len(fb.Ranked) > 0 {
+		res.Base = &OverviewBase{Best: fb.Ranked[0], OthersCount: len(fb.Ranked) - 1}
 	}
 
 	// --- «Карты»: every card, with its active period when one exists. ---
@@ -745,7 +743,7 @@ type LookupResultView struct {
 	Category db.CanonicalCategory
 	Ranked   []LookupEntry
 	Special  []LookupEntry
-	Fallback []LookupEntry // base rates — pay with these when nothing ranks
+	Fallback []LookupEntry // selected «За все покупки» — pays when nothing ranks
 	Partner  []db.ListPartnerOffersForUserRow
 }
 
@@ -767,18 +765,16 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 	}
 	ranked := RankActiveSelections(onDate, entries)
 
-	// Base rates («За все покупки») answer the lookup when nothing ranks —
-	// and are worth showing alongside even when something does.
+	// «За все покупки» answers the lookup when nothing ranks — and is worth
+	// showing alongside even when something does (it pays only when no other
+	// selected category matches).
 	var allPurposesID *int64
 	if ap, err := s.Q.GetCanonicalCategoryBySlug(ctx, "all-purchases"); err == nil {
 		allPurposesID = &ap.ID
 	}
 	catID := cat.ID
 	fb := RankActiveSelections(onDate, fallbackEntries(all, allPurposesID, &catID, entryOf))
-	fallback := append(fb.Ranked, fb.Fallback...)
-	// The looked-up category's own base rows (X == all-purchases) land in
-	// ranked.Fallback — surface them the same way.
-	fallback = append(fallback, ranked.Fallback...)
+	fallback := fb.Ranked
 
 	partners, err := s.Q.ListPartnerOffersForUser(ctx, userID)
 	if err != nil {

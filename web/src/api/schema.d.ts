@@ -605,7 +605,7 @@ export interface components {
              * @default regular
              * @enum {string}
              */
-            kind: "regular" | "special" | "base";
+            kind: "regular" | "special";
             notes?: string;
             /** Format: int64 */
             offer_period_id: number;
@@ -642,7 +642,7 @@ export interface components {
             readonly $schema?: string;
             category: components["schemas"]["CanonicalCategoryDTO"];
             date: string;
-            /** @description base rates — pay with these when nothing ranks */
+            /** @description selected «За все покупки» — pays when nothing ranks */
             fallback?: components["schemas"]["LookupEntryDTO"][] | null;
             message?: string;
             partner?: components["schemas"]["PartnerOfferDTO"][] | null;
@@ -777,7 +777,7 @@ export interface components {
              * @default regular
              * @enum {string}
              */
-            kind: "regular" | "special" | "base";
+            kind: "regular" | "special";
             notes?: string;
             percent?: string;
             raw_title: string;

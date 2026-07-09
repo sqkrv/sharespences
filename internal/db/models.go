@@ -104,7 +104,6 @@ type CashbackOfferKind string
 const (
 	CashbackOfferKindRegular CashbackOfferKind = "regular"
 	CashbackOfferKindSpecial CashbackOfferKind = "special"
-	CashbackOfferKindBase    CashbackOfferKind = "base"
 )
 
 func (e *CashbackOfferKind) Scan(src interface{}) error {

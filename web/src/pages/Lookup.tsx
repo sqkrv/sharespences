@@ -232,7 +232,7 @@ export default function Lookup() {
 
                   {(lookup.data.fallback ?? []).length > 0 && (
                     <>
-                      <p className="mx-0.5 text-[11px] font-semibold text-tx3">Остальное — базовая ставка</p>
+                      <p className="mx-0.5 text-[11px] font-semibold text-tx3">Остальное — «За все покупки»</p>
                       <div className="space-y-1.5">
                         {(lookup.data.fallback ?? []).map((e, i) => (
                           <OtherCardRow key={`f-${i}`} e={e} />

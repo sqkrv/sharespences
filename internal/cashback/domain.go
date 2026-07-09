@@ -26,19 +26,18 @@ const (
 )
 
 // OfferKind separates regular menu rows from special bonus-mechanic rows
-// (барабан суперкэшбека, Альфа-Пятница, колесо фортуны) and the base
-// «За все покупки» rate. Special rows are record-only: excluded from helper
-// math and lookup ranking (invariant 6); base rows are the granted-outside-
-// the-menu fallback: slot-free and non-colliding like special, but INCLUDED
-// in lookups as the fallback answer (owner decisions 2026-07-03/2026-07-09).
-// Where a bank makes the base rate a selectable slot choice, the row is
-// entered as regular instead.
+// (барабан суперкэшбека, Альфа-Пятница, колесо фортуны). Special rows are
+// record-only: excluded from helper math and lookup ranking (invariant 6),
+// and their selections do not consume tier slots (owner decision 2026-07-03).
+// «За все покупки» is an ORDINARY regular row (owner 2026-07-09): it takes
+// a slot and collides like any category; it merely pays only when no other
+// selected category matches — a display concern (the «Остальное» fallback),
+// not a kind.
 type OfferKind string
 
 const (
 	OfferRegular OfferKind = "regular"
 	OfferSpecial OfferKind = "special"
-	OfferBase    OfferKind = "base"
 )
 
 // PeriodType mirrors cashback_program.period_type.
@@ -206,17 +205,16 @@ type Collision struct {
 
 // DetectCollisions returns a warning per existing selection of the same
 // canonical category on a DIFFERENT card with an overlapping period.
-// Only regular offers participate: special is excluded from helper math
-// (invariant 6), base rates exist on every bank by design (nothing to
-// warn about); offers without a canonical mapping cannot collide.
+// Special offers never participate (invariant 6: excluded from helper math);
+// offers without a canonical mapping cannot collide.
 func DetectCollisions(candidate CandidateSelection, others []ActiveSelection) []Collision {
-	if candidate.CanonicalCategoryID == nil || candidate.Kind != OfferRegular {
+	if candidate.CanonicalCategoryID == nil || candidate.Kind == OfferSpecial {
 		return nil
 	}
 	var out []Collision
 	for _, o := range others {
 		switch {
-		case o.Kind != OfferRegular,
+		case o.Kind == OfferSpecial,
 			o.CanonicalCategoryID == nil,
 			*o.CanonicalCategoryID != *candidate.CanonicalCategoryID,
 			o.CardID == candidate.CardID,
@@ -300,13 +298,11 @@ type LookupEntry struct {
 	PointsLabel    string // 'Баллы Плюс', 'баллы МКБ'; empty for rubles
 }
 
-// LookupResult is the S3 answer: ranked regular selections, special offers
-// listed separately unranked (invariant 6), and base rates as the fallback
-// («Остальное» — pays when no selected category matches).
+// LookupResult is the S3 answer: ranked regular selections plus special
+// offers listed separately, unranked (invariant 6).
 type LookupResult struct {
-	Ranked   []LookupEntry
-	Special  []LookupEntry
-	Fallback []LookupEntry
+	Ranked  []LookupEntry
+	Special []LookupEntry
 }
 
 // RankActiveSelections filters entries to those whose period covers onDate,
@@ -320,12 +316,8 @@ func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult 
 		if !e.Period.Contains(onDate) {
 			continue
 		}
-		switch e.Kind {
-		case OfferSpecial:
+		if e.Kind == OfferSpecial {
 			res.Special = append(res.Special, e)
-			continue
-		case OfferBase:
-			res.Fallback = append(res.Fallback, e)
 			continue
 		}
 		res.Ranked = append(res.Ranked, e)
@@ -356,7 +348,6 @@ func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult 
 		}
 	}
 	sort.SliceStable(res.Ranked, entryLess(res.Ranked))
-	sort.SliceStable(res.Fallback, entryLess(res.Fallback))
 	return res
 }
 

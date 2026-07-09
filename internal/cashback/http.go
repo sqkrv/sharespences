@@ -147,7 +147,7 @@ type categoryOfferBody struct {
 	RawTitle            string  `json:"raw_title" minLength:"1"`
 	CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
 	Percent             *string `json:"percent,omitempty"`
-	Kind                string  `json:"kind,omitempty" enum:"regular,special,base" default:"regular"`
+	Kind                string  `json:"kind,omitempty" enum:"regular,special" default:"regular"`
 	Notes               *string `json:"notes,omitempty"`
 }
 
@@ -598,7 +598,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			RawTitle            string  `json:"raw_title" minLength:"1"`
 			CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
 			Percent             *string `json:"percent,omitempty"`
-			Kind                string  `json:"kind,omitempty" enum:"regular,special,base" default:"regular"`
+			Kind                string  `json:"kind,omitempty" enum:"regular,special" default:"regular"`
 			Notes               *string `json:"notes,omitempty"`
 		}
 	}) (*struct{ Body CategoryOfferDTO }, error) {
@@ -912,7 +912,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Date     string               `json:"date"`
 			Ranked   []LookupEntryDTO     `json:"ranked"`
 			Special  []LookupEntryDTO     `json:"special,omitempty"`
-			Fallback []LookupEntryDTO     `json:"fallback,omitempty" doc:"base rates — pay with these when nothing ranks"`
+			Fallback []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
 			Partner  []PartnerOfferDTO    `json:"partner,omitempty"`
 			Message  string               `json:"message,omitempty"`
 		}
@@ -934,7 +934,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Date     string               `json:"date"`
 				Ranked   []LookupEntryDTO     `json:"ranked"`
 				Special  []LookupEntryDTO     `json:"special,omitempty"`
-				Fallback []LookupEntryDTO     `json:"fallback,omitempty" doc:"base rates — pay with these when nothing ranks"`
+				Fallback []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
 				Partner  []PartnerOfferDTO    `json:"partner,omitempty"`
 				Message  string               `json:"message,omitempty"`
 			}

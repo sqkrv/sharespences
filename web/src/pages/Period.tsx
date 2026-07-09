@@ -46,7 +46,7 @@ function AddOfferForm({ periodID }: { periodID: number }) {
   const [canonicalTouched, setCanonicalTouched] = useState(false);
   const [suggestion, setSuggestion] = useState<{ id: number; title_ru: string } | null>(null);
   const [percent, setPercent] = useState("");
-  const [kind, setKind] = useState<"regular" | "special" | "base">("regular");
+  const [kind, setKind] = useState<"regular" | "special">("regular");
   const [newCat, setNewCat] = useState(false);
   const [newSlug, setNewSlug] = useState("");
   const [newTitle, setNewTitle] = useState("");
@@ -166,8 +166,7 @@ function AddOfferForm({ periodID }: { periodID: number }) {
             {(
               [
                 ["regular", "обычная"],
-                ["special", "спец"],
-                ["base", "база"],
+                ["special", "спец (барабан/колесо)"],
               ] as const
             ).map(([k, label]) => (
               <button
@@ -239,7 +238,7 @@ function EditOfferForm({
             raw_title: rawTitle,
             ...(canonicalID ? { canonical_category_id: Number(canonicalID) } : {}),
             ...(percent ? { percent } : {}),
-            kind: kind as "regular" | "special" | "base",
+            kind: kind as "regular" | "special",
             ...(notes ? { notes } : {}),
           },
         }),
@@ -289,7 +288,6 @@ function EditOfferForm({
         <Select value={kind} onChange={(e) => setKind(e.target.value)} className="w-32">
           <option value="regular">обычная</option>
           <option value="special">спец</option>
-          <option value="base">база</option>
         </Select>
         <Input placeholder="Заметки" value={notes} onChange={(e) => setNotes(e.target.value)} className="flex-1" />
       </div>
@@ -497,7 +495,7 @@ export default function Period() {
         err instanceof ApiError && err.status === 409
           ? err.message
           : err instanceof ApiError && err.status === 422
-            ? `${err.message} — для ввода истории включите «бэкфилл»`
+            ? `${err.message} — для ввода истории включите «задним числом»`
             : String(err);
       setRowErrors((e) => ({ ...e, [offerID]: msg }));
     },
@@ -588,38 +586,9 @@ export default function Period() {
           const hrow = helperByOffer.get(offer.id);
           const selected = offer.selection_id != null;
           const isSpecial = offer.kind === "special";
-          const isBase = offer.kind === "base";
-          const unmapped = !isSpecial && !isBase && offer.canonical_category_id == null;
-          const blocked = !selected && !isSpecial && !isBase && slotsFull;
+          const unmapped = !isSpecial && offer.canonical_category_id == null;
+          const blocked = !selected && !isSpecial && slotsFull;
           const canonTitle = (categories.data ?? []).find((c) => c.id === offer.canonical_category_id)?.title_ru;
-          if (isBase) {
-            return (
-              <div key={offer.id} className="rounded-xl border border-dashed border-brd px-3 py-2.5">
-                <div className="flex items-center gap-2.5">
-                  <span className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md bg-acc/10 text-[10px] font-extrabold text-accl">Б</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[12.5px] font-semibold text-tx2">{offer.raw_title}</p>
-                    <p className="text-[9.5px] font-medium text-tx4">база · не занимает слот · на всё остальное</p>
-                  </div>
-                  <Pct percent={offer.percent} currency={currency} className="text-[13px]" />
-                  {selected ? (
-                    <Btn variant="danger" className="!px-2.5 !py-1.5 text-xs" onClick={() => unselect.mutate(offer.selection_id!)}>
-                      Снять
-                    </Btn>
-                  ) : (
-                    <Btn variant="soft" className="!px-2.5 !py-1.5 text-xs" onClick={() => select.mutate(offer.id)}>
-                      Активна
-                    </Btn>
-                  )}
-                  <button type="button" className="px-1 text-tx4" onClick={() => setEditingID(editingID === offer.id ? null : offer.id)} title="Редактировать">
-                    ✎
-                  </button>
-                </div>
-                {rowErrors[offer.id] && <p className="mt-1.5 ml-8 rounded-lg bg-warn/10 px-2 py-1 text-[10.5px] font-medium text-warn">{rowErrors[offer.id]}</p>}
-                {editingID === offer.id && <EditOfferForm offer={offer} categories={categories.data ?? []} onDone={() => setEditingID(null)} />}
-              </div>
-            );
-          }
           if (isSpecial) {
             return (
               <div key={offer.id} className="rounded-xl border border-dashed border-gold/30 bg-gold/5 px-3 py-2.5">
@@ -722,7 +691,7 @@ export default function Period() {
         <span className="flex-1" />
         <label className="flex items-center gap-1 text-[10px] font-medium text-tx4">
           <input type="checkbox" checked={backfill} onChange={(e) => setBackfill(e.target.checked)} />
-          бэкфилл
+          задним числом
         </label>
         <Btn className="!px-4 !py-1.5 text-xs" onClick={() => navigate("/")}>
           Готово
