@@ -261,3 +261,6 @@ internal/web/dist/*
 
 # leftover untracked junk from the removed Next.js mockup (see legacy/python-backend)
 /frontend/
+
+# local-dev compose override (publishes the DB port); never deployed
+docker-compose.override.yaml

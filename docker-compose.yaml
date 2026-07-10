@@ -14,8 +14,10 @@ services:
       POSTGRES_USER: sharespences
       POSTGRES_PASSWORD: sharespences
       POSTGRES_DB: sharespences
-    ports:
-      - "127.0.0.1:5432:5432" # psql / running the app natively against it
+    # The DB host port is NOT published: app/migrate/seed reach it over the
+    # internal network (db:5432), and publishing 5432 collides with any
+    # Postgres already on the host (e.g. on the server). For host access
+    # during native dev, docker-compose.override.yaml publishes it locally.
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
