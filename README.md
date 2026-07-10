@@ -13,6 +13,9 @@ brings up PostGIS, applies migrations, loads seed data and serves the app
 (API + embedded SPA) on <http://localhost:8080> — interactive API docs at
 `/docs`. Uploaded attachments and the database persist in named volumes.
 
+Set `APP_PORT` (env or a `.env` file) to publish on a different host port,
+e.g. `APP_PORT=9090 docker compose up` serves on <http://localhost:9090>.
+
 The database port is **not** published to the host — the app, migrate and
 seed containers reach it over the internal network — so the stack runs on a
 server that already has its own Postgres on 5432. For native development,
