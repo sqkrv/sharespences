@@ -1,0 +1,13 @@
+# Whitelist: send ONLY what the image build needs. The working tree sits next
+# to real personal bank data (dumps/, .env, parser output) that must never
+# reach a build context — keep this allowlist, don't flip it to a blocklist.
+*
+!go.mod
+!go.sum
+!cmd
+!internal
+!web
+# produced inside the build stages, never taken from the host
+web/node_modules
+internal/web/dist
+**/.DS_Store

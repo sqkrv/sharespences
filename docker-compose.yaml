@@ -1,0 +1,60 @@
+# Local run/dev stack: `docker compose up --build` → migrated + seeded app on
+# http://localhost:8080 (docs at /docs). Throwaway dev credentials only —
+# this file is not a production deployment.
+x-backend: &backend
+  build: .
+  image: sharespences
+  environment:
+    DATABASE_URL: postgres://sharespences:sharespences@db:5432/sharespences
+
+services:
+  db:
+    image: postgis/postgis:16-3.4 # same image as the e2e tests
+    environment:
+      POSTGRES_USER: sharespences
+      POSTGRES_PASSWORD: sharespences
+      POSTGRES_DB: sharespences
+    ports:
+      - "127.0.0.1:5432:5432" # psql / running the app natively against it
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # TCP check (-h): the initdb-phase temp server listens on the unix
+      # socket only, so plain pg_isready would pass too early.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U sharespences -d sharespences"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    <<: *backend
+    command: ["migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  seed: # idempotent reference data (banks, КБ programs) — safe to re-run
+    <<: *backend
+    command: ["seed"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  app:
+    <<: *backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - attachments:/data/attachments
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/docs"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  db-data:
+  attachments:
