@@ -13,12 +13,12 @@ FROM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
-COPY cmd/ cmd/
+COPY "cmd/" "cmd/"
 COPY internal/ internal/
 COPY --from=web /src/internal/web/dist internal/web/dist
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/sharespences ./cmd/sharespences
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/sharespences "./cmd/sharespences"
 
 # --- Runtime ---
 FROM alpine:3.22
