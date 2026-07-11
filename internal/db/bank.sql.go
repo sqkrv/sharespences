@@ -11,40 +11,70 @@ import (
 	"github.com/google/uuid"
 )
 
+const createBankClient = `-- name: CreateBankClient :one
+insert into bank_client (user_id, bank_id, label, program_tier_id)
+values ($1, $2, $3, $4)
+returning id, user_id, bank_id, label, program_tier_id
+`
+
+type CreateBankClientParams struct {
+	UserID        uuid.UUID
+	BankID        int32
+	Label         *string
+	ProgramTierID *int64
+}
+
+func (q *Queries) CreateBankClient(ctx context.Context, arg CreateBankClientParams) (BankClient, error) {
+	row := q.db.QueryRow(ctx, createBankClient,
+		arg.UserID,
+		arg.BankID,
+		arg.Label,
+		arg.ProgramTierID,
+	)
+	var i BankClient
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.BankID,
+		&i.Label,
+		&i.ProgramTierID,
+	)
+	return i, err
+}
+
 const createCard = `-- name: CreateCard :one
-insert into bank_card (bank_id, user_id, last_4_digits, payment_system, program_tier_id, holder_label)
-values ($1, $2, $3, $4, $5, $6)
-returning id, bank_id, user_id, last_4_digits, payment_system, image_filename, program_tier_id, holder_label
+insert into bank_card (bank_client_id, last_4_digits, payment_system)
+select cl.id, $1::integer, $2::payment_system
+from bank_client cl
+where cl.id = $3
+  and cl.user_id = $4
+returning id, last_4_digits, payment_system, image_filename, bank_client_id
 `
 
 type CreateCardParams struct {
-	BankID        int16
-	UserID        uuid.UUID
 	Last4Digits   int32
 	PaymentSystem PaymentSystem
-	ProgramTierID *int64
-	HolderLabel   *string
+	BankClientID  int64
+	UserID        uuid.UUID
 }
 
+// CreateCard authorizes and derives in one statement: inserting through a
+// select on the user's own bank_client returns 0 rows (pgx.ErrNoRows → 404)
+// when the client does not exist or belongs to someone else.
 func (q *Queries) CreateCard(ctx context.Context, arg CreateCardParams) (BankCard, error) {
 	row := q.db.QueryRow(ctx, createCard,
-		arg.BankID,
-		arg.UserID,
 		arg.Last4Digits,
 		arg.PaymentSystem,
-		arg.ProgramTierID,
-		arg.HolderLabel,
+		arg.BankClientID,
+		arg.UserID,
 	)
 	var i BankCard
 	err := row.Scan(
 		&i.ID,
-		&i.BankID,
-		&i.UserID,
 		&i.Last4Digits,
 		&i.PaymentSystem,
 		&i.ImageFilename,
-		&i.ProgramTierID,
-		&i.HolderLabel,
+		&i.BankClientID,
 	)
 	return i, err
 }
@@ -67,12 +97,49 @@ func (q *Queries) GetBankByName(ctx context.Context, name string) (Bank, error) 
 	return i, err
 }
 
+const getBankClientForUser = `-- name: GetBankClientForUser :one
+select cl.id, cl.user_id, cl.bank_id, cl.label, cl.program_tier_id, b.name as bank_name
+from bank_client cl
+         join bank b on b.id = cl.bank_id
+where cl.id = $1
+  and cl.user_id = $2
+`
+
+type GetBankClientForUserParams struct {
+	ID     int64
+	UserID uuid.UUID
+}
+
+type GetBankClientForUserRow struct {
+	ID            int64
+	UserID        uuid.UUID
+	BankID        int32
+	Label         *string
+	ProgramTierID *int64
+	BankName      string
+}
+
+func (q *Queries) GetBankClientForUser(ctx context.Context, arg GetBankClientForUserParams) (GetBankClientForUserRow, error) {
+	row := q.db.QueryRow(ctx, getBankClientForUser, arg.ID, arg.UserID)
+	var i GetBankClientForUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.BankID,
+		&i.Label,
+		&i.ProgramTierID,
+		&i.BankName,
+	)
+	return i, err
+}
+
 const getCardForUser = `-- name: GetCardForUser :one
-select bc.id, bc.bank_id, bc.user_id, bc.last_4_digits, bc.payment_system, bc.image_filename, bc.program_tier_id, bc.holder_label, b.name as bank_name
+select bc.id, bc.last_4_digits, bc.payment_system, bc.image_filename, bc.bank_client_id, cl.bank_id, b.name as bank_name
 from bank_card bc
-         join bank b on b.id = bc.bank_id
+         join bank_client cl on cl.id = bc.bank_client_id
+         join bank b on b.id = cl.bank_id
 where bc.id = $1
-  and bc.user_id = $2
+  and cl.user_id = $2
 `
 
 type GetCardForUserParams struct {
@@ -82,13 +149,11 @@ type GetCardForUserParams struct {
 
 type GetCardForUserRow struct {
 	ID            int32
-	BankID        int16
-	UserID        uuid.UUID
 	Last4Digits   int32
 	PaymentSystem PaymentSystem
 	ImageFilename *string
-	ProgramTierID *int64
-	HolderLabel   *string
+	BankClientID  int64
+	BankID        int32
 	BankName      string
 }
 
@@ -97,16 +162,58 @@ func (q *Queries) GetCardForUser(ctx context.Context, arg GetCardForUserParams) 
 	var i GetCardForUserRow
 	err := row.Scan(
 		&i.ID,
-		&i.BankID,
-		&i.UserID,
 		&i.Last4Digits,
 		&i.PaymentSystem,
 		&i.ImageFilename,
-		&i.ProgramTierID,
-		&i.HolderLabel,
+		&i.BankClientID,
+		&i.BankID,
 		&i.BankName,
 	)
 	return i, err
+}
+
+const listBankClientsForUser = `-- name: ListBankClientsForUser :many
+select cl.id, cl.user_id, cl.bank_id, cl.label, cl.program_tier_id, b.name as bank_name
+from bank_client cl
+         join bank b on b.id = cl.bank_id
+where cl.user_id = $1
+order by cl.id
+`
+
+type ListBankClientsForUserRow struct {
+	ID            int64
+	UserID        uuid.UUID
+	BankID        int32
+	Label         *string
+	ProgramTierID *int64
+	BankName      string
+}
+
+func (q *Queries) ListBankClientsForUser(ctx context.Context, userID uuid.UUID) ([]ListBankClientsForUserRow, error) {
+	rows, err := q.db.Query(ctx, listBankClientsForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBankClientsForUserRow
+	for rows.Next() {
+		var i ListBankClientsForUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.BankID,
+			&i.Label,
+			&i.ProgramTierID,
+			&i.BankName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listBanks = `-- name: ListBanks :many
@@ -141,22 +248,21 @@ func (q *Queries) ListBanks(ctx context.Context) ([]Bank, error) {
 }
 
 const listCardsForUser = `-- name: ListCardsForUser :many
-select bc.id, bc.bank_id, bc.user_id, bc.last_4_digits, bc.payment_system, bc.image_filename, bc.program_tier_id, bc.holder_label, b.name as bank_name
+select bc.id, bc.last_4_digits, bc.payment_system, bc.image_filename, bc.bank_client_id, cl.bank_id, b.name as bank_name
 from bank_card bc
-         join bank b on b.id = bc.bank_id
-where bc.user_id = $1
+         join bank_client cl on cl.id = bc.bank_client_id
+         join bank b on b.id = cl.bank_id
+where cl.user_id = $1
 order by bc.id
 `
 
 type ListCardsForUserRow struct {
 	ID            int32
-	BankID        int16
-	UserID        uuid.UUID
 	Last4Digits   int32
 	PaymentSystem PaymentSystem
 	ImageFilename *string
-	ProgramTierID *int64
-	HolderLabel   *string
+	BankClientID  int64
+	BankID        int32
 	BankName      string
 }
 
@@ -171,13 +277,11 @@ func (q *Queries) ListCardsForUser(ctx context.Context, userID uuid.UUID) ([]Lis
 		var i ListCardsForUserRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.BankID,
-			&i.UserID,
 			&i.Last4Digits,
 			&i.PaymentSystem,
 			&i.ImageFilename,
-			&i.ProgramTierID,
-			&i.HolderLabel,
+			&i.BankClientID,
+			&i.BankID,
 			&i.BankName,
 		); err != nil {
 			return nil, err
@@ -190,39 +294,72 @@ func (q *Queries) ListCardsForUser(ctx context.Context, userID uuid.UUID) ([]Lis
 	return items, nil
 }
 
-const updateCardForUser = `-- name: UpdateCardForUser :one
-update bank_card
-set holder_label    = $3,
+const updateBankClientForUser = `-- name: UpdateBankClientForUser :one
+update bank_client
+set label           = $3,
     program_tier_id = $4
 where id = $1
   and user_id = $2
-returning id, bank_id, user_id, last_4_digits, payment_system, image_filename, program_tier_id, holder_label
+returning id, user_id, bank_id, label, program_tier_id
+`
+
+type UpdateBankClientForUserParams struct {
+	ID            int64
+	UserID        uuid.UUID
+	Label         *string
+	ProgramTierID *int64
+}
+
+func (q *Queries) UpdateBankClientForUser(ctx context.Context, arg UpdateBankClientForUserParams) (BankClient, error) {
+	row := q.db.QueryRow(ctx, updateBankClientForUser,
+		arg.ID,
+		arg.UserID,
+		arg.Label,
+		arg.ProgramTierID,
+	)
+	var i BankClient
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.BankID,
+		&i.Label,
+		&i.ProgramTierID,
+	)
+	return i, err
+}
+
+const updateCardForUser = `-- name: UpdateCardForUser :one
+update bank_card bc
+set last_4_digits  = $3,
+    payment_system = $4
+from bank_client cl
+where bc.id = $1
+  and cl.id = bc.bank_client_id
+  and cl.user_id = $2
+returning bc.id, bc.last_4_digits, bc.payment_system, bc.image_filename, bc.bank_client_id
 `
 
 type UpdateCardForUserParams struct {
 	ID            int32
 	UserID        uuid.UUID
-	HolderLabel   *string
-	ProgramTierID *int64
+	Last4Digits   int32
+	PaymentSystem PaymentSystem
 }
 
 func (q *Queries) UpdateCardForUser(ctx context.Context, arg UpdateCardForUserParams) (BankCard, error) {
 	row := q.db.QueryRow(ctx, updateCardForUser,
 		arg.ID,
 		arg.UserID,
-		arg.HolderLabel,
-		arg.ProgramTierID,
+		arg.Last4Digits,
+		arg.PaymentSystem,
 	)
 	var i BankCard
 	err := row.Scan(
 		&i.ID,
-		&i.BankID,
-		&i.UserID,
 		&i.Last4Digits,
 		&i.PaymentSystem,
 		&i.ImageFilename,
-		&i.ProgramTierID,
-		&i.HolderLabel,
+		&i.BankClientID,
 	)
 	return i, err
 }

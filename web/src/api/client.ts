@@ -3,6 +3,7 @@ import type { paths, components } from "./schema";
 
 export type Schemas = components["schemas"];
 export type Bank = Schemas["BankDTO"];
+export type BankClient = Schemas["BankClientDTO"];
 export type Card = Schemas["CardDTO"];
 export type Program = Schemas["ProgramDTO"];
 export type Tier = Schemas["TierDTO"];

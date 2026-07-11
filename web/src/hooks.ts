@@ -9,6 +9,15 @@ export function useBanks() {
   });
 }
 
+// Bank clients (person × bank): держатель + tier live here; КБ selections
+// are keyed by the client — all its cards share them.
+export function useClients() {
+  return useQuery({
+    queryKey: ["clients"],
+    queryFn: async () => unwrap(await api.GET("/api/v1/bank-clients")) ?? [],
+  });
+}
+
 export function useCards() {
   return useQuery({
     queryKey: ["cards"],
@@ -35,7 +44,7 @@ export function usePrograms() {
 export type TierInfo = { tier: Tier; program: Program };
 
 // tier id → {tier, program}: one cached join of the seeded reference data —
-// resolves a card's caps/slots/currency for defaults and display.
+// resolves a bank client's caps/slots/currency for defaults and display.
 export function useTierMap() {
   return useQuery({
     queryKey: ["tiermap"],

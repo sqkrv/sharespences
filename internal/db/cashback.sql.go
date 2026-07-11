@@ -116,41 +116,41 @@ func (q *Queries) CreateCategoryOffer(ctx context.Context, arg CreateCategoryOff
 }
 
 const createOfferPeriod = `-- name: CreateOfferPeriod :one
-insert into offer_period (card_id, period_start, period_end)
+insert into offer_period (bank_client_id, period_start, period_end)
 values ($1, $2, $3)
-returning id, card_id, period_start, period_end, max_categories_override
+returning id, period_start, period_end, max_categories_override, bank_client_id
 `
 
 type CreateOfferPeriodParams struct {
-	CardID      int32
-	PeriodStart time.Time
-	PeriodEnd   time.Time
+	BankClientID int64
+	PeriodStart  time.Time
+	PeriodEnd    time.Time
 }
 
 func (q *Queries) CreateOfferPeriod(ctx context.Context, arg CreateOfferPeriodParams) (OfferPeriod, error) {
-	row := q.db.QueryRow(ctx, createOfferPeriod, arg.CardID, arg.PeriodStart, arg.PeriodEnd)
+	row := q.db.QueryRow(ctx, createOfferPeriod, arg.BankClientID, arg.PeriodStart, arg.PeriodEnd)
 	var i OfferPeriod
 	err := row.Scan(
 		&i.ID,
-		&i.CardID,
 		&i.PeriodStart,
 		&i.PeriodEnd,
 		&i.MaxCategoriesOverride,
+		&i.BankClientID,
 	)
 	return i, err
 }
 
 const createPartnerOffer = `-- name: CreatePartnerOffer :one
-insert into partner_offer (user_id, bank_id, card_id, merchant_title, percent,
+insert into partner_offer (user_id, bank_id, bank_client_id, merchant_title, percent,
                            valid_from, valid_to, cap_value, notes)
 values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-returning id, user_id, bank_id, card_id, merchant_title, percent, valid_from, valid_to, cap_value, notes
+returning id, user_id, bank_id, merchant_title, percent, valid_from, valid_to, cap_value, notes, bank_client_id
 `
 
 type CreatePartnerOfferParams struct {
 	UserID        uuid.UUID
 	BankID        int32
-	CardID        *int32
+	BankClientID  *int64
 	MerchantTitle string
 	Percent       *decimal.Decimal
 	ValidFrom     *time.Time
@@ -163,7 +163,7 @@ func (q *Queries) CreatePartnerOffer(ctx context.Context, arg CreatePartnerOffer
 	row := q.db.QueryRow(ctx, createPartnerOffer,
 		arg.UserID,
 		arg.BankID,
-		arg.CardID,
+		arg.BankClientID,
 		arg.MerchantTitle,
 		arg.Percent,
 		arg.ValidFrom,
@@ -176,13 +176,13 @@ func (q *Queries) CreatePartnerOffer(ctx context.Context, arg CreatePartnerOffer
 		&i.ID,
 		&i.UserID,
 		&i.BankID,
-		&i.CardID,
 		&i.MerchantTitle,
 		&i.Percent,
 		&i.ValidFrom,
 		&i.ValidTo,
 		&i.CapValue,
 		&i.Notes,
+		&i.BankClientID,
 	)
 	return i, err
 }
@@ -206,9 +206,10 @@ type CreateProgramParams struct {
 	Notes             *string
 }
 
-// Cashback module queries. Seam note: joins to bank / bank_card are the
+// Cashback module queries. Seam note: joins to bank / bank_client are the
 // module's read-only reference reads (decided at skeleton, see
-// 00003_cashback.sql header); no other module touches cashback tables.
+// 00003_cashback.sql header; re-keyed card→client in 00006); no other
+// module touches cashback tables.
 func (q *Queries) CreateProgram(ctx context.Context, arg CreateProgramParams) (CashbackProgram, error) {
 	row := q.db.QueryRow(ctx, createProgram,
 		arg.BankID,
@@ -405,12 +406,12 @@ func (q *Queries) DeleteSelectionByOffer(ctx context.Context, categoryOfferID in
 const deleteSelectionForUser = `-- name: DeleteSelectionForUser :execrows
 delete
 from selection s
-    using category_offer co, offer_period op, bank_card bc
+    using category_offer co, offer_period op, bank_client cl
 where s.id = $1
   and co.id = s.category_offer_id
   and op.id = co.offer_period_id
-  and bc.id = op.card_id
-  and bc.user_id = $2
+  and cl.id = op.bank_client_id
+  and cl.user_id = $2
 `
 
 type DeleteSelectionForUserParams struct {
@@ -474,12 +475,12 @@ func (q *Queries) GetCanonicalCategoryBySlug(ctx context.Context, slug string) (
 }
 
 const getOfferPeriodForUser = `-- name: GetOfferPeriodForUser :one
-select op.id, op.card_id, op.period_start, op.period_end, op.max_categories_override, bc.bank_id, bc.last_4_digits, bc.holder_label, bc.program_tier_id, b.name as bank_name
+select op.id, op.period_start, op.period_end, op.max_categories_override, op.bank_client_id, cl.bank_id, cl.label as holder_label, cl.program_tier_id, b.name as bank_name
 from offer_period op
-         join bank_card bc on bc.id = op.card_id
-         join bank b on b.id = bc.bank_id
+         join bank_client cl on cl.id = op.bank_client_id
+         join bank b on b.id = cl.bank_id
 where op.id = $1
-  and bc.user_id = $2
+  and cl.user_id = $2
 `
 
 type GetOfferPeriodForUserParams struct {
@@ -489,12 +490,11 @@ type GetOfferPeriodForUserParams struct {
 
 type GetOfferPeriodForUserRow struct {
 	ID                    int64
-	CardID                int32
 	PeriodStart           time.Time
 	PeriodEnd             time.Time
 	MaxCategoriesOverride *int32
-	BankID                int16
-	Last4Digits           int32
+	BankClientID          int64
+	BankID                int32
 	HolderLabel           *string
 	ProgramTierID         *int64
 	BankName              string
@@ -505,12 +505,11 @@ func (q *Queries) GetOfferPeriodForUser(ctx context.Context, arg GetOfferPeriodF
 	var i GetOfferPeriodForUserRow
 	err := row.Scan(
 		&i.ID,
-		&i.CardID,
 		&i.PeriodStart,
 		&i.PeriodEnd,
 		&i.MaxCategoriesOverride,
+		&i.BankClientID,
 		&i.BankID,
-		&i.Last4Digits,
 		&i.HolderLabel,
 		&i.ProgramTierID,
 		&i.BankName,
@@ -520,19 +519,19 @@ func (q *Queries) GetOfferPeriodForUser(ctx context.Context, arg GetOfferPeriodF
 
 const getOfferWithContextForUser = `-- name: GetOfferWithContextForUser :one
 select co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes,
-       op.card_id,
+       op.bank_client_id,
        op.period_start,
        op.period_end,
        op.max_categories_override,
-       bc.bank_id,
-       bc.program_tier_id,
+       cl.bank_id,
+       cl.program_tier_id,
        (s.id is not null)::bool as already_selected
 from category_offer co
          join offer_period op on op.id = co.offer_period_id
-         join bank_card bc on bc.id = op.card_id
+         join bank_client cl on cl.id = op.bank_client_id
          left join selection s on s.category_offer_id = co.id
 where co.id = $1
-  and bc.user_id = $2
+  and cl.user_id = $2
 `
 
 type GetOfferWithContextForUserParams struct {
@@ -548,11 +547,11 @@ type GetOfferWithContextForUserRow struct {
 	Percent               *decimal.Decimal
 	Kind                  CashbackOfferKind
 	Notes                 *string
-	CardID                int32
+	BankClientID          int64
 	PeriodStart           time.Time
 	PeriodEnd             time.Time
 	MaxCategoriesOverride *int32
-	BankID                int16
+	BankID                int32
 	ProgramTierID         *int64
 	AlreadySelected       bool
 }
@@ -568,7 +567,7 @@ func (q *Queries) GetOfferWithContextForUser(ctx context.Context, arg GetOfferWi
 		&i.Percent,
 		&i.Kind,
 		&i.Notes,
-		&i.CardID,
+		&i.BankClientID,
 		&i.PeriodStart,
 		&i.PeriodEnd,
 		&i.MaxCategoriesOverride,
@@ -737,22 +736,22 @@ func (q *Queries) ListOfferPeriodAttachments(ctx context.Context, offerPeriodID 
 }
 
 const listOfferPeriodsForUser = `-- name: ListOfferPeriodsForUser :many
-select op.id, op.card_id, op.period_start, op.period_end, op.max_categories_override, bc.bank_id, bc.last_4_digits, b.name as bank_name
+select op.id, op.period_start, op.period_end, op.max_categories_override, op.bank_client_id, cl.bank_id, cl.label as holder_label, b.name as bank_name
 from offer_period op
-         join bank_card bc on bc.id = op.card_id
-         join bank b on b.id = bc.bank_id
-where bc.user_id = $1
+         join bank_client cl on cl.id = op.bank_client_id
+         join bank b on b.id = cl.bank_id
+where cl.user_id = $1
 order by op.period_start desc, op.id
 `
 
 type ListOfferPeriodsForUserRow struct {
 	ID                    int64
-	CardID                int32
 	PeriodStart           time.Time
 	PeriodEnd             time.Time
 	MaxCategoriesOverride *int32
-	BankID                int16
-	Last4Digits           int32
+	BankClientID          int64
+	BankID                int32
+	HolderLabel           *string
 	BankName              string
 }
 
@@ -767,12 +766,12 @@ func (q *Queries) ListOfferPeriodsForUser(ctx context.Context, userID uuid.UUID)
 		var i ListOfferPeriodsForUserRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.CardID,
 			&i.PeriodStart,
 			&i.PeriodEnd,
 			&i.MaxCategoriesOverride,
+			&i.BankClientID,
 			&i.BankID,
-			&i.Last4Digits,
+			&i.HolderLabel,
 			&i.BankName,
 		); err != nil {
 			return nil, err
@@ -836,7 +835,7 @@ func (q *Queries) ListOffersForPeriod(ctx context.Context, offerPeriodID int64) 
 }
 
 const listPartnerOffersForUser = `-- name: ListPartnerOffersForUser :many
-select po.id, po.user_id, po.bank_id, po.card_id, po.merchant_title, po.percent, po.valid_from, po.valid_to, po.cap_value, po.notes, b.name as bank_name
+select po.id, po.user_id, po.bank_id, po.merchant_title, po.percent, po.valid_from, po.valid_to, po.cap_value, po.notes, po.bank_client_id, b.name as bank_name
 from partner_offer po
          join bank b on b.id = po.bank_id
 where po.user_id = $1
@@ -847,13 +846,13 @@ type ListPartnerOffersForUserRow struct {
 	ID            int64
 	UserID        uuid.UUID
 	BankID        int32
-	CardID        *int32
 	MerchantTitle string
 	Percent       *decimal.Decimal
 	ValidFrom     *time.Time
 	ValidTo       *time.Time
 	CapValue      *decimal.Decimal
 	Notes         *string
+	BankClientID  *int64
 	BankName      string
 }
 
@@ -870,13 +869,13 @@ func (q *Queries) ListPartnerOffersForUser(ctx context.Context, userID uuid.UUID
 			&i.ID,
 			&i.UserID,
 			&i.BankID,
-			&i.CardID,
 			&i.MerchantTitle,
 			&i.Percent,
 			&i.ValidFrom,
 			&i.ValidTo,
 			&i.CapValue,
 			&i.Notes,
+			&i.BankClientID,
 			&i.BankName,
 		); err != nil {
 			return nil, err
@@ -889,26 +888,26 @@ func (q *Queries) ListPartnerOffersForUser(ctx context.Context, userID uuid.UUID
 	return items, nil
 }
 
-const listPeriodRangesForCard = `-- name: ListPeriodRangesForCard :many
+const listPeriodRangesForClient = `-- name: ListPeriodRangesForClient :many
 select period_start, period_end
 from offer_period
-where card_id = $1
+where bank_client_id = $1
 `
 
-type ListPeriodRangesForCardRow struct {
+type ListPeriodRangesForClientRow struct {
 	PeriodStart time.Time
 	PeriodEnd   time.Time
 }
 
-func (q *Queries) ListPeriodRangesForCard(ctx context.Context, cardID int32) ([]ListPeriodRangesForCardRow, error) {
-	rows, err := q.db.Query(ctx, listPeriodRangesForCard, cardID)
+func (q *Queries) ListPeriodRangesForClient(ctx context.Context, bankClientID int64) ([]ListPeriodRangesForClientRow, error) {
+	rows, err := q.db.Query(ctx, listPeriodRangesForClient, bankClientID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListPeriodRangesForCardRow
+	var items []ListPeriodRangesForClientRow
 	for rows.Next() {
-		var i ListPeriodRangesForCardRow
+		var i ListPeriodRangesForClientRow
 		if err := rows.Scan(&i.PeriodStart, &i.PeriodEnd); err != nil {
 			return nil, err
 		}
@@ -1016,12 +1015,11 @@ select co.id                     as category_offer_id,
        co.percent,
        co.kind,
        op.id                     as offer_period_id,
-       op.card_id,
+       op.bank_client_id,
        op.period_start,
        op.period_end,
        op.max_categories_override,
-       bc.last_4_digits,
-       bc.holder_label,
+       cl.label                  as holder_label,
        b.name                    as bank_name,
        pt.cap_value,
        pt.cap_scope              as tier_cap_scope,
@@ -1033,12 +1031,12 @@ select co.id                     as category_offer_id,
        s.selected_at
 from category_offer co
          join offer_period op on op.id = co.offer_period_id
-         join bank_card bc on bc.id = op.card_id
-         join bank b on b.id = bc.bank_id
+         join bank_client cl on cl.id = op.bank_client_id
+         join bank b on b.id = cl.bank_id
          left join selection s on s.category_offer_id = co.id
-         left join program_tier pt on pt.id = bc.program_tier_id
+         left join program_tier pt on pt.id = cl.program_tier_id
          left join cashback_program cp on cp.id = pt.program_id
-where bc.user_id = $1
+where cl.user_id = $1
 `
 
 type ListUserOffersRow struct {
@@ -1048,11 +1046,10 @@ type ListUserOffersRow struct {
 	Percent               *decimal.Decimal
 	Kind                  CashbackOfferKind
 	OfferPeriodID         int64
-	CardID                int32
+	BankClientID          int64
 	PeriodStart           time.Time
 	PeriodEnd             time.Time
 	MaxCategoriesOverride *int32
-	Last4Digits           int32
 	HolderLabel           *string
 	BankName              string
 	CapValue              *decimal.Decimal
@@ -1066,9 +1063,9 @@ type ListUserOffersRow struct {
 }
 
 // ListUserOffers is the helper/lookup workhorse: every menu row of the
-// user's cards with its period, card, tier-cap and program-currency context,
-// plus whether it is selected. Filtering (overlap, currency, kind, date) is
-// domain logic in Go — data volume is personal-app sized.
+// user's bank clients with its period, client, tier-cap and program-currency
+// context, plus whether it is selected. Filtering (overlap, currency, kind,
+// date) is domain logic in Go — data volume is personal-app sized.
 func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListUserOffersRow, error) {
 	rows, err := q.db.Query(ctx, listUserOffers, userID)
 	if err != nil {
@@ -1085,11 +1082,10 @@ func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListU
 			&i.Percent,
 			&i.Kind,
 			&i.OfferPeriodID,
-			&i.CardID,
+			&i.BankClientID,
 			&i.PeriodStart,
 			&i.PeriodEnd,
 			&i.MaxCategoriesOverride,
-			&i.Last4Digits,
 			&i.HolderLabel,
 			&i.BankName,
 			&i.CapValue,
@@ -1114,11 +1110,11 @@ func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListU
 const setOfferPeriodMaxOverride = `-- name: SetOfferPeriodMaxOverride :one
 update offer_period op
 set max_categories_override = $3
-from bank_card bc
+from bank_client cl
 where op.id = $1
-  and bc.id = op.card_id
-  and bc.user_id = $2
-returning op.id, op.card_id, op.period_start, op.period_end, op.max_categories_override
+  and cl.id = op.bank_client_id
+  and cl.user_id = $2
+returning op.id, op.period_start, op.period_end, op.max_categories_override, op.bank_client_id
 `
 
 type SetOfferPeriodMaxOverrideParams struct {
@@ -1132,10 +1128,10 @@ func (q *Queries) SetOfferPeriodMaxOverride(ctx context.Context, arg SetOfferPer
 	var i OfferPeriod
 	err := row.Scan(
 		&i.ID,
-		&i.CardID,
 		&i.PeriodStart,
 		&i.PeriodEnd,
 		&i.MaxCategoriesOverride,
+		&i.BankClientID,
 	)
 	return i, err
 }
@@ -1148,11 +1144,11 @@ set raw_title             = $3,
     kind                  = $6,
     notes                 = $7
 from offer_period op,
-     bank_card bc
+     bank_client cl
 where co.id = $1
   and op.id = co.offer_period_id
-  and bc.id = op.card_id
-  and bc.user_id = $2
+  and cl.id = op.bank_client_id
+  and cl.user_id = $2
 returning co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes
 `
 

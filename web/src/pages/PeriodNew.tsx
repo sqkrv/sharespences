@@ -2,34 +2,35 @@ import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, unwrap, uploadAttachment } from "../api/client";
-import { useCards, useTierMap } from "../hooks";
+import { useClients, useTierMap } from "../hooks";
 import { Badge, Btn, Card, ErrMsg, Field, Input, Select, Spinner } from "../components/ui";
 import { monthRange, quarterRange } from "../lib";
 
-// S1 step 1, design screen 07 header: «Новый период» — pick the card, the
-// range defaults from the program's period_type (МКБ → quarter),
-// screenshots are optional evidence.
+// S1 step 1, design screen 07 header: «Новый период» — pick the bank client
+// (person × bank; all its cards share the selection), the range defaults
+// from the program's period_type (МКБ → quarter), screenshots are optional
+// evidence.
 export default function PeriodNew() {
-  const cards = useCards();
+  const clients = useClients();
   const tierMap = useTierMap();
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const [cardID, setCardID] = useState(params.get("card") ?? "");
+  const [clientID, setClientID] = useState(params.get("client") ?? "");
   const [start, setStart] = useState(monthRange().start);
   const [end, setEnd] = useState(monthRange().end);
   const [files, setFiles] = useState<File[]>([]);
 
-  const card = (cards.data ?? []).find((c) => String(c.id) === cardID);
+  const client = (clients.data ?? []).find((c) => String(c.id) === clientID);
 
-  // Default the range from the selected card's program period type.
+  // Default the range from the selected client's program period type.
   useEffect(() => {
-    const info = card?.program_tier_id != null ? tierMap.data?.get(card.program_tier_id) : undefined;
+    const info = client?.program_tier_id != null ? tierMap.data?.get(client.program_tier_id) : undefined;
     const range = info?.program.period_type === "quarter" ? quarterRange() : monthRange();
     setStart(range.start);
     setEnd(range.end);
-  }, [cardID, cards.data, tierMap.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clientID, clients.data, tierMap.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = useMutation({
     mutationFn: async () => {
@@ -40,7 +41,7 @@ export default function PeriodNew() {
       return unwrap(
         await api.POST("/api/v1/cashback/offer-periods", {
           body: {
-            card_id: Number(cardID),
+            bank_client_id: Number(clientID),
             period_start: start,
             period_end: end,
             ...(attachmentIDs.length ? { attachment_ids: attachmentIDs } : {}),
@@ -54,7 +55,7 @@ export default function PeriodNew() {
     },
   });
 
-  if (cards.isPending) return <Spinner />;
+  if (clients.isPending) return <Spinner />;
 
   return (
     <>
@@ -65,7 +66,7 @@ export default function PeriodNew() {
           </svg>
         </Link>
         <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">Новый период</h1>
-        {card && <Badge tone="indigo">{card.bank_name}</Badge>}
+        {client && <Badge tone="indigo">{client.bank_name}</Badge>}
       </div>
 
       <Card className="p-4">
@@ -76,12 +77,13 @@ export default function PeriodNew() {
             create.mutate();
           }}
         >
-          <Field label="Карта">
-            <Select required value={cardID} onChange={(e) => setCardID(e.target.value)}>
-              <option value="">— выберите карту —</option>
-              {(cards.data ?? []).map((c) => (
+          <Field label="Банк · держатель">
+            <Select required value={clientID} onChange={(e) => setClientID(e.target.value)}>
+              <option value="">— выберите —</option>
+              {(clients.data ?? []).map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.bank_name} ··{String(c.last_4_digits).padStart(4, "0")}
+                  {c.bank_name}
+                  {c.label ? ` · ${c.label}` : ""}
                 </option>
               ))}
             </Select>
@@ -102,7 +104,7 @@ export default function PeriodNew() {
             </span>
             <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => setFiles([...(e.target.files ?? [])])} />
           </label>
-          <Btn type="submit" disabled={create.isPending || !cardID} className="w-full">
+          <Btn type="submit" disabled={create.isPending || !clientID} className="w-full">
             {create.isPending ? "Создание…" : "Открыть период"}
           </Btn>
           <ErrMsg error={create.error} />

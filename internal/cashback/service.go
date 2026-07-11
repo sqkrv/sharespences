@@ -21,16 +21,22 @@ import (
 var ErrNotFound = errors.New("cashback: not found")
 
 // Service wires the domain rules to storage. Reference reads of bank /
-// bank_card are the seam decided at skeleton time (00003_cashback.sql).
-// RemoveAttachmentFile is injected at assembly (the attachment module owns
-// the disk store); called after an orphaned attachment row is deleted.
+// bank_client are the seam decided at skeleton time (00003_cashback.sql,
+// re-keyed card→client in 00006). RemoveAttachmentFile is injected at
+// assembly (the attachment module owns the disk store); called after an
+// orphaned attachment row is deleted.
 type Service struct {
 	Q                    *db.Queries
 	RemoveAttachmentFile func(id uuid.UUID) error
 }
 
-func cardLabel(bankName string, last4 int32) string {
-	return fmt.Sprintf("%s ··%04d", bankName, last4)
+// clientLabel names a bank client for display: «Альфа-Банк» for the owner's
+// own relationship, «Альфа-Банк · Мама» for a держатель.
+func clientLabel(bankName string, label *string) string {
+	if label == nil || *label == "" {
+		return bankName
+	}
+	return fmt.Sprintf("%s · %s", bankName, *label)
 }
 
 func holderOf(h *string) string {
@@ -95,8 +101,8 @@ func entryOf(o db.ListUserOffersRow) LookupEntry {
 		pointsLabel = *o.PointsLabel
 	}
 	return LookupEntry{
-		CardID:         int64(o.CardID),
-		CardLabel:      cardLabel(o.BankName, o.Last4Digits),
+		ClientID:       o.BankClientID,
+		ClientLabel:    clientLabel(o.BankName, o.HolderLabel),
 		HolderLabel:    holderOf(o.HolderLabel),
 		BankName:       o.BankName,
 		Percent:        o.Percent,
@@ -113,8 +119,8 @@ func entryOf(o db.ListUserOffersRow) LookupEntry {
 // activeSelectionOf maps a selected ListUserOffers row into the domain view.
 func activeSelectionOf(row db.ListUserOffersRow) ActiveSelection {
 	return ActiveSelection{
-		CardID:              int64(row.CardID),
-		CardLabel:           cardLabel(row.BankName, row.Last4Digits),
+		ClientID:            row.BankClientID,
+		ClientLabel:         clientLabel(row.BankName, row.HolderLabel),
 		HolderLabel:         holderOf(row.HolderLabel),
 		BankName:            row.BankName,
 		CanonicalCategoryID: row.CanonicalCategoryID,
@@ -128,11 +134,11 @@ func activeSelectionOf(row db.ListUserOffersRow) ActiveSelection {
 
 // CreateOfferPeriod enforces invariant 4 in the service; the DB exclusion
 // constraint backstops races.
-func (s *Service) CreateOfferPeriod(ctx context.Context, userID uuid.UUID, cardID int32, start, end time.Time, attachmentIDs []uuid.UUID) (db.OfferPeriod, error) {
-	if _, err := s.Q.GetCardForUser(ctx, db.GetCardForUserParams{ID: cardID, UserID: userID}); err != nil {
+func (s *Service) CreateOfferPeriod(ctx context.Context, userID uuid.UUID, clientID int64, start, end time.Time, attachmentIDs []uuid.UUID) (db.OfferPeriod, error) {
+	if _, err := s.Q.GetBankClientForUser(ctx, db.GetBankClientForUserParams{ID: clientID, UserID: userID}); err != nil {
 		return db.OfferPeriod{}, notFound(err)
 	}
-	ranges, err := s.Q.ListPeriodRangesForCard(ctx, cardID)
+	ranges, err := s.Q.ListPeriodRangesForClient(ctx, clientID)
 	if err != nil {
 		return db.OfferPeriod{}, err
 	}
@@ -143,7 +149,7 @@ func (s *Service) CreateOfferPeriod(ctx context.Context, userID uuid.UUID, cardI
 	if err := ValidateNewPeriod(rowRange(start, end), existing); err != nil {
 		return db.OfferPeriod{}, err
 	}
-	period, err := s.Q.CreateOfferPeriod(ctx, db.CreateOfferPeriodParams{CardID: cardID, PeriodStart: start, PeriodEnd: end})
+	period, err := s.Q.CreateOfferPeriod(ctx, db.CreateOfferPeriodParams{BankClientID: clientID, PeriodStart: start, PeriodEnd: end})
 	if err != nil {
 		if isPgCode(err, "23P01") || isPgCode(err, "23505") {
 			return db.OfferPeriod{}, ErrPeriodOverlap
@@ -281,8 +287,8 @@ func (s *Service) effectiveMax(ctx context.Context, override *int32, tierID *int
 }
 
 // CreateSelection enforces invariants 1 and 2 (hard rejects) and records the
-// dated selection event. Cross-card duplicates never block here — the entry
-// screen surfaces them via HelperContext (invariant 3).
+// dated selection event. Cross-client duplicates never block here — the
+// entry screen surfaces them via HelperContext (invariant 3).
 func (s *Service) CreateSelection(ctx context.Context, userID uuid.UUID, categoryOfferID int64, selectedAt time.Time, backfill bool) (db.Selection, error) {
 	offer, err := s.Q.GetOfferWithContextForUser(ctx, db.GetOfferWithContextForUserParams{ID: categoryOfferID, UserID: userID})
 	if err != nil {
@@ -425,10 +431,11 @@ type HelperContextResult struct {
 }
 
 // HelperContext builds the entry-screen panel: unfilled-slot tracking,
-// cross-card duplicate warnings and same-currency comparisons per menu row.
-// Comparisons pool = same canonical category rows on the user's OTHER cards
-// with overlapping periods (so «Супермаркеты 5%» can be judged against the
-// other cards' offers of the same category), same currency only.
+// cross-client duplicate warnings and same-currency comparisons per menu
+// row. Comparisons pool = same canonical category rows on the user's OTHER
+// bank clients with overlapping periods (so «Супермаркеты 5%» can be judged
+// against the other clients' offers of the same category), same currency
+// only.
 func (s *Service) HelperContext(ctx context.Context, userID uuid.UUID, offerPeriodID int64) (HelperContextResult, error) {
 	period, err := s.Q.GetOfferPeriodForUser(ctx, db.GetOfferPeriodForUserParams{ID: offerPeriodID, UserID: userID})
 	if err != nil {
@@ -469,7 +476,7 @@ func (s *Service) HelperContext(ctx context.Context, userID uuid.UUID, offerPeri
 		}
 		hr := HelperRow{Offer: row}
 		candidate := CandidateSelection{
-			CardID:              int64(period.CardID),
+			ClientID:            period.BankClientID,
 			CanonicalCategoryID: row.CanonicalCategoryID,
 			Period:              periodRange,
 			Kind:                OfferKind(row.Kind),
@@ -483,13 +490,13 @@ func (s *Service) HelperContext(ctx context.Context, userID uuid.UUID, offerPeri
 				Percent:      row.Percent,
 				Kind:         OfferKind(row.Kind),
 				CurrencyKind: thisCurrency,
-				CardID:       int64(period.CardID),
+				ClientID:     period.BankClientID,
 				BankName:     period.BankName,
-				CardLabel:    cardLabel(period.BankName, period.Last4Digits),
+				ClientLabel:  clientLabel(period.BankName, period.HolderLabel),
 			}
 			var pool []OfferView
 			for _, o := range all {
-				if int64(o.CardID) == int64(period.CardID) ||
+				if o.BankClientID == period.BankClientID ||
 					o.CanonicalCategoryID == nil ||
 					*o.CanonicalCategoryID != *row.CanonicalCategoryID ||
 					!periodRange.Overlaps(rowRange(o.PeriodStart, o.PeriodEnd)) {
@@ -501,9 +508,9 @@ func (s *Service) HelperContext(ctx context.Context, userID uuid.UUID, offerPeri
 					Percent:      o.Percent,
 					Kind:         OfferKind(o.Kind),
 					CurrencyKind: currencyOf(o),
-					CardID:       int64(o.CardID),
+					ClientID:     o.BankClientID,
 					BankName:     o.BankName,
-					CardLabel:    cardLabel(o.BankName, o.Last4Digits),
+					ClientLabel:  clientLabel(o.BankName, o.HolderLabel),
 				})
 			}
 			hr.Comparisons = ComparableOffers(candidateView, pool)
@@ -532,15 +539,24 @@ type OverviewSelectedRow struct {
 	Percent  *decimal.Decimal
 }
 
-// OverviewCard is one row of the «Карты» cut. Period is nil when the card
-// has no offer_period covering the date («нет периода», the design's dashed
-// card with «Добавить»).
-type OverviewCard struct {
+// OverviewClientCard is one plastic of the client, shown as a chip
+// («··1234») — any of them pays with the client's shared selection.
+type OverviewClientCard struct {
 	CardID        int32
-	BankID        int16
-	BankName      string
 	Last4Digits   int32
+	PaymentSystem string
+}
+
+// OverviewClient is one row of the «Карты» cut: a bank client (person ×
+// bank) with its plastics. Period is nil when the client has no
+// offer_period covering the date («нет периода», the design's dashed card
+// with «Добавить»).
+type OverviewClient struct {
+	ClientID      int64
+	BankID        int32
+	BankName      string
 	HolderLabel   *string
+	Cards         []OverviewClientCard
 	TierName      *string
 	IsPaidTier    bool
 	CapValue      *decimal.Decimal
@@ -570,8 +586,8 @@ type OverviewBase struct {
 type OverviewResult struct {
 	Categories        []OverviewCategoryGroup
 	Base              *OverviewBase
-	Cards             []OverviewCard
-	SelectionOpensDay *int32 // earliest across the user's cards' programs
+	Clients           []OverviewClient
+	SelectionOpensDay *int32 // earliest across the user's clients' programs
 }
 
 // fallbackEntries picks the selected rows that answer «а если категория не
@@ -604,9 +620,19 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 	if err != nil {
 		return OverviewResult{}, err
 	}
+	clients, err := s.Q.ListBankClientsForUser(ctx, userID)
+	if err != nil {
+		return OverviewResult{}, err
+	}
 	cards, err := s.Q.ListCardsForUser(ctx, userID)
 	if err != nil {
 		return OverviewResult{}, err
+	}
+	cardsByClient := make(map[int64][]OverviewClientCard, len(clients))
+	for _, c := range cards {
+		cardsByClient[c.BankClientID] = append(cardsByClient[c.BankClientID], OverviewClientCard{
+			CardID: c.ID, Last4Digits: c.Last4Digits, PaymentSystem: string(c.PaymentSystem),
+		})
 	}
 	cats, err := s.Q.ListCanonicalCategories(ctx)
 	if err != nil {
@@ -669,24 +695,25 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		return res.Categories[i].TitleRu < res.Categories[j].TitleRu
 	})
 
-	// «Остальное»: best selected «За все покупки» across cards.
+	// «Остальное»: best selected «За все покупки» across clients.
 	fb := RankActiveSelections(onDate, fallbackEntries(offers, allPurposesID, nil, entryOf))
 	if len(fb.Ranked) > 0 {
 		res.Base = &OverviewBase{Best: fb.Ranked[0], OthersCount: len(fb.Ranked) - 1}
 	}
 
-	// --- «Карты»: every card, with its active period when one exists. ---
-	for _, card := range cards {
-		oc := OverviewCard{
-			CardID:       card.ID,
-			BankID:       card.BankID,
-			BankName:     card.BankName,
-			Last4Digits:  card.Last4Digits,
-			HolderLabel:  card.HolderLabel,
+	// --- «Карты»: every bank client with its plastics, and the client's
+	// active period when one exists (all its cards share it). ---
+	for _, client := range clients {
+		oc := OverviewClient{
+			ClientID:     client.ID,
+			BankID:       client.BankID,
+			BankName:     client.BankName,
+			HolderLabel:  client.Label,
+			Cards:        cardsByClient[client.ID],
 			CurrencyKind: CurrencyUnknown,
 		}
-		if card.ProgramTierID != nil {
-			tier, err := s.Q.GetTier(ctx, *card.ProgramTierID)
+		if client.ProgramTierID != nil {
+			tier, err := s.Q.GetTier(ctx, *client.ProgramTierID)
 			if err != nil {
 				return OverviewResult{}, err
 			}
@@ -711,7 +738,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			}
 		}
 		for _, o := range offers {
-			if o.CardID != card.ID || !rowRange(o.PeriodStart, o.PeriodEnd).Contains(onDate) {
+			if o.BankClientID != client.ID || !rowRange(o.PeriodStart, o.PeriodEnd).Contains(onDate) {
 				continue
 			}
 			if oc.PeriodID == nil {
@@ -732,7 +759,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 				oc.Selected = append(oc.Selected, row)
 			}
 		}
-		res.Cards = append(res.Cards, oc)
+		res.Clients = append(res.Clients, oc)
 	}
 	return res, nil
 }

@@ -24,10 +24,12 @@ var (
 	q3_2026    = DateRange{Start: Date(2026, time.July, 1), End: Date(2026, time.September, 30)}
 )
 
+// Bank clients (person × bank): the same user's relationships with three
+// banks. Cards do not appear here — selections are keyed by client.
 const (
-	cardAlfa int64 = 1
-	cardOzon int64 = 2
-	cardMKB  int64 = 3
+	clientAlfa int64 = 1
+	clientOzon int64 = 2
+	clientMKB  int64 = 3
 )
 
 // supermarkets is the canonical category shared by Альфа-Банк «Супермаркеты»
@@ -36,8 +38,8 @@ const supermarketsID int64 = 10
 
 func alfaSupermarkets() ActiveSelection {
 	return ActiveSelection{
-		CardID:              cardAlfa,
-		CardLabel:           "Альфа-Банк ··1234",
+		ClientID:              clientAlfa,
+		ClientLabel:         "Альфа-Банк",
 		BankName:            "Альфа-Банк",
 		CanonicalCategoryID: catID(supermarketsID),
 		Period:              july2026,
@@ -54,7 +56,7 @@ func alfaSupermarkets() ActiveSelection {
 // produce a warning naming Альфа-Банк — a warning, never a block.
 func TestDetectCollisions_MainScenario(t *testing.T) {
 	candidate := CandidateSelection{
-		CardID:              cardOzon,
+		ClientID:              clientOzon,
 		CanonicalCategoryID: catID(supermarketsID),
 		Period:              july2026,
 		Kind:                OfferRegular,
@@ -75,7 +77,7 @@ func TestDetectCollisions_MainScenario(t *testing.T) {
 
 func TestDetectCollisions(t *testing.T) {
 	base := CandidateSelection{
-		CardID:              cardOzon,
+		ClientID:              clientOzon,
 		CanonicalCategoryID: catID(supermarketsID),
 		Period:              july2026,
 		Kind:                OfferRegular,
@@ -88,7 +90,7 @@ func TestDetectCollisions(t *testing.T) {
 		want      int
 	}{
 		{
-			name:      "same category, different card, overlapping period → warn",
+			name:      "same category, different client, overlapping period → warn",
 			candidate: base,
 			others:    []ActiveSelection{alfaSupermarkets()},
 			want:      1,
@@ -104,9 +106,9 @@ func TestDetectCollisions(t *testing.T) {
 			want: 0,
 		},
 		{
-			name: "same card → no warning (cross-card only)",
+			name: "same client → no warning (a second card of the same client is still the same client)",
 			candidate: CandidateSelection{
-				CardID:              cardAlfa,
+				ClientID:              clientAlfa,
 				CanonicalCategoryID: catID(supermarketsID),
 				Period:              july2026,
 				Kind:                OfferRegular,
@@ -117,7 +119,7 @@ func TestDetectCollisions(t *testing.T) {
 		{
 			name: "non-overlapping periods → no warning",
 			candidate: CandidateSelection{
-				CardID:              cardOzon,
+				ClientID:              clientOzon,
 				CanonicalCategoryID: catID(supermarketsID),
 				Period:              august2026,
 				Kind:                OfferRegular,
@@ -132,7 +134,7 @@ func TestDetectCollisions(t *testing.T) {
 		{
 			name: "quarter (МКБ) overlaps month → warn (S5: overlap on date ranges)",
 			candidate: CandidateSelection{
-				CardID:              cardMKB,
+				ClientID:              clientMKB,
 				CanonicalCategoryID: catID(supermarketsID),
 				Period:              q3_2026,
 				Kind:                OfferRegular,
@@ -143,7 +145,7 @@ func TestDetectCollisions(t *testing.T) {
 		{
 			name: "already-entered NEXT period collides too (S1)",
 			candidate: CandidateSelection{
-				CardID:              cardOzon,
+				ClientID:              clientOzon,
 				CanonicalCategoryID: catID(supermarketsID),
 				Period:              august2026,
 				Kind:                OfferRegular,
@@ -157,7 +159,7 @@ func TestDetectCollisions(t *testing.T) {
 		},
 		{
 			name:      "candidate without canonical mapping → no warning",
-			candidate: CandidateSelection{CardID: cardOzon, Period: july2026, Kind: OfferRegular},
+			candidate: CandidateSelection{ClientID: clientOzon, Period: july2026, Kind: OfferRegular},
 			others:    []ActiveSelection{alfaSupermarkets()},
 			want:      0,
 		},
@@ -174,7 +176,7 @@ func TestDetectCollisions(t *testing.T) {
 		{
 			name: "special candidate → excluded from helper math (invariant 6)",
 			candidate: CandidateSelection{
-				CardID:              cardOzon,
+				ClientID:              clientOzon,
 				CanonicalCategoryID: catID(supermarketsID),
 				Period:              july2026,
 				Kind:                OfferSpecial,
@@ -193,11 +195,11 @@ func TestDetectCollisions(t *testing.T) {
 			want: 0,
 		},
 		{
-			name:      "two colliding cards → two warnings",
+			name:      "two colliding clients → two warnings",
 			candidate: base,
 			others: []ActiveSelection{alfaSupermarkets(), func() ActiveSelection {
 				s := alfaSupermarkets()
-				s.CardID = cardMKB
+				s.ClientID = clientMKB
 				s.BankName = "МКБ"
 				s.Period = q3_2026
 				return s
@@ -355,8 +357,8 @@ func TestValidateSelection(t *testing.T) {
 	}
 }
 
-// TestValidateNewPeriod covers invariant 4: one card's offer_period ranges
-// never overlap. Boundaries are inclusive dates.
+// TestValidateNewPeriod covers invariant 4: one bank client's offer_period
+// ranges never overlap. Boundaries are inclusive dates.
 func TestValidateNewPeriod(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -364,7 +366,7 @@ func TestValidateNewPeriod(t *testing.T) {
 		existing  []DateRange
 		wantErr   error
 	}{
-		{"first period of a card", july2026, nil, nil},
+		{"first period of a client", july2026, nil, nil},
 		{"adjacent months do not overlap", august2026, []DateRange{july2026}, nil},
 		{"identical range", july2026, []DateRange{july2026}, ErrPeriodOverlap},
 		{"quarter overlaps its months", q3_2026, []DateRange{july2026}, ErrPeriodOverlap},
@@ -445,16 +447,16 @@ func TestDateRange(t *testing.T) {
 func TestComparableOffers(t *testing.T) {
 	candidate := OfferView{
 		OfferID: 1, RawTitle: "Продукты", Percent: pct("5"),
-		Kind: OfferRegular, CurrencyKind: CurrencyRub, CardID: cardOzon,
-		CardLabel: "Озон Банк ··5678", BankName: "Озон Банк",
+		Kind: OfferRegular, CurrencyKind: CurrencyRub, ClientID: clientOzon,
+		ClientLabel: "Озон Банк", BankName: "Озон Банк",
 	}
 	pool := []OfferView{
 		candidate, // itself — must be excluded
-		{OfferID: 2, RawTitle: "Супермаркеты", Percent: pct("7"), Kind: OfferRegular, CurrencyKind: CurrencyRub, CardID: cardAlfa, BankName: "Альфа-Банк"},
-		{OfferID: 3, RawTitle: "Рестораны", Percent: pct("3"), Kind: OfferRegular, CurrencyKind: CurrencyRub, CardID: cardAlfa, BankName: "Альфа-Банк"},
-		{OfferID: 4, RawTitle: "Супермаркеты", Percent: pct("10"), Kind: OfferRegular, CurrencyKind: CurrencyPoints, CardID: 4, BankName: "Яндекс Пэй"},
-		{OfferID: 5, RawTitle: "Барабан суперкэшбека", Percent: pct("100"), Kind: OfferSpecial, CurrencyKind: CurrencyRub, CardID: cardAlfa, BankName: "Альфа-Банк"},
-		{OfferID: 6, RawTitle: "Загадка", Percent: nil, Kind: OfferRegular, CurrencyKind: CurrencyRub, CardID: cardMKB, BankName: "МКБ"},
+		{OfferID: 2, RawTitle: "Супермаркеты", Percent: pct("7"), Kind: OfferRegular, CurrencyKind: CurrencyRub, ClientID: clientAlfa, BankName: "Альфа-Банк"},
+		{OfferID: 3, RawTitle: "Рестораны", Percent: pct("3"), Kind: OfferRegular, CurrencyKind: CurrencyRub, ClientID: clientAlfa, BankName: "Альфа-Банк"},
+		{OfferID: 4, RawTitle: "Супермаркеты", Percent: pct("10"), Kind: OfferRegular, CurrencyKind: CurrencyPoints, ClientID: 4, BankName: "Яндекс Пэй"},
+		{OfferID: 5, RawTitle: "Барабан суперкэшбека", Percent: pct("100"), Kind: OfferSpecial, CurrencyKind: CurrencyRub, ClientID: clientAlfa, BankName: "Альфа-Банк"},
+		{OfferID: 6, RawTitle: "Загадка", Percent: nil, Kind: OfferRegular, CurrencyKind: CurrencyRub, ClientID: clientMKB, BankName: "МКБ"},
 	}
 
 	got := ComparableOffers(candidate, pool)
@@ -482,11 +484,11 @@ func TestComparableOffers(t *testing.T) {
 // listed apart, inactive periods filtered.
 func TestRankActiveSelections(t *testing.T) {
 	entries := []LookupEntry{
-		{CardID: cardOzon, BankName: "Озон Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, CapValue: pct("3000"), CapPerCategory: pct("1500"), CapScope: CapBoth},
-		{CardID: cardAlfa, BankName: "Альфа-Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, CapValue: pct("7000"), CapScope: CapTotal},
-		{CardID: 5, BankName: "ВТБ", Percent: pct("15"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: june2026, CapValue: pct("3000"), CapScope: CapTotal}, // expired
-		{CardID: 4, BankName: "Яндекс Пэй", Percent: pct("10"), CurrencyKind: CurrencyPoints, Kind: OfferRegular, Period: july2026, PointsLabel: "Баллы Плюс"},
-		{CardID: cardAlfa, BankName: "Альфа-Банк", Percent: pct("100"), CurrencyKind: CurrencyRub, Kind: OfferSpecial, Period: july2026},
+		{ClientID: clientOzon, BankName: "Озон Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, CapValue: pct("3000"), CapPerCategory: pct("1500"), CapScope: CapBoth},
+		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, CapValue: pct("7000"), CapScope: CapTotal},
+		{ClientID: 5, BankName: "ВТБ", Percent: pct("15"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: june2026, CapValue: pct("3000"), CapScope: CapTotal}, // expired
+		{ClientID: 4, BankName: "Яндекс Пэй", Percent: pct("10"), CurrencyKind: CurrencyPoints, Kind: OfferRegular, Period: july2026, PointsLabel: "Баллы Плюс"},
+		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("100"), CurrencyKind: CurrencyRub, Kind: OfferSpecial, Period: july2026},
 	}
 
 	got := RankActiveSelections(Date(2026, time.July, 15), entries)
@@ -515,8 +517,8 @@ func TestRankActiveSelections(t *testing.T) {
 	}
 
 	higherFirst := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
-		{CardID: 1, BankName: "А", Percent: pct("3"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
-		{CardID: 2, BankName: "Б", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: 1, BankName: "А", Percent: pct("3"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: 2, BankName: "Б", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
 	})
 	if len(higherFirst.Ranked) != 2 || !higherFirst.Ranked[0].Percent.Equal(decimal.RequireFromString("7")) {
 		t.Errorf("higher percent must rank first within a currency group")

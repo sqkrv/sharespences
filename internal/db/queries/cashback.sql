@@ -1,6 +1,7 @@
--- Cashback module queries. Seam note: joins to bank / bank_card are the
+-- Cashback module queries. Seam note: joins to bank / bank_client are the
 -- module's read-only reference reads (decided at skeleton, see
--- 00003_cashback.sql header); no other module touches cashback tables.
+-- 00003_cashback.sql header; re-keyed card→client in 00006); no other
+-- module touches cashback tables.
 
 -- name: CreateProgram :one
 insert into cashback_program (bank_id, name, period_type, selection_mode, currency_kind,
@@ -97,29 +98,29 @@ values ($1, $2, $3)
 on conflict (bank_id, raw_title) do update set canonical_category_id = excluded.canonical_category_id;
 
 -- name: CreateOfferPeriod :one
-insert into offer_period (card_id, period_start, period_end)
+insert into offer_period (bank_client_id, period_start, period_end)
 values ($1, $2, $3)
 returning *;
 
--- name: ListPeriodRangesForCard :many
+-- name: ListPeriodRangesForClient :many
 select period_start, period_end
 from offer_period
-where card_id = $1;
+where bank_client_id = $1;
 
 -- name: GetOfferPeriodForUser :one
-select op.*, bc.bank_id, bc.last_4_digits, bc.holder_label, bc.program_tier_id, b.name as bank_name
+select op.*, cl.bank_id, cl.label as holder_label, cl.program_tier_id, b.name as bank_name
 from offer_period op
-         join bank_card bc on bc.id = op.card_id
-         join bank b on b.id = bc.bank_id
+         join bank_client cl on cl.id = op.bank_client_id
+         join bank b on b.id = cl.bank_id
 where op.id = $1
-  and bc.user_id = $2;
+  and cl.user_id = $2;
 
 -- name: ListOfferPeriodsForUser :many
-select op.*, bc.bank_id, bc.last_4_digits, b.name as bank_name
+select op.*, cl.bank_id, cl.label as holder_label, b.name as bank_name
 from offer_period op
-         join bank_card bc on bc.id = op.card_id
-         join bank b on b.id = bc.bank_id
-where bc.user_id = $1
+         join bank_client cl on cl.id = op.bank_client_id
+         join bank b on b.id = cl.bank_id
+where cl.user_id = $1
 order by op.period_start desc, op.id;
 
 -- name: AttachToOfferPeriod :exec
@@ -162,11 +163,11 @@ set raw_title             = $3,
     kind                  = $6,
     notes                 = $7
 from offer_period op,
-     bank_card bc
+     bank_client cl
 where co.id = $1
   and op.id = co.offer_period_id
-  and bc.id = op.card_id
-  and bc.user_id = $2
+  and cl.id = op.bank_client_id
+  and cl.user_id = $2
 returning co.*;
 
 -- name: DeleteSelectionByOffer :exec
@@ -182,10 +183,10 @@ where id = $1;
 -- name: SetOfferPeriodMaxOverride :one
 update offer_period op
 set max_categories_override = $3
-from bank_card bc
+from bank_client cl
 where op.id = $1
-  and bc.id = op.card_id
-  and bc.user_id = $2
+  and cl.id = op.bank_client_id
+  and cl.user_id = $2
 returning op.*;
 
 -- name: ListOfferIDsForPeriod :many
@@ -212,19 +213,19 @@ order by co.id;
 
 -- name: GetOfferWithContextForUser :one
 select co.*,
-       op.card_id,
+       op.bank_client_id,
        op.period_start,
        op.period_end,
        op.max_categories_override,
-       bc.bank_id,
-       bc.program_tier_id,
+       cl.bank_id,
+       cl.program_tier_id,
        (s.id is not null)::bool as already_selected
 from category_offer co
          join offer_period op on op.id = co.offer_period_id
-         join bank_card bc on bc.id = op.card_id
+         join bank_client cl on cl.id = op.bank_client_id
          left join selection s on s.category_offer_id = co.id
 where co.id = $1
-  and bc.user_id = $2;
+  and cl.user_id = $2;
 
 -- name: CountRegularSelectionsInPeriod :one
 select count(*)
@@ -241,17 +242,17 @@ returning *;
 -- name: DeleteSelectionForUser :execrows
 delete
 from selection s
-    using category_offer co, offer_period op, bank_card bc
+    using category_offer co, offer_period op, bank_client cl
 where s.id = $1
   and co.id = s.category_offer_id
   and op.id = co.offer_period_id
-  and bc.id = op.card_id
-  and bc.user_id = $2;
+  and cl.id = op.bank_client_id
+  and cl.user_id = $2;
 
 -- ListUserOffers is the helper/lookup workhorse: every menu row of the
--- user's cards with its period, card, tier-cap and program-currency context,
--- plus whether it is selected. Filtering (overlap, currency, kind, date) is
--- domain logic in Go — data volume is personal-app sized.
+-- user's bank clients with its period, client, tier-cap and program-currency
+-- context, plus whether it is selected. Filtering (overlap, currency, kind,
+-- date) is domain logic in Go — data volume is personal-app sized.
 -- name: ListUserOffers :many
 select co.id                     as category_offer_id,
        co.raw_title,
@@ -259,12 +260,11 @@ select co.id                     as category_offer_id,
        co.percent,
        co.kind,
        op.id                     as offer_period_id,
-       op.card_id,
+       op.bank_client_id,
        op.period_start,
        op.period_end,
        op.max_categories_override,
-       bc.last_4_digits,
-       bc.holder_label,
+       cl.label                  as holder_label,
        b.name                    as bank_name,
        pt.cap_value,
        pt.cap_scope              as tier_cap_scope,
@@ -276,15 +276,15 @@ select co.id                     as category_offer_id,
        s.selected_at
 from category_offer co
          join offer_period op on op.id = co.offer_period_id
-         join bank_card bc on bc.id = op.card_id
-         join bank b on b.id = bc.bank_id
+         join bank_client cl on cl.id = op.bank_client_id
+         join bank b on b.id = cl.bank_id
          left join selection s on s.category_offer_id = co.id
-         left join program_tier pt on pt.id = bc.program_tier_id
+         left join program_tier pt on pt.id = cl.program_tier_id
          left join cashback_program cp on cp.id = pt.program_id
-where bc.user_id = $1;
+where cl.user_id = $1;
 
 -- name: CreatePartnerOffer :one
-insert into partner_offer (user_id, bank_id, card_id, merchant_title, percent,
+insert into partner_offer (user_id, bank_id, bank_client_id, merchant_title, percent,
                            valid_from, valid_to, cap_value, notes)
 values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 returning *;

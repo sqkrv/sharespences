@@ -466,20 +466,24 @@ type Bank struct {
 
 type BankCard struct {
 	ID            int32
-	BankID        int16
-	UserID        uuid.UUID
 	Last4Digits   int32
 	PaymentSystem PaymentSystem
 	ImageFilename *string
-	ProgramTierID *int64
-	// Family member holding this plastic; null = the account owner themselves
-	HolderLabel *string
+	BankClientID  int64
 }
 
 type BankCategoryAlias struct {
 	CanonicalCategoryID int64
 	BankID              int32
 	RawTitle            string
+}
+
+type BankClient struct {
+	ID            int64
+	UserID        uuid.UUID
+	BankID        int32
+	Label         *string
+	ProgramTierID *int64
 }
 
 type BankMcc struct {
@@ -539,11 +543,11 @@ type Mcc struct {
 
 type OfferPeriod struct {
 	ID          int64
-	CardID      int32
 	PeriodStart time.Time
 	PeriodEnd   time.Time
 	// Per-period slot count; null = use tier.max_categories (invariant 1 uses the effective value)
 	MaxCategoriesOverride *int32
+	BankClientID          int64
 }
 
 type OfferPeriodAttachment struct {
@@ -555,13 +559,13 @@ type PartnerOffer struct {
 	ID            int64
 	UserID        uuid.UUID
 	BankID        int32
-	CardID        *int32
 	MerchantTitle string
 	Percent       *decimal.Decimal
 	ValidFrom     *time.Time
 	ValidTo       *time.Time
 	CapValue      *decimal.Decimal
 	Notes         *string
+	BankClientID  *int64
 }
 
 type PartnerOfferAttachment struct {

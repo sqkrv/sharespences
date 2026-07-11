@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, unwrap, attachmentURL, uploadAttachment, ApiError, type CanonicalCategory, type CategoryOffer, type HelperRow } from "../api/client";
-import { useCards, useCategories, useTierMap } from "../hooks";
+import { useCards, useCategories, useClients, useTierMap } from "../hooks";
 import { Badge, Btn, Card, CheckDot, ErrMsg, Field, GradientCard, Input, Pct, Select, Spinner } from "../components/ui";
 import { currencyBadge, fmtRange } from "../lib";
 
@@ -457,6 +457,7 @@ export default function Period() {
   const id = Number(useParams().id);
   const period = usePeriod(id);
   const helper = useHelper(id);
+  const clients = useClients();
   const cards = useCards();
   const tierMap = useTierMap();
   const qc = useQueryClient();
@@ -525,9 +526,12 @@ export default function Period() {
   const slotsFull = h.max_categories != null && h.slots_used >= h.max_categories;
   const collisionCount = (h.rows ?? []).filter((r) => (r.collisions ?? []).length > 0).length;
 
-  const card = (cards.data ?? []).find((c) => c.id === p.card_id);
-  const tierInfo = card?.program_tier_id != null ? tierMap.data?.get(card.program_tier_id) : undefined;
+  const client = (clients.data ?? []).find((c) => c.id === p.bank_client_id);
+  const tierInfo = client?.program_tier_id != null ? tierMap.data?.get(client.program_tier_id) : undefined;
   const currency = tierInfo ? tierInfo.program.currency_kind : undefined;
+  // The client's plastics — any of them pays with this period's selection.
+  const clientCards = (cards.data ?? []).filter((c) => c.bank_client_id === p.bank_client_id);
+  const cardChips = clientCards.map((c) => `··${String(c.last_4_digits).padStart(4, "0")}`).join(" ");
 
   return (
     <>
@@ -552,7 +556,7 @@ export default function Period() {
                 {tierInfo.tier.base_percent != null ? `${tierInfo.tier.base_percent}%` : tierInfo.tier.name}
               </p>
               <p className="mt-2 text-[11px] font-semibold text-white/85">
-                ···· {String(card!.last_4_digits).padStart(4, "0")} · {currencyBadge(currency, tierInfo.program.points_label ?? undefined) === "₽" ? "рубли" : currencyBadge(currency, tierInfo.program.points_label ?? undefined)}
+                {[client?.label, cardChips].filter(Boolean).join(" · ") || "любая карта"} · {currencyBadge(currency, tierInfo.program.points_label ?? undefined) === "₽" ? "рубли" : currencyBadge(currency, tierInfo.program.points_label ?? undefined)}
               </p>
             </div>
             <div className="text-right">
@@ -666,7 +670,7 @@ export default function Period() {
               ))}
               {(hrow?.comparisons ?? []).length > 0 && (
                 <p className="mt-1.5 ml-8 text-[10px] font-medium text-tx4">
-                  Сравнение: {(hrow?.comparisons ?? []).map((cmp) => `${cmp.card_label} — ${cmp.percent != null ? cmp.percent + "%" : "—"}`).join(" · ")}
+                  Сравнение: {(hrow?.comparisons ?? []).map((cmp) => `${cmp.client_label} — ${cmp.percent != null ? cmp.percent + "%" : "—"}`).join(" · ")}
                 </p>
               )}
               {editingID === offer.id && <EditOfferForm offer={offer} categories={categories.data ?? []} onDone={() => setEditingID(null)} />}

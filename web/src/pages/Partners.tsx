@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, uploadAttachment, type PartnerOffer } from "../api/client";
-import { useBanks, useCards } from "../hooks";
+import { useBanks, useClients } from "../hooks";
 import { Btn, Card, ErrMsg, Field, Input, Select, Spinner } from "../components/ui";
 import { fmtDate, fmtPercent, todayISO } from "../lib";
 
@@ -9,7 +9,7 @@ import { fmtDate, fmtPercent, todayISO } from "../lib";
 // urgency, never in helper math.
 export default function Partners() {
   const banks = useBanks();
-  const cards = useCards();
+  const clients = useClients();
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
 
@@ -20,7 +20,7 @@ export default function Partners() {
 
   const [form, setForm] = useState({
     bank_id: "",
-    card_id: "",
+    bank_client_id: "",
     merchant_title: "",
     percent: "",
     valid_from: "",
@@ -41,7 +41,7 @@ export default function Partners() {
           body: {
             bank_id: Number(form.bank_id),
             merchant_title: form.merchant_title,
-            ...(form.card_id ? { card_id: Number(form.card_id) } : {}),
+            ...(form.bank_client_id ? { bank_client_id: Number(form.bank_client_id) } : {}),
             ...(form.percent ? { percent: form.percent } : {}),
             ...(form.valid_from ? { valid_from: form.valid_from } : {}),
             ...(form.valid_to ? { valid_to: form.valid_to } : {}),
@@ -53,7 +53,7 @@ export default function Partners() {
       );
     },
     onSuccess: () => {
-      setForm({ bank_id: "", card_id: "", merchant_title: "", percent: "", valid_from: "", valid_to: "", cap_value: "", notes: "" });
+      setForm({ bank_id: "", bank_client_id: "", merchant_title: "", percent: "", valid_from: "", valid_to: "", cap_value: "", notes: "" });
       setFiles([]);
       setAdding(false);
       qc.invalidateQueries({ queryKey: ["partner-offers"] });
@@ -66,7 +66,7 @@ export default function Partners() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["partner-offers"] }),
   });
 
-  const bankCards = (cards.data ?? []).filter((c) => String(c.bank_id) === form.bank_id);
+  const bankClients = (clients.data ?? []).filter((c) => String(c.bank_id) === form.bank_id);
 
   const today = todayISO();
   const soonEdge = (() => {
@@ -81,7 +81,7 @@ export default function Partners() {
 
   const daysLeft = (to: string) => Math.max(0, Math.round((new Date(to).getTime() - new Date(today).getTime()) / 86400000));
 
-  const cardOf = (o: PartnerOffer) => (cards.data ?? []).find((c) => c.id === o.card_id);
+  const clientOf = (o: PartnerOffer) => (clients.data ?? []).find((c) => c.id === o.bank_client_id);
 
   const Row = ({ o, urgent, muted }: { o: PartnerOffer; urgent?: boolean; muted?: boolean }) => (
     <div className={`flex items-center gap-2.5 rounded-2xl border border-brd bg-srf px-3 py-2.5 ${muted ? "opacity-55" : ""}`}>
@@ -103,7 +103,7 @@ export default function Partners() {
           {o.valid_to && <span className="h-[3px] w-[3px] rounded-full bg-dash" />}
           <span className="truncate">
             {o.bank_name}
-            {cardOf(o) && ` · ····${String(cardOf(o)!.last_4_digits).padStart(4, "0")}`}
+            {clientOf(o)?.label && ` · ${clientOf(o)!.label}`}
           </span>
         </p>
       </div>
@@ -161,12 +161,12 @@ export default function Partners() {
                   ))}
                 </Select>
               </Field>
-              <Field label="Карта (необязательно)">
-                <Select value={form.card_id} onChange={set("card_id")}>
-                  <option value="">— любая —</option>
-                  {bankCards.map((c) => (
+              <Field label="Держатель (необязательно)">
+                <Select value={form.bank_client_id} onChange={set("bank_client_id")}>
+                  <option value="">— любой —</option>
+                  {bankClients.map((c) => (
                     <option key={c.id} value={c.id}>
-                      ··{String(c.last_4_digits).padStart(4, "0")}
+                      {c.label ?? "Я"}
                     </option>
                   ))}
                 </Select>

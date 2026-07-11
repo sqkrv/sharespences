@@ -1,7 +1,9 @@
-// Package cashback implements the КБ (cashback) module: recording per-card
-// offer menus and selections, the constraint helper, and the category-level
-// lookup. Domain rules follow docs/specs/cashback.md (private meta-repo);
-// invariant numbers in comments refer to its "Invariants" section.
+// Package cashback implements the КБ (cashback) module: recording offer
+// menus and selections per bank client (a person's relationship with one
+// bank — all of the client's cards share the selection), the constraint
+// helper, and the category-level lookup. Domain rules follow
+// docs/specs/cashback.md (private meta-repo); invariant numbers in comments
+// refer to its "Invariants" section.
 package cashback
 
 import (
@@ -20,8 +22,9 @@ type CurrencyKind string
 const (
 	CurrencyRub    CurrencyKind = "rub"
 	CurrencyPoints CurrencyKind = "points"
-	// CurrencyUnknown marks cards without a resolvable program (no tier set).
-	// Never compared with anything; listed as its own last group in lookups.
+	// CurrencyUnknown marks bank clients without a resolvable program (no
+	// tier set). Never compared with anything; listed as its own last group
+	// in lookups.
 	CurrencyUnknown CurrencyKind = "unknown"
 )
 
@@ -70,8 +73,8 @@ const (
 var (
 	// ErrInvalidPeriod — period range has End before Start.
 	ErrInvalidPeriod = errors.New("cashback: invalid period range")
-	// ErrPeriodOverlap — invariant 4: offer_period ranges for one card never overlap.
-	ErrPeriodOverlap = errors.New("cashback: offer periods overlap for this card")
+	// ErrPeriodOverlap — invariant 4: offer_period ranges for one bank client never overlap.
+	ErrPeriodOverlap = errors.New("cashback: offer periods overlap for this bank client")
 	// ErrSlotsExhausted — invariant 1: selections per period ≤ tier.max_categories.
 	ErrSlotsExhausted = errors.New("cashback: tier category slots exhausted")
 	// ErrOutsidePeriod — invariant 2: selected_at date outside the offer's period.
@@ -119,8 +122,8 @@ func (r DateRange) Overlaps(o DateRange) bool {
 	return !dateOnly(r.Start).After(dateOnly(o.End)) && !dateOnly(o.Start).After(dateOnly(r.End))
 }
 
-// ValidateNewPeriod enforces invariant 4 for a card's new offer_period
-// against its existing period ranges.
+// ValidateNewPeriod enforces invariant 4 for a bank client's new
+// offer_period against its existing period ranges.
 func ValidateNewPeriod(candidate DateRange, existing []DateRange) error {
 	if !candidate.Valid() {
 		return ErrInvalidPeriod
@@ -158,7 +161,7 @@ type SelectionCheck struct {
 
 // ValidateSelection returns nil if the selection may be recorded, or one of
 // ErrAlreadySelected, ErrOutsidePeriod, ErrSlotsExhausted (hard rejects).
-// Cross-card duplicates are NOT checked here — they are warnings, never
+// Cross-client duplicates are NOT checked here — they are warnings, never
 // blocks (invariant 3); see DetectCollisions.
 func ValidateSelection(c SelectionCheck) error {
 	if c.AlreadySelected {
@@ -177,18 +180,18 @@ func ValidateSelection(c SelectionCheck) error {
 // CandidateSelection identifies the offer a user is about to select, for
 // collision warnings.
 type CandidateSelection struct {
-	CardID              int64
+	ClientID            int64
 	CanonicalCategoryID *int64
 	Period              DateRange
 	Kind                OfferKind
 }
 
-// ActiveSelection is an existing selection on some card of the same user,
-// with display fields the warning message needs.
+// ActiveSelection is an existing selection on some bank client of the same
+// user, with display fields the warning message needs.
 type ActiveSelection struct {
-	CardID              int64
-	CardLabel           string // «Альфа-Банк ··1234»
-	HolderLabel         string // whose plastic («Мама»); empty = the owner
+	ClientID            int64
+	ClientLabel         string // «Альфа-Банк» / «Альфа-Банк · Мама»
+	HolderLabel         string // держатель («Мама»); empty = the owner
 	BankName            string
 	CanonicalCategoryID *int64
 	Period              DateRange
@@ -198,13 +201,15 @@ type ActiveSelection struct {
 	CapNote             string // static cap info for display, e.g. «лимит 1500₽/кат»
 }
 
-// Collision is a cross-card duplicate warning (invariant 3): advisory only.
+// Collision is a cross-client duplicate warning (invariant 3): advisory
+// only. Same person duplicating a category across two banks, or two people
+// at one bank, is deliberate and legal — both caps get filled.
 type Collision struct {
 	Other ActiveSelection
 }
 
 // DetectCollisions returns a warning per existing selection of the same
-// canonical category on a DIFFERENT card with an overlapping period.
+// canonical category on a DIFFERENT bank client with an overlapping period.
 // Special offers never participate (invariant 6: excluded from helper math);
 // offers without a canonical mapping cannot collide.
 func DetectCollisions(candidate CandidateSelection, others []ActiveSelection) []Collision {
@@ -217,7 +222,7 @@ func DetectCollisions(candidate CandidateSelection, others []ActiveSelection) []
 		case o.Kind == OfferSpecial,
 			o.CanonicalCategoryID == nil,
 			*o.CanonicalCategoryID != *candidate.CanonicalCategoryID,
-			o.CardID == candidate.CardID,
+			o.ClientID == candidate.ClientID,
 			!candidate.Period.Overlaps(o.Period):
 			continue
 		}
@@ -247,15 +252,15 @@ type OfferView struct {
 	Percent      *decimal.Decimal
 	Kind         OfferKind
 	CurrencyKind CurrencyKind
-	CardID       int64
-	CardLabel    string
+	ClientID     int64
+	ClientLabel  string
 	BankName     string
 }
 
 // ComparableOffers returns the pool rows the helper may show side by side
 // with the candidate: same currency_kind only (invariant 5), kind=regular
 // only (invariant 6), the candidate itself excluded. Result is sorted by
-// percent descending (unknown percent last), then by bank and card label.
+// percent descending (unknown percent last), then by bank and client label.
 // A special candidate has no comparisons at all.
 func ComparableOffers(candidate OfferView, pool []OfferView) []OfferView {
 	if candidate.Kind == OfferSpecial {
@@ -276,17 +281,17 @@ func ComparableOffers(candidate OfferView, pool []OfferView) []OfferView {
 		if out[i].BankName != out[j].BankName {
 			return out[i].BankName < out[j].BankName
 		}
-		return out[i].CardLabel < out[j].CardLabel
+		return out[i].ClientLabel < out[j].ClientLabel
 	})
 	return out
 }
 
-// LookupEntry is one card's selection of the looked-up category (S3), with
-// static tier-cap reference data passed through for display.
+// LookupEntry is one bank client's selection of the looked-up category (S3),
+// with static tier-cap reference data passed through for display.
 type LookupEntry struct {
-	CardID         int64
-	CardLabel      string
-	HolderLabel    string // whose plastic («Мама»); empty = the owner
+	ClientID       int64
+	ClientLabel    string
+	HolderLabel    string // держатель («Мама»); empty = the owner
 	BankName       string
 	Percent        *decimal.Decimal
 	CurrencyKind   CurrencyKind
@@ -308,7 +313,7 @@ type LookupResult struct {
 // RankActiveSelections filters entries to those whose period covers onDate,
 // then ranks regular ones: grouped by currency (rub before points — groups
 // are never compared to each other, invariant 5), percent descending within
-// a group (unknown percent last), ties by bank name then card label.
+// a group (unknown percent last), ties by bank name then client label.
 // Special entries active on the date go to Special in input order.
 func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult {
 	var res LookupResult
@@ -344,7 +349,7 @@ func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult 
 			if a.BankName != b.BankName {
 				return a.BankName < b.BankName
 			}
-			return a.CardLabel < b.CardLabel
+			return a.ClientLabel < b.ClientLabel
 		}
 	}
 	sort.SliceStable(res.Ranked, entryLess(res.Ranked))

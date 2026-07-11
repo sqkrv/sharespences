@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { api, unwrap, type LookupEntry } from "../api/client";
-import { useCategories } from "../hooks";
+import { useCards, useCategories } from "../hooks";
 import { BankBadge, Btn, Card, ErrMsg, GradientCard, Pct, SegTabs, Spinner } from "../components/ui";
 import { capNote, currencyBadge, fmtPercent } from "../lib";
 
@@ -56,6 +56,7 @@ function OtherCardRow({ e }: { e: LookupEntry }) {
 // the designed shell with an honest «скоро»; «Категория» is fully wired.
 export default function Lookup() {
   const categories = useCategories();
+  const cards = useCards();
   const [params, setParams] = useSearchParams();
   const preselect = params.get("cat") ?? "";
   const [mode, setMode] = useState<Mode>("cat");
@@ -98,6 +99,12 @@ export default function Lookup() {
   const selectedCat = cats.find((c) => c.slug === slug);
   const best = (lookup.data?.ranked ?? [])[0];
   const others = (lookup.data?.ranked ?? []).slice(1);
+  // The client's plastics — any of them pays with the shared selection.
+  const cardChipsOf = (e: LookupEntry) =>
+    (cards.data ?? [])
+      .filter((c) => c.bank_client_id === e.bank_client_id)
+      .map((c) => `··${String(c.last_4_digits).padStart(4, "0")}`)
+      .join(" ");
 
   return (
     <>
@@ -185,8 +192,7 @@ export default function Lookup() {
                             <div className="min-w-0">
                               <p className="text-[22px] leading-none font-extrabold tracking-tight">{best.bank_name}</p>
                               <p className="mt-1.5 text-[11px] font-semibold text-white/85">
-                                ····{best.card_label.replace(best.bank_name, "").replace(/[·\s]+/g, "").trim()}
-                                {best.holder_label && ` · ${best.holder_label}`}
+                                {[best.holder_label, cardChipsOf(best) || "любая карта"].filter(Boolean).join(" · ")}
                               </p>
                               {capNote(best) && (
                                 <span className="mt-2.5 inline-flex rounded-[10px] bg-white/20 px-2.5 py-1 text-[10.5px] font-bold">{capNote(best)}</span>

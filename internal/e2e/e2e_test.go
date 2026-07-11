@@ -133,8 +133,8 @@ type tierJSON struct {
 	MaxCategories *int32  `json:"max_categories"`
 }
 
-type cardJSON struct {
-	ID int32 `json:"id"`
+type clientJSON struct {
+	ID int64 `json:"id"`
 }
 
 type periodJSON struct {
@@ -278,27 +278,56 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("Альфа-Смарт seed wrong: %+v", alfaSmart)
 	}
 
-	var alfaCard, ozonCard cardJSON
+	// Bank clients (person × bank) own держатель + tier; cards hang off them.
+	var alfaClient, ozonClient clientJSON
+	owner.must("POST", "/api/v1/bank-clients", map[string]any{
+		"bank_id": alfa.BankID, "label": "Мама", "program_tier_id": alfaSmart.ID,
+	}, &alfaClient, http.StatusCreated)
+	owner.must("POST", "/api/v1/bank-clients", map[string]any{
+		"bank_id": ozon.BankID, "program_tier_id": ozonStd.ID,
+	}, &ozonClient, http.StatusCreated)
+
+	// One self-relationship per (user, bank): a second unlabeled Озон client
+	// is rejected (unique nulls not distinct).
+	if got := owner.do("POST", "/api/v1/bank-clients", map[string]any{
+		"bank_id": ozon.BankID,
+	}, nil); got != http.StatusConflict {
+		t.Fatalf("duplicate unlabeled bank client: status %d, want 409", got)
+	}
+
+	// Мама's plastic at Альфа-Банк, and TWO plastics of the owner's own Озон
+	// client — they will share one period/selection set (the re-keying's point).
 	owner.must("POST", "/api/v1/cards", map[string]any{
-		"bank_id": alfa.BankID, "last_4_digits": 1234, "payment_system": "mir", "program_tier_id": alfaSmart.ID,
-		"holder_label": "Мама",
-	}, &alfaCard, http.StatusCreated)
+		"bank_client_id": alfaClient.ID, "last_4_digits": 1234, "payment_system": "mir",
+	}, nil, http.StatusCreated)
 	owner.must("POST", "/api/v1/cards", map[string]any{
-		"bank_id": ozon.BankID, "last_4_digits": 5678, "payment_system": "mir", "program_tier_id": ozonStd.ID,
-	}, &ozonCard, http.StatusCreated)
+		"bank_client_id": ozonClient.ID, "last_4_digits": 5678, "payment_system": "mir",
+	}, nil, http.StatusCreated)
+	owner.must("POST", "/api/v1/cards", map[string]any{
+		"bank_client_id": ozonClient.ID, "last_4_digits": 9012, "payment_system": "mir",
+	}, nil, http.StatusCreated)
+
+	// A card cannot be attached to another user's client (scoping → 404).
+	if got := other.do("POST", "/api/v1/cards", map[string]any{
+		"bank_client_id": alfaClient.ID, "last_4_digits": 1111, "payment_system": "mir",
+	}, nil); got != http.StatusNotFound {
+		t.Fatalf("card on a foreign bank client: status %d, want 404", got)
+	}
 
 	// --- E2E step 2: July periods + menus, alias Продукты→supermarkets ---
 	var alfaPeriod, ozonPeriod periodJSON
 	owner.must("POST", "/api/v1/cashback/offer-periods", map[string]any{
-		"card_id": alfaCard.ID, "period_start": "2026-07-01", "period_end": "2026-07-31",
+		"bank_client_id": alfaClient.ID, "period_start": "2026-07-01", "period_end": "2026-07-31",
 	}, &alfaPeriod, http.StatusCreated)
 	owner.must("POST", "/api/v1/cashback/offer-periods", map[string]any{
-		"card_id": ozonCard.ID, "period_start": "2026-07-01", "period_end": "2026-07-31",
+		"bank_client_id": ozonClient.ID, "period_start": "2026-07-01", "period_end": "2026-07-31",
 	}, &ozonPeriod, http.StatusCreated)
 
-	// Invariant 4 at the API: overlapping period on the same card → 409.
+	// Invariant 4 at the API: overlapping period on the same CLIENT → 409,
+	// even though the client has a second card — two plastics of one client
+	// share one period/selection set, never two.
 	if got := owner.do("POST", "/api/v1/cashback/offer-periods", map[string]any{
-		"card_id": ozonCard.ID, "period_start": "2026-07-15", "period_end": "2026-08-15",
+		"bank_client_id": ozonClient.ID, "period_start": "2026-07-15", "period_end": "2026-08-15",
 	}, nil); got != http.StatusConflict {
 		t.Fatalf("overlapping period: status %d, want 409", got)
 	}
@@ -488,8 +517,12 @@ func TestCashbackE2E(t *testing.T) {
 			vtbID = b.ID
 		}
 	}
+	var vtbClient clientJSON
+	owner.must("POST", "/api/v1/bank-clients", map[string]any{
+		"bank_id": vtbID,
+	}, &vtbClient, http.StatusCreated)
 	owner.must("POST", "/api/v1/cards", map[string]any{
-		"bank_id": vtbID, "last_4_digits": 9012, "payment_system": "mir",
+		"bank_client_id": vtbClient.ID, "last_4_digits": 9013, "payment_system": "mir",
 	}, nil, http.StatusCreated)
 
 	var overview struct {
@@ -500,14 +533,17 @@ func TestCashbackE2E(t *testing.T) {
 				BankName string `json:"bank_name"`
 			} `json:"best"`
 		} `json:"categories"`
-		Cards []struct {
+		Clients []struct {
 			BankName      string  `json:"bank_name"`
 			HolderLabel   *string `json:"holder_label"`
 			PeriodID      *int64  `json:"period_id"`
 			SlotsUsed     int     `json:"slots_used"`
 			MaxCategories *int32  `json:"max_categories"`
 			TierName      *string `json:"tier_name"`
-		} `json:"cards"`
+			Cards         []struct {
+				Last4Digits int32 `json:"last_4_digits"`
+			} `json:"cards"`
+		} `json:"clients"`
 		Base *struct {
 			Best struct {
 				BankName string  `json:"bank_name"`
@@ -536,10 +572,10 @@ func TestCashbackE2E(t *testing.T) {
 	if superRow == nil || superRow.Best.BankName != "Альфа-Банк" || superRow.OthersCount != 1 {
 		t.Fatalf("overview supermarkets = %+v, want best Альфа-Банк with 1 other", superRow)
 	}
-	if len(overview.Cards) != 3 {
-		t.Fatalf("overview cards = %d, want 3", len(overview.Cards))
+	if len(overview.Clients) != 3 {
+		t.Fatalf("overview clients = %d, want 3", len(overview.Clients))
 	}
-	for _, c := range overview.Cards {
+	for _, c := range overview.Clients {
 		switch c.BankName {
 		case "Альфа-Банк":
 			if c.PeriodID == nil || c.SlotsUsed != 4 || c.MaxCategories == nil || *c.MaxCategories != 4 {
@@ -551,6 +587,11 @@ func TestCashbackE2E(t *testing.T) {
 		case "Озон Банк":
 			if c.SlotsUsed != 4 || c.MaxCategories == nil || *c.MaxCategories != 5 {
 				t.Fatalf("overview Озон = %+v, want 4/5 (override)", c)
+			}
+			// Both plastics of the client hang off ONE row sharing ONE
+			// period/slot count — the re-keying's core claim.
+			if len(c.Cards) != 2 {
+				t.Fatalf("overview Озон cards = %d, want 2 plastics on one client", len(c.Cards))
 			}
 		case "ВТБ":
 			if c.PeriodID != nil || c.TierName != nil {
@@ -625,11 +666,11 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("base row must not appear among categories, got %d", len(overview.Categories))
 	}
 
-	// Holder is editable (PUT /cards/{id}).
-	owner.must("PUT", fmt.Sprintf("/api/v1/cards/%d", ozonCard.ID),
-		map[string]any{"holder_label": "Стас", "program_tier_id": ozonStd.ID}, nil, http.StatusOK)
+	// Держатель is editable on the client (PUT /bank-clients/{id}).
+	owner.must("PUT", fmt.Sprintf("/api/v1/bank-clients/%d", ozonClient.ID),
+		map[string]any{"label": "Стас", "program_tier_id": ozonStd.ID}, nil, http.StatusOK)
 	owner.must("GET", "/api/v1/cashback/overview?date=2026-07-15", nil, &overview, http.StatusOK)
-	for _, c := range overview.Cards {
+	for _, c := range overview.Clients {
 		if c.BankName == "Озон Банк" && (c.HolderLabel == nil || *c.HolderLabel != "Стас") {
 			t.Fatalf("Озон holder after PUT = %v, want Стас", c.HolderLabel)
 		}
@@ -638,7 +679,7 @@ func TestCashbackE2E(t *testing.T) {
 	// A whole mistaken period can be deleted with everything under it.
 	var scratch periodJSON
 	owner.must("POST", "/api/v1/cashback/offer-periods", map[string]any{
-		"card_id": alfaCard.ID, "period_start": "2026-08-01", "period_end": "2026-08-31",
+		"bank_client_id": alfaClient.ID, "period_start": "2026-08-01", "period_end": "2026-08-31",
 	}, &scratch, http.StatusCreated)
 	scratchOffer := addOffer(scratch.ID, "Книги", "3", nil)
 	if got := sel(scratchOffer.ID, "2026-08-10T10:00:00Z"); got != http.StatusCreated {

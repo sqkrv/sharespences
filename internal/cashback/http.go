@@ -128,7 +128,7 @@ type tierBody struct {
 
 type OfferPeriodDTO struct {
 	ID                    int64  `json:"id"`
-	CardID                int32  `json:"card_id"`
+	BankClientID          int64  `json:"bank_client_id"`
 	PeriodStart           string `json:"period_start"`
 	PeriodEnd             string `json:"period_end"`
 	MaxCategoriesOverride *int32 `json:"max_categories_override,omitempty"`
@@ -136,7 +136,7 @@ type OfferPeriodDTO struct {
 
 func offerPeriodDTO(p db.OfferPeriod) OfferPeriodDTO {
 	return OfferPeriodDTO{
-		ID: p.ID, CardID: p.CardID,
+		ID: p.ID, BankClientID: p.BankClientID,
 		PeriodStart:           p.PeriodStart.Format("2006-01-02"),
 		PeriodEnd:             p.PeriodEnd.Format("2006-01-02"),
 		MaxCategoriesOverride: p.MaxCategoriesOverride,
@@ -183,7 +183,7 @@ type HelperRowDTO struct {
 
 type CollisionDTO struct {
 	BankName    string  `json:"bank_name"`
-	CardLabel   string  `json:"card_label"`
+	ClientLabel string  `json:"client_label"`
 	HolderLabel string  `json:"holder_label,omitempty"`
 	Percent     *string `json:"percent,omitempty"`
 	CapNote     string  `json:"cap_note,omitempty"`
@@ -191,16 +191,17 @@ type CollisionDTO struct {
 }
 
 type ComparisonDTO struct {
-	BankName  string  `json:"bank_name"`
-	CardLabel string  `json:"card_label"`
-	RawTitle  string  `json:"raw_title"`
-	Percent   *string `json:"percent,omitempty"`
-	Selected  bool    `json:"selected"`
+	BankName    string  `json:"bank_name"`
+	ClientLabel string  `json:"client_label"`
+	RawTitle    string  `json:"raw_title"`
+	Percent     *string `json:"percent,omitempty"`
+	Selected    bool    `json:"selected"`
 }
 
 type LookupEntryDTO struct {
+	BankClientID   int64   `json:"bank_client_id"`
 	BankName       string  `json:"bank_name"`
-	CardLabel      string  `json:"card_label"`
+	ClientLabel    string  `json:"client_label"`
 	HolderLabel    string  `json:"holder_label,omitempty"`
 	Percent        *string `json:"percent,omitempty"`
 	CurrencyKind   string  `json:"currency_kind"`
@@ -214,7 +215,8 @@ type LookupEntryDTO struct {
 
 func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 	return LookupEntryDTO{
-		BankName: e.BankName, CardLabel: e.CardLabel, HolderLabel: e.HolderLabel, Percent: decToStr(e.Percent),
+		BankClientID: e.ClientID,
+		BankName:     e.BankName, ClientLabel: e.ClientLabel, HolderLabel: e.HolderLabel, Percent: decToStr(e.Percent),
 		CurrencyKind: string(e.CurrencyKind), PointsLabel: e.PointsLabel,
 		CapValue: decToStr(e.CapValue), CapPerCategory: decToStr(e.CapPerCategory),
 		CapScope:    string(e.CapScope),
@@ -227,7 +229,7 @@ type PartnerOfferDTO struct {
 	ID            int64   `json:"id"`
 	BankID        int32   `json:"bank_id"`
 	BankName      string  `json:"bank_name,omitempty"`
-	CardID        *int32  `json:"card_id,omitempty"`
+	BankClientID  *int64  `json:"bank_client_id,omitempty"`
 	MerchantTitle string  `json:"merchant_title"`
 	Percent       *string `json:"percent,omitempty"`
 	ValidFrom     *string `json:"valid_from,omitempty"`
@@ -266,35 +268,44 @@ type OverviewChipDTO struct {
 	Percent  *string `json:"percent,omitempty"`
 }
 
-// OverviewCardDTO is one «Карты» row; period fields are null when the card
-// has no offer_period covering the date.
-// OverviewBaseDTO is the «Остальное» row: the best base rate across cards.
+// OverviewBaseDTO is the «Остальное» row: the best base rate across clients.
 type OverviewBaseDTO struct {
 	Best        LookupEntryDTO `json:"best"`
 	OthersCount int            `json:"others_count"`
 }
 
-type OverviewCardDTO struct {
-	CardID         int32             `json:"card_id"`
-	BankID         int32             `json:"bank_id"`
-	BankName       string            `json:"bank_name"`
-	Last4Digits    int32             `json:"last_4_digits"`
-	HolderLabel    *string           `json:"holder_label,omitempty"`
-	TierName       *string           `json:"tier_name,omitempty"`
-	IsPaidTier     bool              `json:"is_paid_tier,omitempty"`
-	CapValue       *string           `json:"cap_value,omitempty"`
-	CapPerCategory *string           `json:"cap_per_category,omitempty"`
-	CapScope       string            `json:"cap_scope,omitempty"`
-	CurrencyKind   string            `json:"currency_kind"`
-	PointsLabel    string            `json:"points_label,omitempty"`
-	SelectionMode  string            `json:"selection_mode,omitempty"`
-	PeriodID       *int64            `json:"period_id,omitempty"`
-	PeriodStart    *string           `json:"period_start,omitempty"`
-	PeriodEnd      *string           `json:"period_end,omitempty"`
-	SlotsUsed      int               `json:"slots_used"`
-	MaxCategories  *int32            `json:"max_categories,omitempty"`
-	Selected       []OverviewChipDTO `json:"selected"`
-	Specials       []OverviewChipDTO `json:"specials,omitempty"`
+// OverviewCardChipDTO is one plastic of the client — any of them pays with
+// the client's shared selection.
+type OverviewCardChipDTO struct {
+	CardID        int32  `json:"card_id"`
+	Last4Digits   int32  `json:"last_4_digits"`
+	PaymentSystem string `json:"payment_system"`
+}
+
+// OverviewClientDTO is one «Карты» row — a bank client (person × bank) with
+// its plastics; period fields are null when the client has no offer_period
+// covering the date.
+type OverviewClientDTO struct {
+	BankClientID   int64                 `json:"bank_client_id"`
+	BankID         int32                 `json:"bank_id"`
+	BankName       string                `json:"bank_name"`
+	HolderLabel    *string               `json:"holder_label,omitempty"`
+	Cards          []OverviewCardChipDTO `json:"cards"`
+	TierName       *string               `json:"tier_name,omitempty"`
+	IsPaidTier     bool                  `json:"is_paid_tier,omitempty"`
+	CapValue       *string               `json:"cap_value,omitempty"`
+	CapPerCategory *string               `json:"cap_per_category,omitempty"`
+	CapScope       string                `json:"cap_scope,omitempty"`
+	CurrencyKind   string                `json:"currency_kind"`
+	PointsLabel    string                `json:"points_label,omitempty"`
+	SelectionMode  string                `json:"selection_mode,omitempty"`
+	PeriodID       *int64                `json:"period_id,omitempty"`
+	PeriodStart    *string               `json:"period_start,omitempty"`
+	PeriodEnd      *string               `json:"period_end,omitempty"`
+	SlotsUsed      int                   `json:"slots_used"`
+	MaxCategories  *int32                `json:"max_categories,omitempty"`
+	Selected       []OverviewChipDTO     `json:"selected"`
+	Specials       []OverviewChipDTO     `json:"specials,omitempty"`
 }
 
 // RegisterHTTP mounts the module's API (spec «Interfaces & files»).
@@ -431,11 +442,11 @@ func RegisterHTTP(api huma.API, s *Service) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "cashback-offer-period-create", Method: http.MethodPost,
-		Path: "/api/v1/cashback/offer-periods", Summary: "Open a selection period for a card", Tags: []string{"cashback"},
+		Path: "/api/v1/cashback/offer-periods", Summary: "Open a selection period for a bank client", Tags: []string{"cashback"},
 		DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, in *struct {
 		Body struct {
-			CardID        int32       `json:"card_id"`
+			BankClientID  int64       `json:"bank_client_id"`
 			PeriodStart   string      `json:"period_start" format:"date"`
 			PeriodEnd     string      `json:"period_end" format:"date"`
 			AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty"`
@@ -449,7 +460,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		if err != nil {
 			return nil, err
 		}
-		p, err := s.CreateOfferPeriod(ctx, auth.UserID(ctx), in.Body.CardID, start, end, in.Body.AttachmentIDs)
+		p, err := s.CreateOfferPeriod(ctx, auth.UserID(ctx), in.Body.BankClientID, start, end, in.Body.AttachmentIDs)
 		if err != nil {
 			return nil, httpErr(err)
 		}
@@ -460,7 +471,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		OperationID: "cashback-offer-period-list", Method: http.MethodGet,
 		Path: "/api/v1/cashback/offer-periods", Summary: "List the user's selection periods", Tags: []string{"cashback"},
 	}, func(ctx context.Context, in *struct {
-		CardID int32 `query:"card_id"`
+		BankClientID int64 `query:"bank_client_id"`
 	}) (*struct{ Body []OfferPeriodListItem }, error) {
 		rows, err := s.Q.ListOfferPeriodsForUser(ctx, auth.UserID(ctx))
 		if err != nil {
@@ -468,11 +479,11 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		out := &struct{ Body []OfferPeriodListItem }{}
 		for _, r := range rows {
-			if in.CardID != 0 && r.CardID != in.CardID {
+			if in.BankClientID != 0 && r.BankClientID != in.BankClientID {
 				continue
 			}
 			out.Body = append(out.Body, OfferPeriodListItem{
-				OfferPeriodDTO: offerPeriodDTO(db.OfferPeriod{ID: r.ID, CardID: r.CardID, PeriodStart: r.PeriodStart, PeriodEnd: r.PeriodEnd, MaxCategoriesOverride: r.MaxCategoriesOverride}),
+				OfferPeriodDTO: offerPeriodDTO(db.OfferPeriod{ID: r.ID, BankClientID: r.BankClientID, PeriodStart: r.PeriodStart, PeriodEnd: r.PeriodEnd, MaxCategoriesOverride: r.MaxCategoriesOverride}),
 				BankName:       r.BankName,
 			})
 		}
@@ -512,7 +523,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Attachments []uuid.UUID        `json:"attachment_ids"`
 			}
 		}{}
-		out.Body.OfferPeriodDTO = offerPeriodDTO(db.OfferPeriod{ID: p.ID, CardID: p.CardID, PeriodStart: p.PeriodStart, PeriodEnd: p.PeriodEnd, MaxCategoriesOverride: p.MaxCategoriesOverride})
+		out.Body.OfferPeriodDTO = offerPeriodDTO(db.OfferPeriod{ID: p.ID, BankClientID: p.BankClientID, PeriodStart: p.PeriodStart, PeriodEnd: p.PeriodEnd, MaxCategoriesOverride: p.MaxCategoriesOverride})
 		out.Body.BankName = p.BankName
 		out.Body.Offers = make([]CategoryOfferDTO, len(offers))
 		for i, o := range offers {
@@ -752,7 +763,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 	}) (*struct {
 		Body struct {
 			OfferPeriodID         int64          `json:"offer_period_id"`
-			CardLabel             string         `json:"card_label"`
+			ClientLabel           string         `json:"client_label"`
 			SlotsUsed             int            `json:"slots_used"`
 			MaxCategories         *int32         `json:"max_categories,omitempty" doc:"effective limit: period override, else tier default"`
 			MaxCategoriesOverride *int32         `json:"max_categories_override,omitempty"`
@@ -766,7 +777,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		out := &struct {
 			Body struct {
 				OfferPeriodID         int64          `json:"offer_period_id"`
-				CardLabel             string         `json:"card_label"`
+				ClientLabel           string         `json:"client_label"`
 				SlotsUsed             int            `json:"slots_used"`
 				MaxCategories         *int32         `json:"max_categories,omitempty" doc:"effective limit: period override, else tier default"`
 				MaxCategoriesOverride *int32         `json:"max_categories_override,omitempty"`
@@ -774,7 +785,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			}
 		}{}
 		out.Body.OfferPeriodID = res.Period.ID
-		out.Body.CardLabel = cardLabel(res.Period.BankName, res.Period.Last4Digits)
+		out.Body.ClientLabel = clientLabel(res.Period.BankName, res.Period.HolderLabel)
 		out.Body.SlotsUsed = res.SlotsUsed
 		out.Body.MaxCategories = res.MaxCategories
 		out.Body.MaxCategoriesOverride = res.Override
@@ -805,13 +816,13 @@ func RegisterHTTP(api huma.API, s *Service) {
 					msg += ")"
 				}
 				dto.Collisions = append(dto.Collisions, CollisionDTO{
-					BankName: c.Other.BankName, CardLabel: c.Other.CardLabel, HolderLabel: c.Other.HolderLabel,
+					BankName: c.Other.BankName, ClientLabel: c.Other.ClientLabel, HolderLabel: c.Other.HolderLabel,
 					Percent: decToStr(c.Other.Percent), CapNote: c.Other.CapNote, Message: msg,
 				})
 			}
 			for _, cmp := range r.Comparisons {
 				dto.Comparisons = append(dto.Comparisons, ComparisonDTO{
-					BankName: cmp.BankName, CardLabel: cmp.CardLabel,
+					BankName: cmp.BankName, ClientLabel: cmp.ClientLabel,
 					RawTitle: cmp.RawTitle, Percent: decToStr(cmp.Percent),
 				})
 			}
@@ -832,7 +843,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Date              string                `json:"date"`
 			Categories        []OverviewCategoryDTO `json:"categories"`
 			Base              *OverviewBaseDTO      `json:"base,omitempty"`
-			Cards             []OverviewCardDTO     `json:"cards"`
+			Clients           []OverviewClientDTO   `json:"clients"`
 			SelectionOpensDay *int32                `json:"selection_opens_day,omitempty"`
 		}
 	}, error) {
@@ -852,7 +863,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Date              string                `json:"date"`
 				Categories        []OverviewCategoryDTO `json:"categories"`
 				Base              *OverviewBaseDTO      `json:"base,omitempty"`
-				Cards             []OverviewCardDTO     `json:"cards"`
+				Clients           []OverviewClientDTO   `json:"clients"`
 				SelectionOpensDay *int32                `json:"selection_opens_day,omitempty"`
 			}
 		}{}
@@ -868,15 +879,19 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Best: lookupEntryDTO(g.Best), OthersCount: g.OthersCount,
 			}
 		}
-		out.Body.Cards = make([]OverviewCardDTO, len(res.Cards))
-		for i, c := range res.Cards {
-			dto := OverviewCardDTO{
-				CardID: c.CardID, BankID: int32(c.BankID), BankName: c.BankName,
-				Last4Digits: c.Last4Digits, HolderLabel: c.HolderLabel, TierName: c.TierName, IsPaidTier: c.IsPaidTier,
+		out.Body.Clients = make([]OverviewClientDTO, len(res.Clients))
+		for i, c := range res.Clients {
+			dto := OverviewClientDTO{
+				BankClientID: c.ClientID, BankID: c.BankID, BankName: c.BankName,
+				HolderLabel: c.HolderLabel, TierName: c.TierName, IsPaidTier: c.IsPaidTier,
 				CapValue: decToStr(c.CapValue), CapPerCategory: decToStr(c.CapPerCat),
 				CapScope: string(c.CapScope), CurrencyKind: string(c.CurrencyKind),
 				PointsLabel: c.PointsLabel, SelectionMode: c.SelectionMode,
 				PeriodID: c.PeriodID, SlotsUsed: c.SlotsUsed, MaxCategories: c.MaxCategories,
+			}
+			dto.Cards = make([]OverviewCardChipDTO, len(c.Cards))
+			for j, cc := range c.Cards {
+				dto.Cards[j] = OverviewCardChipDTO{CardID: cc.CardID, Last4Digits: cc.Last4Digits, PaymentSystem: cc.PaymentSystem}
 			}
 			if c.PeriodStart != nil {
 				s := c.PeriodStart.Format("2006-01-02")
@@ -893,7 +908,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			for _, r := range c.Specials {
 				dto.Specials = append(dto.Specials, OverviewChipDTO{OfferID: r.OfferID, RawTitle: r.RawTitle, Percent: decToStr(r.Percent)})
 			}
-			out.Body.Cards[i] = dto
+			out.Body.Clients[i] = dto
 		}
 		return out, nil
 	})
@@ -953,7 +968,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		for _, p := range res.Partner {
 			out.Body.Partner = append(out.Body.Partner, PartnerOfferDTO{
-				ID: p.ID, BankID: p.BankID, BankName: p.BankName, CardID: p.CardID,
+				ID: p.ID, BankID: p.BankID, BankName: p.BankName, BankClientID: p.BankClientID,
 				MerchantTitle: p.MerchantTitle, Percent: decToStr(p.Percent),
 				ValidFrom: fmtDatePtr(p.ValidFrom), ValidTo: fmtDatePtr(p.ValidTo),
 				CapValue: decToStr(p.CapValue), Notes: p.Notes,
@@ -974,7 +989,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 	}, func(ctx context.Context, in *struct {
 		Body struct {
 			BankID        int32       `json:"bank_id"`
-			CardID        *int32      `json:"card_id,omitempty"`
+			BankClientID  *int64      `json:"bank_client_id,omitempty"`
 			MerchantTitle string      `json:"merchant_title" minLength:"1"`
 			Percent       *string     `json:"percent,omitempty"`
 			ValidFrom     *string     `json:"valid_from,omitempty" format:"date"`
@@ -1008,7 +1023,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			to = &t
 		}
 		p, err := s.Q.CreatePartnerOffer(ctx, db.CreatePartnerOfferParams{
-			UserID: auth.UserID(ctx), BankID: in.Body.BankID, CardID: in.Body.CardID,
+			UserID: auth.UserID(ctx), BankID: in.Body.BankID, BankClientID: in.Body.BankClientID,
 			MerchantTitle: in.Body.MerchantTitle, Percent: pctVal,
 			ValidFrom: from, ValidTo: to, CapValue: capVal, Notes: in.Body.Notes,
 		})
@@ -1025,7 +1040,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			}
 		}
 		return &struct{ Body PartnerOfferDTO }{PartnerOfferDTO{
-			ID: p.ID, BankID: p.BankID, CardID: p.CardID, MerchantTitle: p.MerchantTitle,
+			ID: p.ID, BankID: p.BankID, BankClientID: p.BankClientID, MerchantTitle: p.MerchantTitle,
 			Percent: decToStr(p.Percent), ValidFrom: fmtDatePtr(p.ValidFrom), ValidTo: fmtDatePtr(p.ValidTo),
 			CapValue: decToStr(p.CapValue), Notes: p.Notes,
 		}}, nil
@@ -1042,7 +1057,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		out := make([]PartnerOfferDTO, len(rows))
 		for i, p := range rows {
 			out[i] = PartnerOfferDTO{
-				ID: p.ID, BankID: p.BankID, BankName: p.BankName, CardID: p.CardID,
+				ID: p.ID, BankID: p.BankID, BankName: p.BankName, BankClientID: p.BankClientID,
 				MerchantTitle: p.MerchantTitle, Percent: decToStr(p.Percent),
 				ValidFrom: fmtDatePtr(p.ValidFrom), ValidTo: fmtDatePtr(p.ValidTo),
 				CapValue: decToStr(p.CapValue), Notes: p.Notes,

@@ -89,6 +89,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bank-clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the user's bank clients */
+        get: operations["bank-client-list"];
+        put?: never;
+        /** Add a bank client (person × bank) */
+        post: operations["bank-client-create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bank-clients/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit a bank client (держатель, tier) */
+        put: operations["bank-client-update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/banks": {
         parameters: {
             query?: never;
@@ -116,7 +151,7 @@ export interface paths {
         /** List the user's cards */
         get: operations["card-list"];
         put?: never;
-        /** Add a card */
+        /** Add a card to a bank client */
         post: operations["card-create"];
         delete?: never;
         options?: never;
@@ -132,7 +167,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Edit a card (holder, tier) */
+        /** Edit a card (last 4, payment system) */
         put: operations["card-update"];
         post?: never;
         delete?: never;
@@ -255,7 +290,7 @@ export interface paths {
         /** List the user's selection periods */
         get: operations["cashback-offer-period-list"];
         put?: never;
-        /** Open a selection period for a card */
+        /** Open a selection period for a bank client */
         post: operations["cashback-offer-period-create"];
         delete?: never;
         options?: never;
@@ -508,6 +543,48 @@ export interface components {
             password: string;
             username: string;
         };
+        "Bank-client-createRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Bank-client-createRequest.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            bank_id: number;
+            /** @description держатель («Мама»); omit for yourself */
+            label?: string;
+            /** Format: int64 */
+            program_tier_id?: number;
+        };
+        "Bank-client-updateRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Bank-client-updateRequest.json
+             */
+            readonly $schema?: string;
+            label?: string;
+            /** Format: int64 */
+            program_tier_id?: number;
+        };
+        BankClientDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/BankClientDTO.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            bank_id: number;
+            bank_name?: string;
+            /** Format: int64 */
+            id: number;
+            /** @description держатель («Мама»); omit for yourself */
+            label?: string;
+            /** Format: int64 */
+            program_tier_id?: number;
+        };
         BankDTO: {
             /** Format: int32 */
             id: number;
@@ -532,16 +609,12 @@ export interface components {
              * @example https://example.com/schemas/Card-createRequest.json
              */
             readonly $schema?: string;
-            /** Format: int32 */
-            bank_id: number;
-            /** @description whose plastic this is («Мама»); omit for your own */
-            holder_label?: string;
+            /** Format: int64 */
+            bank_client_id: number;
             /** Format: int32 */
             last_4_digits: number;
             /** @enum {string} */
             payment_system: "visa" | "mastercard" | "mir" | "unionpay" | "american_express";
-            /** Format: int64 */
-            program_tier_id?: number;
         };
         "Card-updateRequest": {
             /**
@@ -550,9 +623,10 @@ export interface components {
              * @example https://example.com/schemas/Card-updateRequest.json
              */
             readonly $schema?: string;
-            holder_label?: string;
-            /** Format: int64 */
-            program_tier_id?: number;
+            /** Format: int32 */
+            last_4_digits: number;
+            /** @enum {string} */
+            payment_system: "visa" | "mastercard" | "mir" | "unionpay" | "american_express";
         };
         CardDTO: {
             /**
@@ -561,17 +635,16 @@ export interface components {
              * @example https://example.com/schemas/CardDTO.json
              */
             readonly $schema?: string;
+            /** Format: int64 */
+            bank_client_id: number;
             /** Format: int32 */
-            bank_id: number;
+            bank_id?: number;
             bank_name?: string;
-            holder_label?: string;
             /** Format: int32 */
             id: number;
             /** Format: int32 */
             last_4_digits: number;
             payment_system: string;
-            /** Format: int64 */
-            program_tier_id?: number;
         };
         "Cashback-alias-suggestionResponse": {
             /**
@@ -619,7 +692,7 @@ export interface components {
              * @example https://example.com/schemas/Cashback-helper-contextResponse.json
              */
             readonly $schema?: string;
-            card_label: string;
+            client_label: string;
             /**
              * Format: int32
              * @description effective limit: period override, else tier default
@@ -666,8 +739,8 @@ export interface components {
              */
             readonly $schema?: string;
             attachment_ids?: string[] | null;
-            /** Format: int32 */
-            card_id: number;
+            /** Format: int64 */
+            bank_client_id: number;
             /** Format: date */
             period_end: string;
             /** Format: date */
@@ -681,9 +754,9 @@ export interface components {
              */
             readonly $schema?: string;
             attachment_ids: string[] | null;
+            /** Format: int64 */
+            bank_client_id: number;
             bank_name: string;
-            /** Format: int32 */
-            card_id: number;
             /** Format: int64 */
             id: number;
             /** Format: int32 */
@@ -710,8 +783,8 @@ export interface components {
              */
             readonly $schema?: string;
             base?: components["schemas"]["OverviewBaseDTO"];
-            cards: components["schemas"]["OverviewCardDTO"][] | null;
             categories: components["schemas"]["OverviewCategoryDTO"][] | null;
+            clients: components["schemas"]["OverviewClientDTO"][] | null;
             date: string;
             /** Format: int32 */
             selection_opens_day?: number;
@@ -724,11 +797,11 @@ export interface components {
              */
             readonly $schema?: string;
             attachment_ids?: string[] | null;
+            /** Format: int64 */
+            bank_client_id?: number;
             /** Format: int32 */
             bank_id: number;
             cap_value?: string;
-            /** Format: int32 */
-            card_id?: number;
             merchant_title: string;
             notes?: string;
             percent?: string;
@@ -807,14 +880,14 @@ export interface components {
         CollisionDTO: {
             bank_name: string;
             cap_note?: string;
-            card_label: string;
+            client_label: string;
             holder_label?: string;
             message: string;
             percent?: string;
         };
         ComparisonDTO: {
             bank_name: string;
-            card_label: string;
+            client_label: string;
             percent?: string;
             raw_title: string;
             selected: boolean;
@@ -884,11 +957,13 @@ export interface components {
             selected: boolean;
         };
         LookupEntryDTO: {
+            /** Format: int64 */
+            bank_client_id: number;
             bank_name: string;
             cap_per_category?: string;
             cap_scope?: string;
             cap_value?: string;
-            card_label: string;
+            client_label: string;
             currency_kind: string;
             holder_label?: string;
             percent?: string;
@@ -903,8 +978,8 @@ export interface components {
              * @example https://example.com/schemas/OfferPeriodDTO.json
              */
             readonly $schema?: string;
-            /** Format: int32 */
-            card_id: number;
+            /** Format: int64 */
+            bank_client_id: number;
             /** Format: int64 */
             id: number;
             /** Format: int32 */
@@ -913,9 +988,9 @@ export interface components {
             period_start: string;
         };
         OfferPeriodListItem: {
+            /** Format: int64 */
+            bank_client_id: number;
             bank_name: string;
-            /** Format: int32 */
-            card_id: number;
             /** Format: int64 */
             id: number;
             /** Format: int32 */
@@ -928,33 +1003,12 @@ export interface components {
             /** Format: int64 */
             others_count: number;
         };
-        OverviewCardDTO: {
-            /** Format: int32 */
-            bank_id: number;
-            bank_name: string;
-            cap_per_category?: string;
-            cap_scope?: string;
-            cap_value?: string;
+        OverviewCardChipDTO: {
             /** Format: int32 */
             card_id: number;
-            currency_kind: string;
-            holder_label?: string;
-            is_paid_tier?: boolean;
             /** Format: int32 */
             last_4_digits: number;
-            /** Format: int32 */
-            max_categories?: number;
-            period_end?: string;
-            /** Format: int64 */
-            period_id?: number;
-            period_start?: string;
-            points_label?: string;
-            selected: components["schemas"]["OverviewChipDTO"][] | null;
-            selection_mode?: string;
-            /** Format: int64 */
-            slots_used: number;
-            specials?: components["schemas"]["OverviewChipDTO"][] | null;
-            tier_name?: string;
+            payment_system: string;
         };
         OverviewCategoryDTO: {
             best: components["schemas"]["LookupEntryDTO"];
@@ -971,6 +1025,33 @@ export interface components {
             percent?: string;
             raw_title: string;
         };
+        OverviewClientDTO: {
+            /** Format: int64 */
+            bank_client_id: number;
+            /** Format: int32 */
+            bank_id: number;
+            bank_name: string;
+            cap_per_category?: string;
+            cap_scope?: string;
+            cap_value?: string;
+            cards: components["schemas"]["OverviewCardChipDTO"][] | null;
+            currency_kind: string;
+            holder_label?: string;
+            is_paid_tier?: boolean;
+            /** Format: int32 */
+            max_categories?: number;
+            period_end?: string;
+            /** Format: int64 */
+            period_id?: number;
+            period_start?: string;
+            points_label?: string;
+            selected: components["schemas"]["OverviewChipDTO"][] | null;
+            selection_mode?: string;
+            /** Format: int64 */
+            slots_used: number;
+            specials?: components["schemas"]["OverviewChipDTO"][] | null;
+            tier_name?: string;
+        };
         PartnerOfferDTO: {
             /**
              * Format: uri
@@ -978,12 +1059,12 @@ export interface components {
              * @example https://example.com/schemas/PartnerOfferDTO.json
              */
             readonly $schema?: string;
+            /** Format: int64 */
+            bank_client_id?: number;
             /** Format: int32 */
             bank_id: number;
             bank_name?: string;
             cap_value?: string;
-            /** Format: int32 */
-            card_id?: number;
             /** Format: int64 */
             id: number;
             merchant_title: string;
@@ -1244,6 +1325,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "bank-client-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankClientDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "bank-client-create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Bank-client-createRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankClientDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "bank-client-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Bank-client-updateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankClientDTO"];
                 };
             };
             /** @description Error */
@@ -1642,7 +1820,7 @@ export interface operations {
     "cashback-offer-period-list": {
         parameters: {
             query?: {
-                card_id?: number;
+                bank_client_id?: number;
             };
             header?: never;
             path?: never;
