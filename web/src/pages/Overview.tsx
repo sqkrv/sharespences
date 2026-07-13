@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
-import { useBanks, useClients, usePrograms, useTierMap } from "../hooks";
+import { useBanks, useClients, usePeriods, usePrograms, useTierMap } from "../hooks";
 import { BankBadge, Btn, Card, ErrMsg, Field, Input, Pct, SegTabs, Select, Spinner, Badge } from "../components/ui";
-import { capNote, monthNameOf, monthOptions, opensStripParts } from "../lib";
+import { MonthPicker } from "../components/MonthPicker";
+import { capNote, midMonthISO, monthKey, monthNameOf, opensStripParts, pad2, todayISO } from "../lib";
 
 const PAYMENT_SYSTEMS = ["mir", "visa", "mastercard", "unionpay", "american_express"] as const;
 type PaySystem = (typeof PAYMENT_SYSTEMS)[number];
@@ -253,15 +254,32 @@ function AddCardForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+// Months any offer period covers (a quarter period spans three), keyed
+// "YYYY-MM" — what the picker offers beyond the current month.
+function availableMonths(periods: { period_start: string; period_end: string }[]): Set<string> {
+  const keys = new Set<string>();
+  for (const p of periods) {
+    let d = new Date(Number(p.period_start.slice(0, 4)), Number(p.period_start.slice(5, 7)) - 1, 1);
+    const end = new Date(Number(p.period_end.slice(0, 4)), Number(p.period_end.slice(5, 7)) - 1, 1);
+    while (d <= end) {
+      keys.add(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}`);
+      d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    }
+  }
+  return keys;
+}
+
 export default function Overview() {
   const [cut, setCut] = useState<"cats" | "cards">("cats");
   const [addingCard, setAddingCard] = useState(false);
   const [editingClientID, setEditingClientID] = useState<number | null>(null);
-  const months = monthOptions();
-  const [monthDate, setMonthDate] = useState(months[0].value);
-  const isCurrentMonth = monthDate === months[0].value;
+  const now = new Date();
+  const [monthDate, setMonthDate] = useState(midMonthISO(now.getFullYear(), now.getMonth()));
+  const isCurrentMonth = monthKey(monthDate) === monthKey(todayISO());
   const monthName = monthNameOf(monthDate);
   const overview = useOverview(monthDate);
+  const periods = usePeriods();
+  const months = useMemo(() => availableMonths(periods.data ?? []), [periods.data]);
   const navigate = useNavigate();
 
   if (overview.isPending) return <Spinner />;
@@ -274,21 +292,9 @@ export default function Overview() {
     <>
       <div className="flex items-baseline justify-between">
         <h1 className="text-[25px] font-extrabold tracking-tight">Кешбек</h1>
-        {/* The month chip is a period picker: browse past periods (owner 2026-07-09). */}
-        <span className="flex items-center gap-1 text-xs font-medium text-tx3">
-          <select
-            value={monthDate}
-            onChange={(e) => setMonthDate(e.target.value)}
-            className="appearance-none rounded-lg bg-transparent text-right text-xs font-medium text-tx3 focus:outline-none"
-          >
-            {months.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          <span className="text-[9px] text-tx4">▾</span>
-        </span>
+        {/* The month chip is a period picker: browse past periods (owner 2026-07-09);
+            all data-backed months are offered, back to the imported history. */}
+        <MonthPicker value={monthDate} available={months} onChange={setMonthDate} />
       </div>
 
       <SegTabs

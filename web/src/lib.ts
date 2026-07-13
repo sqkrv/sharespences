@@ -99,13 +99,16 @@ export function opensStripParts(day: number, now = new Date()): { text: string; 
   };
 }
 
-// Recent months for the overview period picker: current month first,
-// value = mid-month ISO date the API's ?date= accepts.
-export function monthOptions(count = 12, now = new Date()): { value: string; label: string }[] {
-  return Array.from({ length: count }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 15);
-    return { value: isoDate(d), label: fmtMonthYear(d) };
-  });
+export const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+
+// Mid-month ISO — the ?date= value the overview API samples a month by.
+export function midMonthISO(year: number, month0: number): string {
+  return `${year}-${pad2(month0 + 1)}-15`;
+}
+
+// "2026-07" month key of an ISO date.
+export function monthKey(iso: string): string {
+  return iso.slice(0, 7);
 }
 
 // The month word of an ISO date («июль» for 2026-07-15).
