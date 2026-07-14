@@ -1,13 +1,15 @@
 import { useMe, useLogout } from "../auth";
 import { useTheme, type ThemeSetting } from "../theme";
+import { useInstallPrompt } from "../pwa";
 import { Btn, Card } from "../components/ui";
 
 // «Сервисы» hosts what the design's shell has no other place for:
-// profile, the three-state theme control, docs, logout.
+// profile, the three-state theme control, install, docs, logout.
 export default function Services() {
   const me = useMe();
   const logout = useLogout();
   const [setting, setSetting] = useTheme();
+  const { isStandalone, isIOS, canInstall, install } = useInstallPrompt();
 
   const options: { value: ThemeSetting; label: string }[] = [
     { value: "system", label: "◐ Системная" },
@@ -45,6 +47,28 @@ export default function Services() {
           ))}
         </div>
       </Card>
+
+      {!isStandalone && (canInstall || isIOS) && (
+        <Card className="p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Приложение</p>
+          {canInstall ? (
+            <>
+              <p className="mt-2 text-sm font-medium text-tx3">
+                Установите Sharespences на домашний экран — запуск без браузера, работает при плохой сети.
+              </p>
+              <Btn className="mt-3" onClick={() => void install()}>
+                Установить приложение
+              </Btn>
+            </>
+          ) : (
+            // iOS Safari has no install event — the path is manual.
+            <p className="mt-2 text-sm font-medium text-tx3">
+              На iPhone: <b className="text-tx">Поделиться</b> → <b className="text-tx">На экран «Домой»</b> — приложение
+              запустится без браузера и работает при плохой сети.
+            </p>
+          )}
+        </Card>
+      )}
 
       <Card className="p-4">
         <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Для разработчиков</p>

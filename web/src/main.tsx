@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import { ApiError } from "./api/client";
 import { RequireAuth } from "./auth";
+import { OfflineChip, ReloadPrompt, usePrefetchOffline } from "./pwa";
 import NavBar from "./components/NavBar";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -17,22 +18,31 @@ import Stub from "./pages/Stub";
 import "./index.css";
 
 // Client errors (4xx) are answers, not glitches — don't retry them.
+// networkMode offlineFirst: with the default 'online', navigator.onLine=false
+// pauses queries and no fetch ever reaches the service worker — offline read
+// (docs/specs/pwa.md) depends on this. Mutations keep the 'online' default:
+// paused-not-lost is the right behavior for writes.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      networkMode: "offlineFirst",
       retry: (count, err) => !(err instanceof ApiError && err.status < 500) && count < 2,
     },
   },
 });
 
 // Phone-shaped shell per the design: content column + fixed bottom navbar.
+// Top padding honors the status bar in standalone PWA (viewport-fit=cover).
 function Shell() {
+  usePrefetchOffline();
   return (
     <div className="mx-auto min-h-dvh max-w-md">
-      <main className="space-y-4 px-4 pt-4 pb-28">
+      <main className="space-y-4 px-4 pt-[max(env(safe-area-inset-top),1rem)] pb-28">
         <Outlet />
       </main>
       <NavBar />
+      <OfflineChip />
+      <ReloadPrompt />
     </div>
   );
 }

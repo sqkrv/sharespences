@@ -21,6 +21,8 @@ function systemPrefersLight(): boolean {
 function syncClass(setting: ThemeSetting) {
   const dark = setting === "dark" || (setting === "system" && !systemPrefersLight());
   document.documentElement.classList.toggle("dark", dark);
+  // Keep the browser/PWA chrome color in step (set pre-paint by index.html).
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0f0b1c" : "#f2f0f8");
 }
 
 export function useTheme(): [ThemeSetting, (s: ThemeSetting) => void] {

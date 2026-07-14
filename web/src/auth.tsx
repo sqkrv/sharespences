@@ -32,8 +32,14 @@ export function useLogout() {
   const navigate = useNavigate();
   return useMutation({
     mutationFn: async () => unwrap(await api.POST("/api/v1/auth/logout")),
-    onSuccess: () => {
+    onSuccess: async () => {
       qc.clear();
+      // Offline-read caches hold personal data (держатели, last-4) — they
+      // must not survive logout on a shared device (docs/specs/pwa.md).
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
       navigate("/login");
     },
   });
