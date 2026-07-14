@@ -10,12 +10,19 @@ package web
 import (
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
 	"strings"
 )
 
 //go:embed all:dist
 var distFS embed.FS
+
+func init() {
+	// The alpine runtime image has no /etc/mime.types and Go's builtin table
+	// lacks .webmanifest — without this the manifest ships as text/plain.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+}
 
 // Handler serves the embedded SPA. Paths under /api/, /docs, /openapi and
 // /schemas never reach it (they are routed explicitly before the catch-all);
@@ -35,12 +42,28 @@ func Handler() http.Handler {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		if path != "" {
 			if _, err := fs.Stat(dist, path); err == nil {
+				if strings.HasPrefix(path, "assets/") {
+					// Content-hashed filenames: safe to cache forever.
+					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				} else {
+					// index.html, sw.js, manifest, icons: revalidate every
+					// time so deploys propagate (PWA update flow depends on
+					// fresh sw.js/index.html — docs/specs/pwa.md).
+					w.Header().Set("Cache-Control", "no-cache")
+				}
 				fileServer.ServeHTTP(w, r)
+				return
+			}
+			if strings.HasPrefix(path, "assets/") {
+				// Never answer a missing hashed asset with index.html — a
+				// service worker would cache HTML where JS was expected.
+				http.NotFound(w, r)
 				return
 			}
 		}
 		// Client-side route (or /): SPA fallback.
 		r.URL.Path = "/"
+		w.Header().Set("Cache-Control", "no-cache")
 		fileServer.ServeHTTP(w, r)
 	})
 }

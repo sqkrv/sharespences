@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/alexedwards/scs/pgxstore"
@@ -38,10 +39,20 @@ type Config struct {
 }
 
 // New builds the full HTTP handler (sessions wrapped around chi+huma,
-// embedded SPA as the catch-all).
+// embedded SPA as the catch-all). Sessions wrap ONLY /api/: scs stamps
+// Vary: Cookie on every wrapped response (breaks service-worker cache
+// matching, docs/specs/pwa.md) and costs a DB session lookup per request —
+// static assets and the SPA need neither.
 func New(cfg Config) http.Handler {
 	r, sm, _ := build(cfg)
-	return sm.LoadAndSave(r)
+	withSessions := sm.LoadAndSave(r)
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, "/api/") {
+			withSessions.ServeHTTP(w, req)
+			return
+		}
+		r.ServeHTTP(w, req)
+	})
 }
 
 // OpenAPI returns the API description as JSON — consumed by
