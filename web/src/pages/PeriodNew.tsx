@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, unwrap, uploadAttachment } from "../api/client";
@@ -17,20 +17,29 @@ export default function PeriodNew() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
+  // The month being viewed on the overview (?month=YYYY-MM), so «Добавить»
+  // backfills THAT month, not today (owner 2026-07-15). Mid-month day-15
+  // dodges any timezone edge; monthRange/quarterRange only read year+month.
+  const monthParam = params.get("month");
+  const baseDate = useMemo(
+    () => (monthParam ? new Date(Number(monthParam.slice(0, 4)), Number(monthParam.slice(5, 7)) - 1, 15) : new Date()),
+    [monthParam],
+  );
+
   const [clientID, setClientID] = useState(params.get("client") ?? "");
-  const [start, setStart] = useState(monthRange().start);
-  const [end, setEnd] = useState(monthRange().end);
+  const [start, setStart] = useState(monthRange(baseDate).start);
+  const [end, setEnd] = useState(monthRange(baseDate).end);
   const [files, setFiles] = useState<File[]>([]);
 
   const client = (clients.data ?? []).find((c) => String(c.id) === clientID);
 
-  // Default the range from the selected client's program period type.
+  // Default the range from the viewed month + the client's program period type.
   useEffect(() => {
     const info = client?.program_tier_id != null ? tierMap.data?.get(client.program_tier_id) : undefined;
-    const range = info?.program.period_type === "quarter" ? quarterRange() : monthRange();
+    const range = info?.program.period_type === "quarter" ? quarterRange(baseDate) : monthRange(baseDate);
     setStart(range.start);
     setEnd(range.end);
-  }, [clientID, clients.data, tierMap.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clientID, clients.data, tierMap.data, baseDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = useMutation({
     mutationFn: async () => {
@@ -51,6 +60,9 @@ export default function PeriodNew() {
     },
     onSuccess: (p) => {
       qc.invalidateQueries({ queryKey: ["overview"] });
+      // The month picker's dots come from ["periods"] — refresh so the new
+      // month is marked immediately, not after staleness kicks in.
+      qc.invalidateQueries({ queryKey: ["periods"] });
       navigate(`/periods/${p.id}`);
     },
   });

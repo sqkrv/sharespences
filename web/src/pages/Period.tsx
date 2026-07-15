@@ -513,6 +513,9 @@ export default function Period() {
       unwrap(await api.DELETE("/api/v1/cashback/offer-periods/{id}", { params: { path: { id } } })),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["overview"] });
+      // Keep the month picker's dots honest — this month may have lost its
+      // only period.
+      qc.invalidateQueries({ queryKey: ["periods"] });
       navigate("/");
     },
   });

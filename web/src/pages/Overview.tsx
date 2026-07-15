@@ -451,7 +451,7 @@ export default function Overview() {
                         </p>
                         <p className="mt-px text-[10.5px] font-medium text-tx4">нет периода на {monthName}</p>
                       </div>
-                      <Btn variant="soft" onClick={() => navigate(`/periods/new?client=${c.bank_client_id}`)}>
+                      <Btn variant="soft" onClick={() => navigate(`/periods/new?client=${c.bank_client_id}&month=${monthKey(monthDate)}`)}>
                         Добавить
                       </Btn>
                       <button
