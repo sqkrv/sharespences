@@ -428,7 +428,8 @@ export default function Overview() {
                         ))}
                         {(c.specials ?? []).map((chip) => (
                           <span key={chip.offer_id} className="rounded-lg border border-gold/25 bg-gold/10 px-2 py-1 text-[10.5px] font-semibold text-gold">
-                            {chip.raw_title} · спец
+                            {chip.raw_title}
+                            {chip.percent != null && ` ${chip.percent}%`} · спец
                           </span>
                         ))}
                         {c.max_categories != null && c.slots_used < c.max_categories && (
