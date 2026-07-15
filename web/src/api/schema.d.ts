@@ -678,7 +678,7 @@ export interface components {
              * @default regular
              * @enum {string}
              */
-            kind: "regular" | "special";
+            kind: "regular" | "super" | "special";
             notes?: string;
             /** Format: int64 */
             offer_period_id: number;
@@ -850,7 +850,7 @@ export interface components {
              * @default regular
              * @enum {string}
              */
-            kind: "regular" | "special";
+            kind: "regular" | "super" | "special";
             notes?: string;
             percent?: string;
             raw_title: string;
@@ -966,6 +966,7 @@ export interface components {
             client_label: string;
             currency_kind: string;
             holder_label?: string;
+            kind: string;
             percent?: string;
             period_end: string;
             period_start: string;
@@ -1020,6 +1021,7 @@ export interface components {
             title_ru: string;
         };
         OverviewChipDTO: {
+            kind: string;
             /** Format: int64 */
             offer_id: number;
             percent?: string;

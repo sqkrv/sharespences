@@ -43,6 +43,7 @@ function OtherCardRow({ e }: { e: LookupEntry }) {
         <p className="text-[13px] font-semibold">
           {e.bank_name}
           {e.holder_label && <span className="font-medium text-tx4"> · {e.holder_label}</span>}
+          {e.kind === "super" && <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] text-[9px] font-bold text-gold">барабан</span>}
         </p>
         <p className="text-[10px] font-medium text-tx4">{cap || currencyBadge(e.currency_kind, e.points_label)}</p>
       </div>
@@ -191,6 +192,9 @@ export default function Lookup() {
                           <div className="mt-3 flex items-end justify-between">
                             <div className="min-w-0">
                               <p className="text-[22px] leading-none font-extrabold tracking-tight">{best.bank_name}</p>
+                              {best.kind === "super" && (
+                                <span className="mt-1.5 inline-flex rounded-[8px] bg-white/20 px-2 py-0.5 text-[10px] font-bold">барабан · суммируется</span>
+                              )}
                               <p className="mt-1.5 text-[11px] font-semibold text-white/85">
                                 {[best.holder_label, cardChipsOf(best) || "любая карта"].filter(Boolean).join(" · ")}
                               </p>

@@ -28,20 +28,34 @@ const (
 	CurrencyUnknown CurrencyKind = "unknown"
 )
 
-// OfferKind separates regular menu rows from special bonus-mechanic rows
-// (барабан суперкэшбека, Альфа-Пятница, колесо фортуны). Special rows are
-// record-only: excluded from helper math and lookup ranking (invariant 6),
-// and their selections do not consume tier slots (owner decision 2026-07-03).
-// «За все покупки» is an ORDINARY regular row (owner 2026-07-09): it takes
-// a slot and collides like any category; it merely pays only when no other
+// OfferKind separates three shapes of menu row (spec invariant 6):
+//
+//   - regular — a chosen menu category: consumes a tier slot, collides
+//     across clients, ranks in lookup.
+//   - super   — a full-period STACKING bonus that is a genuine best-card
+//     candidate (the Альфа monthly барабан суперкэшбека: +1 category, whole
+//     period, stacks with the monthly pick). Ranks like a regular, но — like
+//     special — is granted, not chosen: no slot, no collision warning
+//     (owner 2026-07-15).
+//   - special — a time-boxed / non-stacking / channel bonus (Альфа-Пятница,
+//     Яндекс колесо, timed flash, сервис-категории): record-only, shown
+//     apart, never ranked, no slot.
+//
+// «За все покупки» is an ORDINARY regular row (owner 2026-07-09): it takes a
+// slot and collides like any category; it merely pays only when no other
 // selected category matches — a display concern (the «Остальное» fallback),
 // not a kind.
 type OfferKind string
 
 const (
 	OfferRegular OfferKind = "regular"
+	OfferSuper   OfferKind = "super"
 	OfferSpecial OfferKind = "special"
 )
+
+// ranksInLookup reports whether an offer of this kind participates in
+// best-card ranking. Only special is excluded (invariant 6); super ranks.
+func (k OfferKind) ranksInLookup() bool { return k != OfferSpecial }
 
 // PeriodType mirrors cashback_program.period_type.
 type PeriodType string
@@ -210,16 +224,17 @@ type Collision struct {
 
 // DetectCollisions returns a warning per existing selection of the same
 // canonical category on a DIFFERENT bank client with an overlapping period.
-// Special offers never participate (invariant 6: excluded from helper math);
-// offers without a canonical mapping cannot collide.
+// Only regular offers collide: super and special are granted, not chosen, so
+// a duplicate warning on them is noise (invariant 6). Offers without a
+// canonical mapping cannot collide.
 func DetectCollisions(candidate CandidateSelection, others []ActiveSelection) []Collision {
-	if candidate.CanonicalCategoryID == nil || candidate.Kind == OfferSpecial {
+	if candidate.CanonicalCategoryID == nil || candidate.Kind != OfferRegular {
 		return nil
 	}
 	var out []Collision
 	for _, o := range others {
 		switch {
-		case o.Kind == OfferSpecial,
+		case o.Kind != OfferRegular,
 			o.CanonicalCategoryID == nil,
 			*o.CanonicalCategoryID != *candidate.CanonicalCategoryID,
 			o.ClientID == candidate.ClientID,
@@ -245,6 +260,18 @@ func cmpPercentDesc(a, b *decimal.Decimal) int {
 	}
 }
 
+// bestByPercent returns the entry with the highest percent (unknown last).
+// Caller guarantees a non-empty slice.
+func bestByPercent(entries []LookupEntry) LookupEntry {
+	best := entries[0]
+	for _, e := range entries[1:] {
+		if cmpPercentDesc(e.Percent, best.Percent) < 0 {
+			best = e
+		}
+	}
+	return best
+}
+
 // OfferView is a menu row as the helper compares them.
 type OfferView struct {
 	OfferID      int64
@@ -259,16 +286,17 @@ type OfferView struct {
 
 // ComparableOffers returns the pool rows the helper may show side by side
 // with the candidate: same currency_kind only (invariant 5), kind=regular
-// only (invariant 6), the candidate itself excluded. Result is sorted by
-// percent descending (unknown percent last), then by bank and client label.
-// A special candidate has no comparisons at all.
+// only (invariant 6 — granted super/special are not menu alternatives), the
+// candidate itself excluded. Result is sorted by percent descending (unknown
+// percent last), then by bank and client label. A super or special candidate
+// has no comparisons at all.
 func ComparableOffers(candidate OfferView, pool []OfferView) []OfferView {
-	if candidate.Kind == OfferSpecial {
+	if candidate.Kind != OfferRegular {
 		return nil
 	}
 	var out []OfferView
 	for _, o := range pool {
-		if o.OfferID == candidate.OfferID || o.Kind == OfferSpecial ||
+		if o.OfferID == candidate.OfferID || o.Kind != OfferRegular ||
 			o.CurrencyKind != candidate.CurrencyKind {
 			continue
 		}
@@ -303,25 +331,26 @@ type LookupEntry struct {
 	PointsLabel    string // 'Баллы Плюс', 'баллы МКБ'; empty for rubles
 }
 
-// LookupResult is the S3 answer: ranked regular selections plus special
-// offers listed separately, unranked (invariant 6).
+// LookupResult is the S3 answer: ranked selections (regular + super) plus
+// special offers listed separately, unranked (invariant 6).
 type LookupResult struct {
 	Ranked  []LookupEntry
 	Special []LookupEntry
 }
 
 // RankActiveSelections filters entries to those whose period covers onDate,
-// then ranks regular ones: grouped by currency (rub before points — groups
-// are never compared to each other, invariant 5), percent descending within
-// a group (unknown percent last), ties by bank name then client label.
-// Special entries active on the date go to Special in input order.
+// then ranks the rankable ones (regular + super): grouped by currency (rub
+// before points — groups are never compared to each other, invariant 5),
+// percent descending within a group (unknown percent last), ties by bank name
+// then client label. Special entries active on the date go to Special in
+// input order (invariant 6).
 func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult {
 	var res LookupResult
 	for _, e := range entries {
 		if !e.Period.Contains(onDate) {
 			continue
 		}
-		if e.Kind == OfferSpecial {
+		if !e.Kind.ranksInLookup() {
 			res.Special = append(res.Special, e)
 			continue
 		}

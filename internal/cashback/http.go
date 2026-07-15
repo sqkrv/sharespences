@@ -147,7 +147,7 @@ type categoryOfferBody struct {
 	RawTitle            string  `json:"raw_title" minLength:"1"`
 	CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
 	Percent             *string `json:"percent,omitempty"`
-	Kind                string  `json:"kind,omitempty" enum:"regular,special" default:"regular"`
+	Kind                string  `json:"kind,omitempty" enum:"regular,super,special" default:"regular"`
 	Notes               *string `json:"notes,omitempty"`
 }
 
@@ -203,6 +203,7 @@ type LookupEntryDTO struct {
 	BankName       string  `json:"bank_name"`
 	ClientLabel    string  `json:"client_label"`
 	HolderLabel    string  `json:"holder_label,omitempty"`
+	Kind           string  `json:"kind"` // regular | super | special — lets the UI mark the ranked super (барабан)
 	Percent        *string `json:"percent,omitempty"`
 	CurrencyKind   string  `json:"currency_kind"`
 	PointsLabel    string  `json:"points_label,omitempty"`
@@ -215,8 +216,8 @@ type LookupEntryDTO struct {
 
 func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 	return LookupEntryDTO{
-		BankClientID: e.ClientID,
-		BankName:     e.BankName, ClientLabel: e.ClientLabel, HolderLabel: e.HolderLabel, Percent: decToStr(e.Percent),
+		BankClientID: e.ClientID, Kind: string(e.Kind),
+		BankName: e.BankName, ClientLabel: e.ClientLabel, HolderLabel: e.HolderLabel, Percent: decToStr(e.Percent),
 		CurrencyKind: string(e.CurrencyKind), PointsLabel: e.PointsLabel,
 		CapValue: decToStr(e.CapValue), CapPerCategory: decToStr(e.CapPerCategory),
 		CapScope:    string(e.CapScope),
@@ -265,6 +266,7 @@ type OverviewCategoryDTO struct {
 type OverviewChipDTO struct {
 	OfferID  int64   `json:"offer_id"`
 	RawTitle string  `json:"raw_title"`
+	Kind     string  `json:"kind"` // regular | super | special — «спец» vs «супер» chip label
 	Percent  *string `json:"percent,omitempty"`
 }
 
@@ -609,7 +611,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			RawTitle            string  `json:"raw_title" minLength:"1"`
 			CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
 			Percent             *string `json:"percent,omitempty"`
-			Kind                string  `json:"kind,omitempty" enum:"regular,special" default:"regular"`
+			Kind                string  `json:"kind,omitempty" enum:"regular,super,special" default:"regular"`
 			Notes               *string `json:"notes,omitempty"`
 		}
 	}) (*struct{ Body CategoryOfferDTO }, error) {
@@ -903,10 +905,10 @@ func RegisterHTTP(api huma.API, s *Service) {
 			}
 			dto.Selected = make([]OverviewChipDTO, len(c.Selected))
 			for j, r := range c.Selected {
-				dto.Selected[j] = OverviewChipDTO{OfferID: r.OfferID, RawTitle: r.RawTitle, Percent: decToStr(r.Percent)}
+				dto.Selected[j] = OverviewChipDTO{OfferID: r.OfferID, RawTitle: r.RawTitle, Kind: string(r.Kind), Percent: decToStr(r.Percent)}
 			}
 			for _, r := range c.Specials {
-				dto.Specials = append(dto.Specials, OverviewChipDTO{OfferID: r.OfferID, RawTitle: r.RawTitle, Percent: decToStr(r.Percent)})
+				dto.Specials = append(dto.Specials, OverviewChipDTO{OfferID: r.OfferID, RawTitle: r.RawTitle, Kind: string(r.Kind), Percent: decToStr(r.Percent)})
 			}
 			out.Body.Clients[i] = dto
 		}

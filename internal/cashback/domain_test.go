@@ -525,6 +525,48 @@ func TestRankActiveSelections(t *testing.T) {
 	}
 }
 
+// TestOfferSuper covers the super kind (owner 2026-07-15, spec invariant 6):
+// the Альфа monthly барабан ranks like a regular (unlike special), but is
+// granted, not chosen — no slot, no collision, not a comparison candidate.
+func TestOfferSuper(t *testing.T) {
+	// Ranks, and outranks a lower regular in the same category/currency.
+	res := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
+		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("15"), CurrencyKind: CurrencyRub, Kind: OfferSuper, Period: july2026},
+	})
+	if len(res.Ranked) != 2 || len(res.Special) != 0 {
+		t.Fatalf("super must rank: got Ranked=%d Special=%d, want 2/0", len(res.Ranked), len(res.Special))
+	}
+	if res.Ranked[0].Kind != OfferSuper || !res.Ranked[0].Percent.Equal(decimal.RequireFromString("15")) {
+		t.Errorf("super 15%% must rank above the regular 7%%, got %s %v", res.Ranked[0].Kind, res.Ranked[0].Percent)
+	}
+
+	// No collision: neither as a candidate nor as an existing selection.
+	superCand := CandidateSelection{ClientID: clientOzon, CanonicalCategoryID: catID(supermarketsID), Period: july2026, Kind: OfferSuper}
+	if got := DetectCollisions(superCand, []ActiveSelection{alfaSupermarkets()}); len(got) != 0 {
+		t.Errorf("super candidate must raise no collision, got %d", len(got))
+	}
+	regCand := CandidateSelection{ClientID: clientOzon, CanonicalCategoryID: catID(supermarketsID), Period: july2026, Kind: OfferRegular}
+	grantedSuper := alfaSupermarkets()
+	grantedSuper.Kind = OfferSuper
+	if got := DetectCollisions(regCand, []ActiveSelection{grantedSuper}); len(got) != 0 {
+		t.Errorf("a regular must not collide against a granted super, got %d", len(got))
+	}
+
+	// No slot: a super selection is allowed even at the regular cap.
+	if err := ValidateSelection(SelectionCheck{
+		Period: july2026, SelectedAt: Date(2026, time.July, 10), OfferKind: OfferSuper,
+		MaxCategories: maxCats(3), RegularSelectedCount: 3,
+	}); err != nil {
+		t.Errorf("super consumes no slot even at the regular cap, got %v", err)
+	}
+
+	// Not a menu alternative: a super candidate has no comparisons.
+	if got := ComparableOffers(OfferView{OfferID: 1, Kind: OfferSuper, CurrencyKind: CurrencyRub}, nil); got != nil {
+		t.Errorf("super candidate has no comparisons, got %v", got)
+	}
+}
+
 func TestNormalizeTitle(t *testing.T) {
 	tests := []struct{ in, want string }{
 		{"Продукты", "продукты"},

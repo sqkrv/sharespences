@@ -536,6 +536,7 @@ type OverviewCategoryGroup struct {
 type OverviewSelectedRow struct {
 	OfferID  int64
 	RawTitle string
+	Kind     OfferKind
 	Percent  *decimal.Decimal
 }
 
@@ -667,20 +668,39 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 	}
 	for catID, entries := range byCat {
 		ranked := RankActiveSelections(onDate, entries)
-		if len(ranked.Ranked) == 0 {
-			continue // only specials or nothing active — not a lookup answer (invariant 6)
-		}
 		cat, ok := catByID[catID]
 		if !ok {
 			continue
+		}
+		var best LookupEntry
+		var others int
+		switch {
+		case len(ranked.Ranked) > 0:
+			// regular + super rank; super (барабан) can be the best card.
+			best, others = ranked.Ranked[0], len(ranked.Ranked)-1
+		case len(ranked.Special) > 0:
+			// only display-only specials (Пятница/колесо/timed): surface the
+			// category as a spec row so it isn't invisible (owner 2026-07-15),
+			// but it's NOT a ranked answer — the frontend styles it apart.
+			best, others = bestByPercent(ranked.Special), len(ranked.Special)-1
+		default:
+			continue // nothing active
 		}
 		res.Categories = append(res.Categories, OverviewCategoryGroup{
 			CategoryID:  catID,
 			Slug:        cat.Slug,
 			TitleRu:     cat.TitleRu,
-			Best:        ranked.Ranked[0],
-			OthersCount: len(ranked.Ranked) - 1,
+			Best:        best,
+			OthersCount: others,
 		})
+	}
+	// Sort: rub before points; within a currency, ranked (regular/super)
+	// before display-only special; then percent desc; then title.
+	specialRank := func(k OfferKind) int {
+		if k.ranksInLookup() {
+			return 0
+		}
+		return 1
 	}
 	sort.SliceStable(res.Categories, func(i, j int) bool {
 		a, b := res.Categories[i].Best, res.Categories[j].Best
@@ -688,6 +708,9 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		cb := map[CurrencyKind]int{CurrencyRub: 0, CurrencyPoints: 1}[b.CurrencyKind]
 		if ca != cb {
 			return ca < cb
+		}
+		if sa, sb := specialRank(a.Kind), specialRank(b.Kind); sa != sb {
+			return sa < sb
 		}
 		if c := cmpPercentDesc(a.Percent, b.Percent); c != 0 {
 			return c < 0
@@ -751,8 +774,10 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			if !o.Selected {
 				continue
 			}
-			row := OverviewSelectedRow{OfferID: o.CategoryOfferID, RawTitle: o.RawTitle, Percent: o.Percent}
-			if OfferKind(o.Kind) == OfferSpecial {
+			row := OverviewSelectedRow{OfferID: o.CategoryOfferID, RawTitle: o.RawTitle, Kind: OfferKind(o.Kind), Percent: o.Percent}
+			// Only regular fills a slot and shows as a chosen (mint) chip;
+			// granted super/special go to the gold bonus chips (no slot).
+			if OfferKind(o.Kind) != OfferRegular {
 				oc.Specials = append(oc.Specials, row)
 			} else {
 				oc.SlotsUsed++

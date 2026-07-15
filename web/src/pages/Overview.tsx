@@ -331,14 +331,30 @@ export default function Overview() {
                     onClick={() => navigate(`/lookup?cat=${g.slug}`)}
                     className="flex w-full items-center gap-2.5 border-t border-brd/60 py-2.5 text-left"
                   >
-                    <span className="flex-1 text-sm font-semibold">{g.title_ru}</span>
+                    <span className="flex-1 text-sm font-semibold">
+                      {g.title_ru}
+                      {/* super (барабан) ranks as best card but is a bonus, not a chosen slot;
+                          special-only means no chosen category here — both flagged gold. */}
+                      {g.best.kind === "super" && (
+                        <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] align-middle text-[9px] font-bold text-gold">барабан</span>
+                      )}
+                      {g.best.kind === "special" && (
+                        <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] align-middle text-[9px] font-bold text-gold">спец</span>
+                      )}
+                    </span>
                     <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-tx3">
                       <BankBadge name={g.best.bank_name} size={22} />
                       {bankShort(g.best.bank_name)}
                       {g.best.holder_label && <span className="text-tx4">· {g.best.holder_label}</span>}
                       {g.others_count > 0 && <span className="text-tx4">+{g.others_count}</span>}
                     </span>
-                    <Pct percent={g.best.percent} currency={g.best.currency_kind} className="w-10 text-right text-[14.5px]" />
+                    {g.best.kind === "special" ? (
+                      <span className="w-10 text-right text-[14.5px] font-extrabold text-gold">
+                        {g.best.percent != null ? `${g.best.percent}%` : "—"}
+                      </span>
+                    ) : (
+                      <Pct percent={g.best.percent} currency={g.best.currency_kind} className="w-10 text-right text-[14.5px]" />
+                    )}
                   </button>
                 ))}
                 {data.base && (
@@ -429,7 +445,7 @@ export default function Overview() {
                         {(c.specials ?? []).map((chip) => (
                           <span key={chip.offer_id} className="rounded-lg border border-gold/25 bg-gold/10 px-2 py-1 text-[10.5px] font-semibold text-gold">
                             {chip.raw_title}
-                            {chip.percent != null && ` ${chip.percent}%`} · спец
+                            {chip.percent != null && ` ${chip.percent}%`} · {chip.kind === "super" ? "барабан" : "спец"}
                           </span>
                         ))}
                         {c.max_categories != null && c.slots_used < c.max_categories && (
