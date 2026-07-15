@@ -7,8 +7,16 @@ import { BankBadge, Btn, Card, ErrMsg, Field, Input, Pct, SegTabs, Select, Spinn
 import { MonthPicker } from "../components/MonthPicker";
 import { capNote, midMonthISO, monthKey, monthNameOf, opensStripParts, pad2, todayISO } from "../lib";
 
-const PAYMENT_SYSTEMS = ["mir", "visa", "mastercard", "unionpay", "american_express"] as const;
-type PaySystem = (typeof PAYMENT_SYSTEMS)[number];
+// [enum value, human label] — the API takes the lowercase enum, the user
+// reads «Мир»/«Visa» (owner 2026-07-15).
+const PAYMENT_SYSTEMS = [
+  ["mir", "Мир"],
+  ["visa", "Visa"],
+  ["mastercard", "Mastercard"],
+  ["unionpay", "UnionPay"],
+  ["american_express", "American Express"],
+] as const;
+type PaySystem = (typeof PAYMENT_SYSTEMS)[number][0];
 
 function useOverview(date: string) {
   return useQuery({
@@ -232,9 +240,9 @@ function AddCardForm({ onDone }: { onDone: () => void }) {
           </Field>
           <Field label="Платёжная система">
             <Select value={paySystem} onChange={(e) => setPaySystem(e.target.value as PaySystem)}>
-              {PAYMENT_SYSTEMS.map((ps) => (
+              {PAYMENT_SYSTEMS.map(([ps, label]) => (
                 <option key={ps} value={ps}>
-                  {ps}
+                  {label}
                 </option>
               ))}
             </Select>
