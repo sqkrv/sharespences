@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+	"golang.org/x/text/unicode/norm"
 )
 
 // CurrencyKind is the currency a program pays КБ in. Helper comparisons and
@@ -517,11 +518,23 @@ func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult 
 	return res
 }
 
+// homoglyphs maps the lowercase Latin letters that are pixel-identical to
+// Cyrillic ones onto their Cyrillic twins. Real Альфа menu titles mix them
+// into Cyrillic words («Кафе и pестораны», «Цвeты»). Applied to both sides
+// of every comparison, so genuinely-Latin titles still match each other.
+var homoglyphs = strings.NewReplacer(
+	"a", "а", "c", "с", "e", "е", "o", "о", "p", "р", "x", "х", "y", "у",
+)
+
 // NormalizeTitle canonicalizes a bank's raw category title for alias
-// matching: lower-case, trimmed, inner whitespace collapsed, ё→е.
+// matching: NFC-composed (Альфа sends «й» decomposed), lower-case, trimmed,
+// inner whitespace collapsed, ё→е, Latin homoglyphs folded to Cyrillic.
+// The normalized form is compared, never stored or displayed.
 func NormalizeTitle(s string) string {
+	s = norm.NFC.String(s)
 	s = strings.ToLower(s)
 	s = strings.ReplaceAll(s, "ё", "е")
+	s = homoglyphs.Replace(s)
 	return strings.Join(strings.Fields(s), " ")
 }
 

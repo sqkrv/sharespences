@@ -659,8 +659,18 @@ func TestNormalizeTitle(t *testing.T) {
 		{"  Продукты  ", "продукты"},
 		{"Кафе  и   Рестораны", "кафе и рестораны"},
 		{"ВСЁ ДЛЯ ДОМА", "все для дома"},
-		{"Fast Food", "fast food"},
+		{"Fast Food", "fаst fооd"}, // a/o fold to Cyrillic homoglyphs
 		{"Такси\tи каршеринг", "такси и каршеринг"},
+		// Альфа sends «й»/«ё» NFD-decomposed (base letter + combining mark).
+		{"Чай и кофе", "чай и кофе"},
+		{"Вёрный", "верный"},
+		// Real Альфа titles mix pixel-identical Latin letters into Cyrillic
+		// words; expected values below are pure Cyrillic.
+		{"Кафе и pестораны", "кафе и рестораны"},
+		{"Цвeты", "цветы"},
+		// Genuinely-Latin titles fold too — consistently on both comparison
+		// sides, so they keep matching each other.
+		{"Duty Free", "dutу frее"},
 	}
 	for _, tt := range tests {
 		if got := NormalizeTitle(tt.in); got != tt.want {
