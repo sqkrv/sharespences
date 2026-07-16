@@ -792,11 +792,12 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 // LookupResultView answers S3, with partner offers as an unranked footnote
 // (matched by merchant/notes text against the category title).
 type LookupResultView struct {
-	Category db.CanonicalCategory
-	Ranked   []LookupEntry
-	Special  []LookupEntry
-	Fallback []LookupEntry // selected «За все покупки» — pays when nothing ranks
-	Partner  []db.ListPartnerOffersForUserRow
+	Category  db.CanonicalCategory
+	Ranked    []LookupEntry
+	Special   []LookupEntry
+	Fallback  []LookupEntry    // selected «За все покупки» — pays when nothing ranks
+	Available []AvailableEntry // S3b: offered-but-unselected rows with verdicts
+	Partner   []db.ListPartnerOffersForUserRow
 }
 
 func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug string, onDate time.Time) (LookupResultView, error) {
@@ -816,6 +817,43 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 		entries = append(entries, entryOf(o))
 	}
 	ranked := RankActiveSelections(onDate, entries)
+
+	// S3b «Можно выбрать»: menu rows of this category sitting in an active
+	// period WITHOUT a selection. regular+super only (special never ranks);
+	// each row gets a fact-based verdict instead of a dead end.
+	regCount := make(map[int64]int) // offer_period_id → selected regular rows
+	for _, o := range all {
+		if o.Selected && OfferKind(o.Kind) == OfferRegular {
+			regCount[o.OfferPeriodID]++
+		}
+	}
+	var available []AvailableEntry
+	for _, o := range all {
+		if o.Selected || o.CanonicalCategoryID == nil || *o.CanonicalCategoryID != cat.ID {
+			continue
+		}
+		kind := OfferKind(o.Kind)
+		if kind == OfferSpecial || !rowRange(o.PeriodStart, o.PeriodEnd).Contains(onDate) {
+			continue
+		}
+		max := o.MaxCategoriesOverride
+		if max == nil {
+			max = o.MaxCategories
+		}
+		available = append(available, AvailableEntry{
+			Entry:    entryOf(o),
+			OfferID:  o.CategoryOfferID,
+			RawTitle: o.RawTitle,
+			Verdict: AssessAvailability(AvailabilityCheck{
+				Kind:                 kind,
+				Policy:               MidPeriodAddPolicy(o.MidPeriodAdd),
+				HasRegularSelection:  regCount[o.OfferPeriodID] > 0,
+				MaxCategories:        max,
+				RegularSelectedCount: regCount[o.OfferPeriodID],
+			}),
+			Activation: ActivationKind(o.Activation),
+		})
+	}
 
 	// «За все покупки» answers the lookup when nothing ranks — and is worth
 	// showing alongside even when something does (it pays only when no other
@@ -849,7 +887,10 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 			footnote = append(footnote, p)
 		}
 	}
-	return LookupResultView{Category: cat, Ranked: ranked.Ranked, Special: ranked.Special, Fallback: fallback, Partner: footnote}, nil
+	return LookupResultView{
+		Category: cat, Ranked: ranked.Ranked, Special: ranked.Special,
+		Fallback: fallback, Available: RankAvailable(available), Partner: footnote,
+	}, nil
 }
 
 func notFound(err error) error {

@@ -331,6 +331,138 @@ type LookupEntry struct {
 	PointsLabel    string // 'Баллы Плюс', 'баллы МКБ'; empty for rubles
 }
 
+// MidPeriodAddPolicy mirrors cashback_program.mid_period_add (owner
+// 2026-07-16): whether a category can be ADDED mid-period. Deliberately not
+// derived from SelectionMode — Альфа is atomic yet allows adds while a slot
+// is free; ВТБ/Озон (also atomic) lock after the one-shot confirmation.
+type MidPeriodAddPolicy string
+
+const (
+	AddAllowed          MidPeriodAddPolicy = "allowed"
+	AddLockedAfterFirst MidPeriodAddPolicy = "locked_after_first"
+	AddPaid             MidPeriodAddPolicy = "paid"
+	AddUnknown          MidPeriodAddPolicy = "unknown"
+)
+
+// ActivationKind mirrors cashback_program.activation: when a fresh pick
+// starts paying. МКБ = next_day, so «выбери перед покупкой» must warn there.
+type ActivationKind string
+
+const (
+	ActivationImmediate ActivationKind = "immediate"
+	ActivationNextDay   ActivationKind = "next_day"
+	ActivationUnknown   ActivationKind = "unknown"
+)
+
+// AvailabilityVerdict is S3b's honest answer per offered-but-unselected row —
+// a fact-based state, never a guess (spec S3b, owner 2026-07-16).
+type AvailabilityVerdict string
+
+const (
+	AvailFree      AvailabilityVerdict = "free"       // pick it now
+	AvailPaid      AvailabilityVerdict = "paid"       // bank charges for the change (МКБ)
+	AvailLocked    AvailabilityVerdict = "locked"     // one-shot selection already confirmed
+	AvailSlotsFull AvailabilityVerdict = "slots_full" // no free regular slot
+	AvailUnknown   AvailabilityVerdict = "unknown"    // program policy not gathered
+)
+
+// AvailabilityCheck is the input for one offered-but-unselected menu row.
+type AvailabilityCheck struct {
+	Kind                 OfferKind
+	Policy               MidPeriodAddPolicy
+	HasRegularSelection  bool   // the client already confirmed picks this period
+	MaxCategories        *int32 // effective limit (override ?? tier); nil = unknown → no slot check
+	RegularSelectedCount int
+}
+
+// AssessAvailability decides whether the row can still be picked. super
+// (барабан) is granted, slot-free and never locked — always markable. For
+// regular rows the slot check comes first (invariant 1 would hard-reject the
+// selection anyway), then the program's mid-period policy.
+func AssessAvailability(c AvailabilityCheck) AvailabilityVerdict {
+	if c.Kind == OfferSuper {
+		return AvailFree
+	}
+	if c.MaxCategories != nil && c.RegularSelectedCount >= int(*c.MaxCategories) {
+		return AvailSlotsFull
+	}
+	switch c.Policy {
+	case AddAllowed:
+		return AvailFree
+	case AddPaid:
+		return AvailPaid
+	case AddLockedAfterFirst:
+		if c.HasRegularSelection {
+			return AvailLocked
+		}
+		return AvailFree
+	default:
+		return AvailUnknown
+	}
+}
+
+// AvailableEntry is one S3b row: the menu offer, its verdict and the
+// program's activation timing (next_day must be warned about).
+type AvailableEntry struct {
+	Entry      LookupEntry
+	OfferID    int64
+	RawTitle   string
+	Verdict    AvailabilityVerdict
+	Activation ActivationKind
+}
+
+// verdictOrder: actionable first (free, paid, unknown are things the user can
+// still do), blocked after (slots_full before locked — freeing a slot is an
+// action, a one-shot lock is final).
+func verdictOrder(v AvailabilityVerdict) int {
+	switch v {
+	case AvailFree:
+		return 0
+	case AvailPaid:
+		return 1
+	case AvailUnknown:
+		return 2
+	case AvailSlotsFull:
+		return 3
+	default: // AvailLocked
+		return 4
+	}
+}
+
+// RankAvailable orders S3b rows: verdict actionability, then the ranked
+// ordering within (currency group rub→points, percent desc with unknown
+// last, bank name, client label).
+func RankAvailable(entries []AvailableEntry) []AvailableEntry {
+	out := append([]AvailableEntry(nil), entries...)
+	currencyOrder := func(k CurrencyKind) int {
+		switch k {
+		case CurrencyRub:
+			return 0
+		case CurrencyPoints:
+			return 1
+		default:
+			return 2
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if va, vb := verdictOrder(a.Verdict), verdictOrder(b.Verdict); va != vb {
+			return va < vb
+		}
+		if ca, cb := currencyOrder(a.Entry.CurrencyKind), currencyOrder(b.Entry.CurrencyKind); ca != cb {
+			return ca < cb
+		}
+		if c := cmpPercentDesc(a.Entry.Percent, b.Entry.Percent); c != 0 {
+			return c < 0
+		}
+		if a.Entry.BankName != b.Entry.BankName {
+			return a.Entry.BankName < b.Entry.BankName
+		}
+		return a.Entry.ClientLabel < b.Entry.ClientLabel
+	})
+	return out
+}
+
 // LookupResult is the S3 answer: ranked selections (regular + super) plus
 // special offers listed separately, unranked (invariant 6).
 type LookupResult struct {

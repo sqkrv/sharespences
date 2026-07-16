@@ -14,6 +14,49 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+type CashbackActivation string
+
+const (
+	CashbackActivationImmediate CashbackActivation = "immediate"
+	CashbackActivationNextDay   CashbackActivation = "next_day"
+	CashbackActivationUnknown   CashbackActivation = "unknown"
+)
+
+func (e *CashbackActivation) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CashbackActivation(s)
+	case string:
+		*e = CashbackActivation(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CashbackActivation: %T", src)
+	}
+	return nil
+}
+
+type NullCashbackActivation struct {
+	CashbackActivation CashbackActivation
+	Valid              bool // Valid is true if CashbackActivation is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCashbackActivation) Scan(value interface{}) error {
+	if value == nil {
+		ns.CashbackActivation, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CashbackActivation.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCashbackActivation) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CashbackActivation), nil
+}
+
 type CashbackCapScope string
 
 const (
@@ -99,11 +142,56 @@ func (ns NullCashbackCurrencyKind) Value() (driver.Value, error) {
 	return string(ns.CashbackCurrencyKind), nil
 }
 
+type CashbackMidPeriodAdd string
+
+const (
+	CashbackMidPeriodAddAllowed          CashbackMidPeriodAdd = "allowed"
+	CashbackMidPeriodAddLockedAfterFirst CashbackMidPeriodAdd = "locked_after_first"
+	CashbackMidPeriodAddPaid             CashbackMidPeriodAdd = "paid"
+	CashbackMidPeriodAddUnknown          CashbackMidPeriodAdd = "unknown"
+)
+
+func (e *CashbackMidPeriodAdd) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CashbackMidPeriodAdd(s)
+	case string:
+		*e = CashbackMidPeriodAdd(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CashbackMidPeriodAdd: %T", src)
+	}
+	return nil
+}
+
+type NullCashbackMidPeriodAdd struct {
+	CashbackMidPeriodAdd CashbackMidPeriodAdd
+	Valid                bool // Valid is true if CashbackMidPeriodAdd is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCashbackMidPeriodAdd) Scan(value interface{}) error {
+	if value == nil {
+		ns.CashbackMidPeriodAdd, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CashbackMidPeriodAdd.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCashbackMidPeriodAdd) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CashbackMidPeriodAdd), nil
+}
+
 type CashbackOfferKind string
 
 const (
 	CashbackOfferKindRegular CashbackOfferKind = "regular"
 	CashbackOfferKindSpecial CashbackOfferKind = "special"
+	CashbackOfferKindSuper   CashbackOfferKind = "super"
 )
 
 func (e *CashbackOfferKind) Scan(src interface{}) error {
@@ -508,6 +596,8 @@ type CashbackProgram struct {
 	PointsLabel       *string
 	SelectionOpensDay *int32
 	Notes             *string
+	MidPeriodAdd      CashbackMidPeriodAdd
+	Activation        CashbackActivation
 }
 
 type Category struct {

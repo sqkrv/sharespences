@@ -37,14 +37,24 @@ type program struct {
 	currencyKind  string
 	pointsLabel   string
 	opensDay      int // 0 = unknown
-	notes         string
-	tiers         []tier
+	// midPeriodAdd: can a category be ADDED mid-period? (allowed |
+	// locked_after_first | paid | unknown). NOT derivable from
+	// selectionMode — Альфа is atomic yet allows adds (owner 2026-07-16).
+	midPeriodAdd string
+	// activation: when a fresh pick starts paying (immediate | next_day |
+	// unknown). МКБ activates next day — «выбери перед покупкой» advice
+	// would be wrong there.
+	activation string
+	notes      string
+	tiers      []tier
 }
 
 var programs = []program{
 	{
 		bank: "Альфа-Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
-		currencyKind: "rub", opensDay: 25, notes: asOf,
+		currencyKind: "rub", opensDay: 25,
+		midPeriodAdd: "allowed", activation: "immediate", // owner 2026-07-16: add while a slot is free
+		notes: asOf,
 		tiers: []tier{
 			{name: "Стандартный", capValue: "5000", capScope: "total", maxCategories: 3, basePercent: "5", notes: asOf},
 			{name: "Альфа-Смарт", paid: true, capValue: "7000", capScope: "total", maxCategories: 4, basePercent: "5", notes: asOf},
@@ -53,7 +63,9 @@ var programs = []program{
 	},
 	{
 		bank: "ВТБ", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
-		currencyKind: "rub", opensDay: 26, notes: asOf + "; дополнительные категории за хранение остатков — record-only",
+		currencyKind: "rub", opensDay: 26,
+		midPeriodAdd: "locked_after_first", activation: "immediate", // one-shot (п. 3.5); +5 мин ≈ immediate
+		notes: asOf + "; дополнительные категории за хранение остатков — record-only",
 		tiers: []tier{
 			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 3, notes: asOf + "; % варьируется до 15%"},
 			{name: "Привилегия", capValue: "30000", capScope: "total", maxCategories: 3, notes: asOf},
@@ -61,7 +73,9 @@ var programs = []program{
 	},
 	{
 		bank: "Озон Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
-		currencyKind: "rub", opensDay: 25, notes: asOf,
+		currencyKind: "rub", opensDay: 25,
+		midPeriodAdd: "locked_after_first", activation: "immediate", // «единожды» per the loyalty rules
+		notes: asOf,
 		tiers: []tier{
 			{name: "Стандартный", capValue: "3000", capScope: "both", capPerCategory: "1500", maxCategories: 4, notes: asOf},
 			{name: "Ozon Premium", paid: true, capValue: "3000", capScope: "both", capPerCategory: "1500", maxCategories: 4,
@@ -71,6 +85,9 @@ var programs = []program{
 	{
 		bank: "Яндекс Пэй", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "incremental",
 		currencyKind: "points", pointsLabel: "Баллы Плюс",
+		// rules: base selection is one-shot; the incremental feel comes from
+		// GRANTED extra categories (мини-игра/Свои Плюсы), not from re-picking.
+		midPeriodAdd: "locked_after_first", activation: "immediate",
 		notes: asOf + "; баллы требуют активной подписки Яндекс Плюс; колесо фортуны — record-only",
 		tiers: []tier{
 			{name: "Стандартный", capValue: "10000", capScope: "total", notes: asOf + "; max категорий неизвестен"},
@@ -79,7 +96,8 @@ var programs = []program{
 	{
 		bank: "Газпромбанк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub",
-		notes:        "факты не собраны (knowledge stub, 2026-07); period/mode/currency — предположения",
+		midPeriodAdd: "unknown", activation: "unknown",
+		notes: "факты не собраны (knowledge stub, 2026-07); period/mode/currency — предположения",
 		tiers: []tier{
 			{name: "Стандартный", capScope: "total", notes: "лимиты неизвестны (null = unknown)"},
 		},
@@ -87,6 +105,7 @@ var programs = []program{
 	{
 		bank: "МКБ", name: "Кэшбэк", periodType: "quarter", selectionMode: "atomic",
 		currencyKind: "points", pointsLabel: "баллы МКБ",
+		midPeriodAdd: "paid", activation: "next_day",
 		notes: asOf + "; баллы 1:1 в рубли с месячными лимитами перевода; платная смена категории посреди квартала, активация на следующий день",
 		tiers: []tier{
 			{name: "Стандарт", capValue: "1500", capScope: "total", notes: asOf},
@@ -386,17 +405,32 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 	for _, p := range programs {
 		if _, err := pool.Exec(ctx, `
 			insert into cashback_program (bank_id, name, period_type, selection_mode, currency_kind,
-			                              points_label, selection_opens_day, notes)
+			                              points_label, selection_opens_day, mid_period_add, activation, notes)
 			select b.id, $2, $3::cashback_period_type, $4::cashback_selection_mode,
-			       $5::cashback_currency_kind, nullif($6, ''), nullif($7, 0), nullif($8, '')
+			       $5::cashback_currency_kind, nullif($6, ''), nullif($7, 0),
+			       $8::cashback_mid_period_add, $9::cashback_activation, nullif($10, '')
 			from bank b
 			where b.name = $1
 			  and not exists (select 1
 			                  from cashback_program cp
 			                  where cp.bank_id = b.id and cp.name = $2)`,
 			p.bank, p.name, p.periodType, p.selectionMode, p.currencyKind,
-			p.pointsLabel, p.opensDay, p.notes); err != nil {
+			p.pointsLabel, p.opensDay, p.midPeriodAdd, p.activation, p.notes); err != nil {
 			return fmt.Errorf("seed program %s: %w", p.bank, err)
+		}
+		// Policy facts are knowledge-derived, not user data — refresh them on
+		// existing rows too (the insert guard leaves pre-existing programs as
+		// they were, which would strand prod on the 'unknown' defaults).
+		if _, err := pool.Exec(ctx, `
+			update cashback_program cp
+			set mid_period_add = $3::cashback_mid_period_add,
+			    activation     = $4::cashback_activation
+			from bank b
+			where b.id = cp.bank_id
+			  and b.name = $1
+			  and cp.name = $2`,
+			p.bank, p.name, p.midPeriodAdd, p.activation); err != nil {
+			return fmt.Errorf("seed program policy %s: %w", p.bank, err)
 		}
 		for _, t := range p.tiers {
 			if _, err := pool.Exec(ctx, `

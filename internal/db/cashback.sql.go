@@ -192,7 +192,7 @@ const createProgram = `-- name: CreateProgram :one
 insert into cashback_program (bank_id, name, period_type, selection_mode, currency_kind,
                               points_label, selection_opens_day, notes)
 values ($1, $2, $3, $4, $5, $6, $7, $8)
-returning id, bank_id, name, period_type, selection_mode, currency_kind, points_label, selection_opens_day, notes
+returning id, bank_id, name, period_type, selection_mode, currency_kind, points_label, selection_opens_day, notes, mid_period_add, activation
 `
 
 type CreateProgramParams struct {
@@ -232,6 +232,8 @@ func (q *Queries) CreateProgram(ctx context.Context, arg CreateProgramParams) (C
 		&i.PointsLabel,
 		&i.SelectionOpensDay,
 		&i.Notes,
+		&i.MidPeriodAdd,
+		&i.Activation,
 	)
 	return i, err
 }
@@ -579,7 +581,7 @@ func (q *Queries) GetOfferWithContextForUser(ctx context.Context, arg GetOfferWi
 }
 
 const getProgram = `-- name: GetProgram :one
-select id, bank_id, name, period_type, selection_mode, currency_kind, points_label, selection_opens_day, notes
+select id, bank_id, name, period_type, selection_mode, currency_kind, points_label, selection_opens_day, notes, mid_period_add, activation
 from cashback_program
 where id = $1
 `
@@ -597,6 +599,8 @@ func (q *Queries) GetProgram(ctx context.Context, id int64) (CashbackProgram, er
 		&i.PointsLabel,
 		&i.SelectionOpensDay,
 		&i.Notes,
+		&i.MidPeriodAdd,
+		&i.Activation,
 	)
 	return i, err
 }
@@ -920,7 +924,7 @@ func (q *Queries) ListPeriodRangesForClient(ctx context.Context, bankClientID in
 }
 
 const listPrograms = `-- name: ListPrograms :many
-select cp.id, cp.bank_id, cp.name, cp.period_type, cp.selection_mode, cp.currency_kind, cp.points_label, cp.selection_opens_day, cp.notes, b.name as bank_name
+select cp.id, cp.bank_id, cp.name, cp.period_type, cp.selection_mode, cp.currency_kind, cp.points_label, cp.selection_opens_day, cp.notes, cp.mid_period_add, cp.activation, b.name as bank_name
 from cashback_program cp
          join bank b on b.id = cp.bank_id
 order by cp.id
@@ -936,6 +940,8 @@ type ListProgramsRow struct {
 	PointsLabel       *string
 	SelectionOpensDay *int32
 	Notes             *string
+	MidPeriodAdd      CashbackMidPeriodAdd
+	Activation        CashbackActivation
 	BankName          string
 }
 
@@ -958,6 +964,8 @@ func (q *Queries) ListPrograms(ctx context.Context) ([]ListProgramsRow, error) {
 			&i.PointsLabel,
 			&i.SelectionOpensDay,
 			&i.Notes,
+			&i.MidPeriodAdd,
+			&i.Activation,
 			&i.BankName,
 		); err != nil {
 			return nil, err
@@ -1027,6 +1035,18 @@ select co.id                     as category_offer_id,
        pt.max_categories,
        cp.currency_kind          as program_currency_kind,
        cp.points_label,
+       -- Program-level policy reached via the BANK, not the tier: a client
+       -- without a tier still falls under the bank's program (S3b verdicts
+       -- must not degrade to 'unknown' just because no tier is set).
+       -- coalesce: banks without a seeded program (Сбербанк/Т-Банк) → unknown.
+       coalesce((select cpb.mid_period_add
+                 from cashback_program cpb
+                 where cpb.bank_id = cl.bank_id
+                 limit 1), 'unknown')::cashback_mid_period_add as mid_period_add,
+       coalesce((select cpb.activation
+                 from cashback_program cpb
+                 where cpb.bank_id = cl.bank_id
+                 limit 1), 'unknown')::cashback_activation     as activation,
        (s.id is not null)::bool  as selected,
        s.selected_at
 from category_offer co
@@ -1058,6 +1078,8 @@ type ListUserOffersRow struct {
 	MaxCategories         *int32
 	ProgramCurrencyKind   NullCashbackCurrencyKind
 	PointsLabel           *string
+	MidPeriodAdd          CashbackMidPeriodAdd
+	Activation            CashbackActivation
 	Selected              bool
 	SelectedAt            *time.Time
 }
@@ -1094,6 +1116,8 @@ func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListU
 			&i.MaxCategories,
 			&i.ProgramCurrencyKind,
 			&i.PointsLabel,
+			&i.MidPeriodAdd,
+			&i.Activation,
 			&i.Selected,
 			&i.SelectedAt,
 		); err != nil {
@@ -1195,7 +1219,7 @@ set name                = $2,
     selection_opens_day = $7,
     notes               = $8
 where id = $1
-returning id, bank_id, name, period_type, selection_mode, currency_kind, points_label, selection_opens_day, notes
+returning id, bank_id, name, period_type, selection_mode, currency_kind, points_label, selection_opens_day, notes, mid_period_add, activation
 `
 
 type UpdateProgramParams struct {
@@ -1231,6 +1255,8 @@ func (q *Queries) UpdateProgram(ctx context.Context, arg UpdateProgramParams) (C
 		&i.PointsLabel,
 		&i.SelectionOpensDay,
 		&i.Notes,
+		&i.MidPeriodAdd,
+		&i.Activation,
 	)
 	return i, err
 }

@@ -226,6 +226,16 @@ func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 	}
 }
 
+// AvailableEntryDTO is one S3b «Можно выбрать» row: an offered-but-unselected
+// menu offer with a fact-based verdict (spec S3b, owner 2026-07-16).
+type AvailableEntryDTO struct {
+	LookupEntryDTO
+	OfferID    int64  `json:"offer_id" doc:"category_offer id — «Отметить выбранной» posts the ordinary selection for it"`
+	RawTitle   string `json:"raw_title"`
+	Verdict    string `json:"verdict" enum:"free,paid,locked,slots_full,unknown"`
+	Activation string `json:"activation" enum:"immediate,next_day,unknown" doc:"next_day (МКБ): a fresh pick won't cover a purchase made right now"`
+}
+
 type PartnerOfferDTO struct {
 	ID            int64   `json:"id"`
 	BankID        int32   `json:"bank_id"`
@@ -925,13 +935,14 @@ func RegisterHTTP(api huma.API, s *Service) {
 		Date     string `query:"date" doc:"YYYY-MM-DD; defaults to today"`
 	}) (*struct {
 		Body struct {
-			Category CanonicalCategoryDTO `json:"category"`
-			Date     string               `json:"date"`
-			Ranked   []LookupEntryDTO     `json:"ranked"`
-			Special  []LookupEntryDTO     `json:"special,omitempty"`
-			Fallback []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
-			Partner  []PartnerOfferDTO    `json:"partner,omitempty"`
-			Message  string               `json:"message,omitempty"`
+			Category  CanonicalCategoryDTO `json:"category"`
+			Date      string               `json:"date"`
+			Ranked    []LookupEntryDTO     `json:"ranked"`
+			Special   []LookupEntryDTO     `json:"special,omitempty"`
+			Fallback  []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
+			Available []AvailableEntryDTO  `json:"available,omitempty" doc:"S3b: offered-but-unselected menu rows, actionable verdicts first"`
+			Partner   []PartnerOfferDTO    `json:"partner,omitempty"`
+			Message   string               `json:"message,omitempty"`
 		}
 	}, error) {
 		onDate := time.Now()
@@ -947,13 +958,14 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		out := &struct {
 			Body struct {
-				Category CanonicalCategoryDTO `json:"category"`
-				Date     string               `json:"date"`
-				Ranked   []LookupEntryDTO     `json:"ranked"`
-				Special  []LookupEntryDTO     `json:"special,omitempty"`
-				Fallback []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
-				Partner  []PartnerOfferDTO    `json:"partner,omitempty"`
-				Message  string               `json:"message,omitempty"`
+				Category  CanonicalCategoryDTO `json:"category"`
+				Date      string               `json:"date"`
+				Ranked    []LookupEntryDTO     `json:"ranked"`
+				Special   []LookupEntryDTO     `json:"special,omitempty"`
+				Fallback  []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
+				Available []AvailableEntryDTO  `json:"available,omitempty" doc:"S3b: offered-but-unselected menu rows, actionable verdicts first"`
+				Partner   []PartnerOfferDTO    `json:"partner,omitempty"`
+				Message   string               `json:"message,omitempty"`
 			}
 		}{}
 		out.Body.Category = CanonicalCategoryDTO{ID: res.Category.ID, Slug: res.Category.Slug, TitleRu: res.Category.TitleRu}
@@ -968,6 +980,13 @@ func RegisterHTTP(api huma.API, s *Service) {
 		for _, e := range res.Fallback {
 			out.Body.Fallback = append(out.Body.Fallback, lookupEntryDTO(e))
 		}
+		for _, a := range res.Available {
+			out.Body.Available = append(out.Body.Available, AvailableEntryDTO{
+				LookupEntryDTO: lookupEntryDTO(a.Entry),
+				OfferID:        a.OfferID, RawTitle: a.RawTitle,
+				Verdict: string(a.Verdict), Activation: string(a.Activation),
+			})
+		}
 		for _, p := range res.Partner {
 			out.Body.Partner = append(out.Body.Partner, PartnerOfferDTO{
 				ID: p.ID, BankID: p.BankID, BankName: p.BankName, BankClientID: p.BankClientID,
@@ -976,7 +995,9 @@ func RegisterHTTP(api huma.API, s *Service) {
 				CapValue: decToStr(p.CapValue), Notes: p.Notes,
 			})
 		}
-		if len(out.Body.Ranked) == 0 && len(out.Body.Special) == 0 {
+		// The dead-end message only when there is truly nothing — ranked,
+		// special AND available all empty (spec S3b).
+		if len(out.Body.Ranked) == 0 && len(out.Body.Special) == 0 && len(out.Body.Available) == 0 {
 			out.Body.Message = "нет активных выборов"
 		}
 		return out, nil

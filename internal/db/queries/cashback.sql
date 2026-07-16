@@ -272,6 +272,18 @@ select co.id                     as category_offer_id,
        pt.max_categories,
        cp.currency_kind          as program_currency_kind,
        cp.points_label,
+       -- Program-level policy reached via the BANK, not the tier: a client
+       -- without a tier still falls under the bank's program (S3b verdicts
+       -- must not degrade to 'unknown' just because no tier is set).
+       -- coalesce: banks without a seeded program (Сбербанк/Т-Банк) → unknown.
+       coalesce((select cpb.mid_period_add
+                 from cashback_program cpb
+                 where cpb.bank_id = cl.bank_id
+                 limit 1), 'unknown')::cashback_mid_period_add as mid_period_add,
+       coalesce((select cpb.activation
+                 from cashback_program cpb
+                 where cpb.bank_id = cl.bank_id
+                 limit 1), 'unknown')::cashback_activation     as activation,
        (s.id is not null)::bool  as selected,
        s.selected_at
 from category_offer co

@@ -1,10 +1,37 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { api, unwrap, type LookupEntry } from "../api/client";
+import { api, unwrap, type LookupEntry, type Schemas } from "../api/client";
 import { useCards, useCategories } from "../hooks";
 import { BankBadge, Btn, Card, ErrMsg, GradientCard, Pct, SegTabs, Spinner } from "../components/ui";
 import { capNote, currencyBadge, fmtPercent } from "../lib";
+
+type AvailableEntry = Schemas["AvailableEntryDTO"];
+
+// S3b verdict copy — fact-based states, never guesses (spec S3b).
+function verdictNote(e: AvailableEntry): string {
+  const parts: string[] = [];
+  switch (e.verdict) {
+    case "free":
+      parts.push(e.kind === "super" ? "барабан — не занимает слот" : "можно выбрать сейчас");
+      break;
+    case "paid":
+      parts.push("смена платная у банка");
+      break;
+    case "locked":
+      parts.push("выбор в банке уже зафиксирован");
+      break;
+    case "slots_full":
+      parts.push("слоты заняты — сначала сними другую");
+      break;
+    default:
+      parts.push("правила банка неизвестны — проверь в приложении");
+  }
+  if (e.activation === "next_day") parts.push("активируется завтра");
+  return parts.join(" · ");
+}
+
+const ACTIONABLE = new Set(["free", "paid", "unknown"]);
 
 type Mode = "near" | "search" | "cat";
 
@@ -81,6 +108,18 @@ export default function Lookup() {
           params: { query: { category: slug } },
         }),
       ),
+  });
+
+  // S3b «Отметить выбранной»: records reality via the ordinary selection
+  // endpoint (invariants 1–2 still guard) — the app never picks in the bank.
+  const qc = useQueryClient();
+  const mark = useMutation({
+    mutationFn: async (offerID: number) =>
+      unwrap(await api.POST("/api/v1/cashback/selections", { body: { category_offer_id: offerID } })),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["lookup"] });
+      qc.invalidateQueries({ queryKey: ["overview"] });
+    },
   });
 
   const pick = (s: string) => {
@@ -222,6 +261,54 @@ export default function Lookup() {
                           <OtherCardRow key={i} e={e} />
                         ))}
                       </div>
+                    </>
+                  )}
+
+                  {(lookup.data.available ?? []).length > 0 && (
+                    <>
+                      <p className="mx-0.5 text-[11px] font-semibold text-accl">
+                        Можно выбрать · есть в меню, но не выбрано
+                      </p>
+                      <div className="space-y-1.5">
+                        {(lookup.data.available ?? []).map((e) => {
+                          const actionable = ACTIONABLE.has(e.verdict);
+                          return (
+                            <div
+                              key={e.offer_id}
+                              className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 ${
+                                actionable ? "border-acc/30 bg-acc/5" : "border-brd2 bg-transparent opacity-70"
+                              }`}
+                            >
+                              <BankBadge name={e.bank_name} size={26} />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[13px] font-semibold">
+                                  {e.bank_name}
+                                  {e.holder_label && <span className="font-medium text-tx4"> · {e.holder_label}</span>}
+                                  {e.kind === "super" && (
+                                    <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] text-[9px] font-bold text-gold">барабан</span>
+                                  )}
+                                </p>
+                                <p className="text-[10px] font-medium text-tx4">{verdictNote(e)}</p>
+                              </div>
+                              <Pct percent={e.percent} currency={e.currency_kind} className="text-[14px]" />
+                              {actionable && (
+                                <Btn
+                                  variant="soft"
+                                  className="!px-2.5 !py-1.5 text-xs whitespace-nowrap"
+                                  disabled={mark.isPending}
+                                  onClick={() => mark.mutate(e.offer_id)}
+                                >
+                                  Отметить
+                                </Btn>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="mx-0.5 text-[10px] font-medium text-tx4">
+                        Сначала выбери категорию в приложении банка, потом отметь здесь.
+                      </p>
+                      <ErrMsg error={mark.error} />
                     </>
                   )}
 

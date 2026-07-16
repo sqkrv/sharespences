@@ -38,7 +38,7 @@ const supermarketsID int64 = 10
 
 func alfaSupermarkets() ActiveSelection {
 	return ActiveSelection{
-		ClientID:              clientAlfa,
+		ClientID:            clientAlfa,
 		ClientLabel:         "Альфа-Банк",
 		BankName:            "Альфа-Банк",
 		CanonicalCategoryID: catID(supermarketsID),
@@ -56,7 +56,7 @@ func alfaSupermarkets() ActiveSelection {
 // produce a warning naming Альфа-Банк — a warning, never a block.
 func TestDetectCollisions_MainScenario(t *testing.T) {
 	candidate := CandidateSelection{
-		ClientID:              clientOzon,
+		ClientID:            clientOzon,
 		CanonicalCategoryID: catID(supermarketsID),
 		Period:              july2026,
 		Kind:                OfferRegular,
@@ -77,7 +77,7 @@ func TestDetectCollisions_MainScenario(t *testing.T) {
 
 func TestDetectCollisions(t *testing.T) {
 	base := CandidateSelection{
-		ClientID:              clientOzon,
+		ClientID:            clientOzon,
 		CanonicalCategoryID: catID(supermarketsID),
 		Period:              july2026,
 		Kind:                OfferRegular,
@@ -108,7 +108,7 @@ func TestDetectCollisions(t *testing.T) {
 		{
 			name: "same client → no warning (a second card of the same client is still the same client)",
 			candidate: CandidateSelection{
-				ClientID:              clientAlfa,
+				ClientID:            clientAlfa,
 				CanonicalCategoryID: catID(supermarketsID),
 				Period:              july2026,
 				Kind:                OfferRegular,
@@ -119,7 +119,7 @@ func TestDetectCollisions(t *testing.T) {
 		{
 			name: "non-overlapping periods → no warning",
 			candidate: CandidateSelection{
-				ClientID:              clientOzon,
+				ClientID:            clientOzon,
 				CanonicalCategoryID: catID(supermarketsID),
 				Period:              august2026,
 				Kind:                OfferRegular,
@@ -134,7 +134,7 @@ func TestDetectCollisions(t *testing.T) {
 		{
 			name: "quarter (МКБ) overlaps month → warn (S5: overlap on date ranges)",
 			candidate: CandidateSelection{
-				ClientID:              clientMKB,
+				ClientID:            clientMKB,
 				CanonicalCategoryID: catID(supermarketsID),
 				Period:              q3_2026,
 				Kind:                OfferRegular,
@@ -145,7 +145,7 @@ func TestDetectCollisions(t *testing.T) {
 		{
 			name: "already-entered NEXT period collides too (S1)",
 			candidate: CandidateSelection{
-				ClientID:              clientOzon,
+				ClientID:            clientOzon,
 				CanonicalCategoryID: catID(supermarketsID),
 				Period:              august2026,
 				Kind:                OfferRegular,
@@ -176,7 +176,7 @@ func TestDetectCollisions(t *testing.T) {
 		{
 			name: "special candidate → excluded from helper math (invariant 6)",
 			candidate: CandidateSelection{
-				ClientID:              clientOzon,
+				ClientID:            clientOzon,
 				CanonicalCategoryID: catID(supermarketsID),
 				Period:              july2026,
 				Kind:                OfferSpecial,
@@ -522,6 +522,92 @@ func TestRankActiveSelections(t *testing.T) {
 	})
 	if len(higherFirst.Ranked) != 2 || !higherFirst.Ranked[0].Percent.Equal(decimal.RequireFromString("7")) {
 		t.Errorf("higher percent must rank first within a currency group")
+	}
+}
+
+// TestAssessAvailability covers S3b verdicts (owner 2026-07-16): honest
+// «можно ли выбрать прямо сейчас» per offered-but-unselected menu row.
+func TestAssessAvailability(t *testing.T) {
+	tests := []struct {
+		name  string
+		check AvailabilityCheck
+		want  AvailabilityVerdict
+	}{
+		{
+			// барабан is granted: no slot, no lock — markable even on a
+			// one-shot bank with a full menu.
+			"super bypasses slots and locks",
+			AvailabilityCheck{Kind: OfferSuper, Policy: AddLockedAfterFirst, HasRegularSelection: true, MaxCategories: maxCats(3), RegularSelectedCount: 3},
+			AvailFree,
+		},
+		{
+			"allowed with a free slot (Альфа)",
+			AvailabilityCheck{Kind: OfferRegular, Policy: AddAllowed, MaxCategories: maxCats(5), RegularSelectedCount: 4},
+			AvailFree,
+		},
+		{
+			"slots full wins regardless of policy",
+			AvailabilityCheck{Kind: OfferRegular, Policy: AddAllowed, MaxCategories: maxCats(5), RegularSelectedCount: 5},
+			AvailSlotsFull,
+		},
+		{
+			"one-shot bank before any pick is still open (ВТБ до выбора)",
+			AvailabilityCheck{Kind: OfferRegular, Policy: AddLockedAfterFirst, HasRegularSelection: false, MaxCategories: maxCats(3), RegularSelectedCount: 0},
+			AvailFree,
+		},
+		{
+			"one-shot bank after the pick is locked (ВТБ после выбора)",
+			AvailabilityCheck{Kind: OfferRegular, Policy: AddLockedAfterFirst, HasRegularSelection: true, MaxCategories: maxCats(3), RegularSelectedCount: 1},
+			AvailLocked,
+		},
+		{
+			"paid change (МКБ)",
+			AvailabilityCheck{Kind: OfferRegular, Policy: AddPaid, HasRegularSelection: true, MaxCategories: maxCats(3), RegularSelectedCount: 1},
+			AvailPaid,
+		},
+		{
+			"unknown policy (Газпромбанк)",
+			AvailabilityCheck{Kind: OfferRegular, Policy: AddUnknown},
+			AvailUnknown,
+		},
+		{
+			"unknown slot limit skips the slot check",
+			AvailabilityCheck{Kind: OfferRegular, Policy: AddAllowed, MaxCategories: nil, RegularSelectedCount: 99},
+			AvailFree,
+		},
+	}
+	for _, tt := range tests {
+		if got := AssessAvailability(tt.check); got != tt.want {
+			t.Errorf("%s: AssessAvailability() = %s, want %s", tt.name, got, tt.want)
+		}
+	}
+}
+
+// TestRankAvailable: actionable verdicts first, then the ranked ordering
+// (currency group, percent desc) within.
+func TestRankAvailable(t *testing.T) {
+	mk := func(v AvailabilityVerdict, pctStr string, cur CurrencyKind, bank string) AvailableEntry {
+		return AvailableEntry{
+			Entry:   LookupEntry{BankName: bank, Percent: pct(pctStr), CurrencyKind: cur, Kind: OfferRegular, Period: july2026},
+			Verdict: v,
+		}
+	}
+	got := RankAvailable([]AvailableEntry{
+		mk(AvailLocked, "10", CurrencyRub, "ВТБ"),
+		mk(AvailFree, "5", CurrencyRub, "А"),
+		mk(AvailFree, "8", CurrencyRub, "Б"),
+		mk(AvailFree, "7", CurrencyPoints, "Яндекс Пэй"),
+		mk(AvailPaid, "9", CurrencyRub, "МКБ"),
+		mk(AvailSlotsFull, "12", CurrencyRub, "В"),
+	})
+	wantOrder := []string{"8", "5", "7", "9", "12", "10"} // free rub desc, free points, paid, slots_full, locked
+	if len(got) != len(wantOrder) {
+		t.Fatalf("RankAvailable() len = %d, want %d", len(got), len(wantOrder))
+	}
+	for i, w := range wantOrder {
+		if got[i].Entry.Percent.String() != w {
+			t.Errorf("RankAvailable()[%d].Percent = %s, want %s", i, got[i].Entry.Percent.String(), w)
+		}
 	}
 }
 

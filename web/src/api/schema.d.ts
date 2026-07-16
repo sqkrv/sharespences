@@ -543,6 +543,35 @@ export interface components {
             password: string;
             username: string;
         };
+        AvailableEntryDTO: {
+            /**
+             * @description next_day (МКБ): a fresh pick won't cover a purchase made right now
+             * @enum {string}
+             */
+            activation: "immediate" | "next_day" | "unknown";
+            /** Format: int64 */
+            bank_client_id: number;
+            bank_name: string;
+            cap_per_category?: string;
+            cap_scope?: string;
+            cap_value?: string;
+            client_label: string;
+            currency_kind: string;
+            holder_label?: string;
+            kind: string;
+            /**
+             * Format: int64
+             * @description category_offer id — «Отметить выбранной» posts the ordinary selection for it
+             */
+            offer_id: number;
+            percent?: string;
+            period_end: string;
+            period_start: string;
+            points_label?: string;
+            raw_title: string;
+            /** @enum {string} */
+            verdict: "free" | "paid" | "locked" | "slots_full" | "unknown";
+        };
         "Bank-client-createRequest": {
             /**
              * Format: uri
@@ -713,6 +742,8 @@ export interface components {
              * @example https://example.com/schemas/Cashback-lookupResponse.json
              */
             readonly $schema?: string;
+            /** @description S3b: offered-but-unselected menu rows, actionable verdicts first */
+            available?: components["schemas"]["AvailableEntryDTO"][] | null;
             category: components["schemas"]["CanonicalCategoryDTO"];
             date: string;
             /** @description selected «За все покупки» — pays when nothing ranks */
