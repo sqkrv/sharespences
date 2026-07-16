@@ -738,4 +738,146 @@ func TestCashbackE2E(t *testing.T) {
 	if got := anon.do("GET", "/api/v1/cashback/lookup?category=supermarkets", nil, nil); got != http.StatusUnauthorized {
 		t.Fatalf("anonymous lookup: %d, want 401", got)
 	}
+
+	// --- Picker catalogs (redesign 2026-07-16): seeded bank_category rows
+	// with resolved emoji, custom rows, the offer↔catalog FK, brand colors ---
+
+	// Brand colors are seeded and exposed on bank-list.
+	var banksWithColor []struct {
+		ID       int32   `json:"id"`
+		Name     string  `json:"name"`
+		ColorHex *string `json:"color_hex"`
+	}
+	owner.must("GET", "/api/v1/banks", nil, &banksWithColor, http.StatusOK)
+	for _, b := range banksWithColor {
+		if b.Name == "Альфа-Банк" && (b.ColorHex == nil || *b.ColorHex != "#EF3124") {
+			t.Fatalf("Альфа-Банк color_hex = %v, want #EF3124", b.ColorHex)
+		}
+	}
+
+	// Canonical categories carry the seeded emoji.
+	var catsWithEmoji []struct {
+		Slug  string  `json:"slug"`
+		Emoji *string `json:"emoji"`
+	}
+	owner.must("GET", "/api/v1/cashback/canonical-categories", nil, &catsWithEmoji, http.StatusOK)
+	for _, c := range catsWithEmoji {
+		if c.Slug == "supermarkets" && (c.Emoji == nil || *c.Emoji != "🛒") {
+			t.Fatalf("supermarkets emoji = %v, want 🛒", c.Emoji)
+		}
+	}
+
+	// The period detail exposes its bank (the SPA fetches that bank's catalog).
+	var periodBank struct {
+		BankID int32 `json:"bank_id"`
+	}
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/offer-periods/%d", alfaPeriod.ID), nil, &periodBank, http.StatusOK)
+	if periodBank.BankID != alfa.BankID {
+		t.Fatalf("period bank_id = %d, want %d", periodBank.BankID, alfa.BankID)
+	}
+
+	type bankCategoryJSON struct {
+		ID                  int64   `json:"id"`
+		Title               string  `json:"title"`
+		CanonicalCategoryID *int64  `json:"canonical_category_id"`
+		CanonicalTitleRu    *string `json:"canonical_title_ru"`
+		Kind                string  `json:"kind"`
+		Emoji               *string `json:"emoji"`
+		IsCustom            bool    `json:"is_custom"`
+	}
+	var alfaCatalog []bankCategoryJSON
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/banks/%d/categories", alfa.BankID), nil, &alfaCatalog, http.StatusOK)
+	findCatalogRow := func(title string) bankCategoryJSON {
+		for _, r := range alfaCatalog {
+			if r.Title == title {
+				return r
+			}
+		}
+		t.Fatalf("Альфа-Банк catalog misses %q (%d rows)", title, len(alfaCatalog))
+		return bankCategoryJSON{}
+	}
+	// A regular row inherits the canonical's emoji and carries the mapping.
+	cafe := findCatalogRow("Кафе и рестораны")
+	if cafe.CanonicalCategoryID == nil || cafe.CanonicalTitleRu == nil || cafe.Emoji == nil || *cafe.Emoji != "🍽️" || cafe.Kind != "regular" {
+		t.Fatalf("catalog «Кафе и рестораны» = %+v, want mapped regular with inherited 🍽️", cafe)
+	}
+	// A special/service row has no canonical and its own emoji override —
+	// the whole reason bank_category exists next to bank_category_alias.
+	trevel := findCatalogRow("Альфа-Тревел")
+	if trevel.CanonicalCategoryID != nil || trevel.Kind != "special" || trevel.Emoji == nil || *trevel.Emoji != "🧳" {
+		t.Fatalf("catalog «Альфа-Тревел» = %+v, want canonical-less special with 🧳", trevel)
+	}
+
+	// Custom escape hatch: a new bank category, unmapped; duplicate → 409.
+	var custom bankCategoryJSON
+	owner.must("POST", "/api/v1/cashback/bank-categories", map[string]any{
+		"bank_id": alfa.BankID, "title": "Кофейни", "emoji": "☕",
+	}, &custom, http.StatusCreated)
+	if !custom.IsCustom || custom.Emoji == nil || *custom.Emoji != "☕" {
+		t.Fatalf("custom row = %+v, want is_custom with ☕", custom)
+	}
+	if got := owner.do("POST", "/api/v1/cashback/bank-categories", map[string]any{
+		"bank_id": alfa.BankID, "title": "Кофейни",
+	}, nil); got != http.StatusConflict {
+		t.Fatalf("duplicate custom bank category: %d, want 409", got)
+	}
+
+	// An offer picked from the catalog carries the traceability FK…
+	var pickedOffer struct {
+		ID             int64  `json:"id"`
+		RawTitle       string `json:"raw_title"`
+		BankCategoryID *int64 `json:"bank_category_id"`
+	}
+	owner.must("POST", "/api/v1/cashback/category-offers", map[string]any{
+		"offer_period_id": alfaPeriod.ID, "raw_title": custom.Title, "bank_category_id": custom.ID, "percent": "7",
+	}, &pickedOffer, http.StatusCreated)
+	if pickedOffer.BankCategoryID == nil || *pickedOffer.BankCategoryID != custom.ID {
+		t.Fatalf("offer bank_category_id = %v, want %d", pickedOffer.BankCategoryID, custom.ID)
+	}
+	// …but another bank's catalog row is rejected (integrity, 422).
+	var ozonCatalog []bankCategoryJSON
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/banks/%d/categories", ozon.BankID), nil, &ozonCatalog, http.StatusOK)
+	if len(ozonCatalog) == 0 {
+		t.Fatal("Озон Банк catalog is empty — seed missing")
+	}
+	if got := owner.do("POST", "/api/v1/cashback/category-offers", map[string]any{
+		"offer_period_id": alfaPeriod.ID, "raw_title": "чужая", "bank_category_id": ozonCatalog[0].ID,
+	}, nil); got != http.StatusUnprocessableEntity {
+		t.Fatalf("offer with another bank's catalog row: %d, want 422", got)
+	}
+
+	// Deleting a catalog row never touches user history: the FK nulls out,
+	// the raw_title snapshot survives (on delete set null).
+	if _, err := pool.Exec(ctx, "delete from bank_category where id = $1", custom.ID); err != nil {
+		t.Fatalf("delete catalog row: %v", err)
+	}
+	var periodAfter struct {
+		Offers []struct {
+			ID             int64  `json:"id"`
+			RawTitle       string `json:"raw_title"`
+			BankCategoryID *int64 `json:"bank_category_id"`
+		} `json:"offers"`
+	}
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/offer-periods/%d", alfaPeriod.ID), nil, &periodAfter, http.StatusOK)
+	found := false
+	for _, o := range periodAfter.Offers {
+		if o.ID == pickedOffer.ID {
+			found = true
+			if o.BankCategoryID != nil || o.RawTitle != "Кофейни" {
+				t.Fatalf("offer after catalog delete = %+v, want null FK + intact raw_title", o)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("picked offer vanished after catalog-row delete")
+	}
+
+	// NFC + homoglyph normalization: the REAL Альфа spelling with a Latin
+	// «p» inside «pестораны» still resolves through the alias table.
+	var homoglyphSuggestion suggestionJSON
+	owner.must("GET", "/api/v1/cashback/alias-suggestion?offer_period_id="+
+		fmt.Sprint(alfaPeriod.ID)+"&raw_title="+url.QueryEscape("Кафе и pестораны"), nil, &homoglyphSuggestion, http.StatusOK)
+	if homoglyphSuggestion.Suggestion == nil || homoglyphSuggestion.Suggestion.Slug != "restaurants" {
+		t.Fatalf("homoglyph title suggestion = %+v, want restaurants", homoglyphSuggestion.Suggestion)
+	}
 }

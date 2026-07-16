@@ -720,8 +720,13 @@ func RegisterHTTP(api huma.API, s *Service) {
 		DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, in *struct {
 		Body struct {
-			OfferPeriodID int64 `json:"offer_period_id"`
-			categoryOfferBody
+			OfferPeriodID       int64   `json:"offer_period_id"`
+			RawTitle            string  `json:"raw_title" minLength:"1"`
+			CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
+			BankCategoryID      *int64  `json:"bank_category_id,omitempty"`
+			Percent             *string `json:"percent,omitempty"`
+			Kind                string  `json:"kind,omitempty" enum:"regular,super,special" default:"regular"`
+			Notes               *string `json:"notes,omitempty"`
 		}
 	}) (*struct{ Body CategoryOfferDTO }, error) {
 		pctVal, err := strToDec(in.Body.Percent, "percent")

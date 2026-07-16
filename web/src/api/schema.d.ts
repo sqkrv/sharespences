@@ -779,7 +779,19 @@ export interface components {
              */
             readonly $schema?: string;
             /** Format: int64 */
+            bank_category_id?: number;
+            /** Format: int64 */
+            canonical_category_id?: number;
+            /**
+             * @default regular
+             * @enum {string}
+             */
+            kind: "regular" | "super" | "special";
+            notes?: string;
+            /** Format: int64 */
             offer_period_id: number;
+            percent?: string;
+            raw_title: string;
         };
         "Cashback-helper-contextResponse": {
             /**
