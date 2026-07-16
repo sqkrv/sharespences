@@ -60,28 +60,70 @@ func (q *Queries) CountRegularSelectionsInPeriod(ctx context.Context, offerPerio
 	return count, err
 }
 
+const createBankCategory = `-- name: CreateBankCategory :one
+insert into bank_category (bank_id, title, canonical_category_id, kind, emoji, is_custom)
+values ($1, $2, $3, $4, $5, true)
+returning id, bank_id, title, canonical_category_id, kind, emoji, is_custom, active
+`
+
+type CreateBankCategoryParams struct {
+	BankID              int32
+	Title               string
+	CanonicalCategoryID *int64
+	Kind                CashbackOfferKind
+	Emoji               *string
+}
+
+func (q *Queries) CreateBankCategory(ctx context.Context, arg CreateBankCategoryParams) (BankCategory, error) {
+	row := q.db.QueryRow(ctx, createBankCategory,
+		arg.BankID,
+		arg.Title,
+		arg.CanonicalCategoryID,
+		arg.Kind,
+		arg.Emoji,
+	)
+	var i BankCategory
+	err := row.Scan(
+		&i.ID,
+		&i.BankID,
+		&i.Title,
+		&i.CanonicalCategoryID,
+		&i.Kind,
+		&i.Emoji,
+		&i.IsCustom,
+		&i.Active,
+	)
+	return i, err
+}
+
 const createCanonicalCategory = `-- name: CreateCanonicalCategory :one
-insert into canonical_category (slug, title_ru)
-values ($1, $2)
-returning id, slug, title_ru
+insert into canonical_category (slug, title_ru, emoji)
+values ($1, $2, $3)
+returning id, slug, title_ru, emoji
 `
 
 type CreateCanonicalCategoryParams struct {
 	Slug    string
 	TitleRu string
+	Emoji   *string
 }
 
 func (q *Queries) CreateCanonicalCategory(ctx context.Context, arg CreateCanonicalCategoryParams) (CanonicalCategory, error) {
-	row := q.db.QueryRow(ctx, createCanonicalCategory, arg.Slug, arg.TitleRu)
+	row := q.db.QueryRow(ctx, createCanonicalCategory, arg.Slug, arg.TitleRu, arg.Emoji)
 	var i CanonicalCategory
-	err := row.Scan(&i.ID, &i.Slug, &i.TitleRu)
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.TitleRu,
+		&i.Emoji,
+	)
 	return i, err
 }
 
 const createCategoryOffer = `-- name: CreateCategoryOffer :one
-insert into category_offer (offer_period_id, raw_title, canonical_category_id, percent, kind, notes)
-values ($1, $2, $3, $4, $5, $6)
-returning id, offer_period_id, raw_title, canonical_category_id, percent, kind, notes
+insert into category_offer (offer_period_id, raw_title, canonical_category_id, percent, kind, notes, bank_category_id)
+values ($1, $2, $3, $4, $5, $6, $7)
+returning id, offer_period_id, raw_title, canonical_category_id, percent, kind, notes, bank_category_id
 `
 
 type CreateCategoryOfferParams struct {
@@ -91,6 +133,7 @@ type CreateCategoryOfferParams struct {
 	Percent             *decimal.Decimal
 	Kind                CashbackOfferKind
 	Notes               *string
+	BankCategoryID      *int64
 }
 
 func (q *Queries) CreateCategoryOffer(ctx context.Context, arg CreateCategoryOfferParams) (CategoryOffer, error) {
@@ -101,6 +144,7 @@ func (q *Queries) CreateCategoryOffer(ctx context.Context, arg CreateCategoryOff
 		arg.Percent,
 		arg.Kind,
 		arg.Notes,
+		arg.BankCategoryID,
 	)
 	var i CategoryOffer
 	err := row.Scan(
@@ -111,6 +155,7 @@ func (q *Queries) CreateCategoryOffer(ctx context.Context, arg CreateCategoryOff
 		&i.Percent,
 		&i.Kind,
 		&i.Notes,
+		&i.BankCategoryID,
 	)
 	return i, err
 }
@@ -463,8 +508,30 @@ func (q *Queries) DetachFromOfferPeriod(ctx context.Context, arg DetachFromOffer
 	return result.RowsAffected(), nil
 }
 
+const getBankCategory = `-- name: GetBankCategory :one
+select id, bank_id, title, canonical_category_id, kind, emoji, is_custom, active
+from bank_category
+where id = $1
+`
+
+func (q *Queries) GetBankCategory(ctx context.Context, id int64) (BankCategory, error) {
+	row := q.db.QueryRow(ctx, getBankCategory, id)
+	var i BankCategory
+	err := row.Scan(
+		&i.ID,
+		&i.BankID,
+		&i.Title,
+		&i.CanonicalCategoryID,
+		&i.Kind,
+		&i.Emoji,
+		&i.IsCustom,
+		&i.Active,
+	)
+	return i, err
+}
+
 const getCanonicalCategoryBySlug = `-- name: GetCanonicalCategoryBySlug :one
-select id, slug, title_ru
+select id, slug, title_ru, emoji
 from canonical_category
 where slug = $1
 `
@@ -472,7 +539,12 @@ where slug = $1
 func (q *Queries) GetCanonicalCategoryBySlug(ctx context.Context, slug string) (CanonicalCategory, error) {
 	row := q.db.QueryRow(ctx, getCanonicalCategoryBySlug, slug)
 	var i CanonicalCategory
-	err := row.Scan(&i.ID, &i.Slug, &i.TitleRu)
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.TitleRu,
+		&i.Emoji,
+	)
 	return i, err
 }
 
@@ -520,7 +592,7 @@ func (q *Queries) GetOfferPeriodForUser(ctx context.Context, arg GetOfferPeriodF
 }
 
 const getOfferWithContextForUser = `-- name: GetOfferWithContextForUser :one
-select co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes,
+select co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes, co.bank_category_id,
        op.bank_client_id,
        op.period_start,
        op.period_end,
@@ -549,6 +621,7 @@ type GetOfferWithContextForUserRow struct {
 	Percent               *decimal.Decimal
 	Kind                  CashbackOfferKind
 	Notes                 *string
+	BankCategoryID        *int64
 	BankClientID          int64
 	PeriodStart           time.Time
 	PeriodEnd             time.Time
@@ -569,6 +642,7 @@ func (q *Queries) GetOfferWithContextForUser(ctx context.Context, arg GetOfferWi
 		&i.Percent,
 		&i.Kind,
 		&i.Notes,
+		&i.BankCategoryID,
 		&i.BankClientID,
 		&i.PeriodStart,
 		&i.PeriodEnd,
@@ -655,8 +729,66 @@ func (q *Queries) ListAliasesForBank(ctx context.Context, bankID int32) ([]BankC
 	return items, nil
 }
 
+const listBankCategories = `-- name: ListBankCategories :many
+select bc.id, bc.bank_id, bc.title, bc.canonical_category_id, bc.kind, bc.emoji, bc.is_custom, bc.active,
+       cc.slug     as canonical_slug,
+       cc.title_ru as canonical_title_ru,
+       cc.emoji    as canonical_emoji
+from bank_category bc
+         left join canonical_category cc on cc.id = bc.canonical_category_id
+where bc.bank_id = $1
+  and bc.active
+order by bc.kind, bc.title
+`
+
+type ListBankCategoriesRow struct {
+	ID                  int64
+	BankID              int32
+	Title               string
+	CanonicalCategoryID *int64
+	Kind                CashbackOfferKind
+	Emoji               *string
+	IsCustom            bool
+	Active              bool
+	CanonicalSlug       *string
+	CanonicalTitleRu    *string
+	CanonicalEmoji      *string
+}
+
+func (q *Queries) ListBankCategories(ctx context.Context, bankID int32) ([]ListBankCategoriesRow, error) {
+	rows, err := q.db.Query(ctx, listBankCategories, bankID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBankCategoriesRow
+	for rows.Next() {
+		var i ListBankCategoriesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BankID,
+			&i.Title,
+			&i.CanonicalCategoryID,
+			&i.Kind,
+			&i.Emoji,
+			&i.IsCustom,
+			&i.Active,
+			&i.CanonicalSlug,
+			&i.CanonicalTitleRu,
+			&i.CanonicalEmoji,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCanonicalCategories = `-- name: ListCanonicalCategories :many
-select id, slug, title_ru
+select id, slug, title_ru, emoji
 from canonical_category
 order by slug
 `
@@ -670,7 +802,12 @@ func (q *Queries) ListCanonicalCategories(ctx context.Context) ([]CanonicalCateg
 	var items []CanonicalCategory
 	for rows.Next() {
 		var i CanonicalCategory
-		if err := rows.Scan(&i.ID, &i.Slug, &i.TitleRu); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.TitleRu,
+			&i.Emoji,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -789,7 +926,7 @@ func (q *Queries) ListOfferPeriodsForUser(ctx context.Context, userID uuid.UUID)
 }
 
 const listOffersForPeriod = `-- name: ListOffersForPeriod :many
-select co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes, s.id as selection_id, s.selected_at
+select co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes, co.bank_category_id, s.id as selection_id, s.selected_at
 from category_offer co
          left join selection s on s.category_offer_id = co.id
 where co.offer_period_id = $1
@@ -804,6 +941,7 @@ type ListOffersForPeriodRow struct {
 	Percent             *decimal.Decimal
 	Kind                CashbackOfferKind
 	Notes               *string
+	BankCategoryID      *int64
 	SelectionID         *int64
 	SelectedAt          *time.Time
 }
@@ -825,6 +963,7 @@ func (q *Queries) ListOffersForPeriod(ctx context.Context, offerPeriodID int64) 
 			&i.Percent,
 			&i.Kind,
 			&i.Notes,
+			&i.BankCategoryID,
 			&i.SelectionID,
 			&i.SelectedAt,
 		); err != nil {
@@ -1166,14 +1305,15 @@ set raw_title             = $3,
     canonical_category_id = $4,
     percent               = $5,
     kind                  = $6,
-    notes                 = $7
+    notes                 = $7,
+    bank_category_id      = $8
 from offer_period op,
      bank_client cl
 where co.id = $1
   and op.id = co.offer_period_id
   and cl.id = op.bank_client_id
   and cl.user_id = $2
-returning co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes
+returning co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes, co.bank_category_id
 `
 
 type UpdateCategoryOfferForUserParams struct {
@@ -1184,6 +1324,7 @@ type UpdateCategoryOfferForUserParams struct {
 	Percent             *decimal.Decimal
 	Kind                CashbackOfferKind
 	Notes               *string
+	BankCategoryID      *int64
 }
 
 func (q *Queries) UpdateCategoryOfferForUser(ctx context.Context, arg UpdateCategoryOfferForUserParams) (CategoryOffer, error) {
@@ -1195,6 +1336,7 @@ func (q *Queries) UpdateCategoryOfferForUser(ctx context.Context, arg UpdateCate
 		arg.Percent,
 		arg.Kind,
 		arg.Notes,
+		arg.BankCategoryID,
 	)
 	var i CategoryOffer
 	err := row.Scan(
@@ -1205,6 +1347,7 @@ func (q *Queries) UpdateCategoryOfferForUser(ctx context.Context, arg UpdateCate
 		&i.Percent,
 		&i.Kind,
 		&i.Notes,
+		&i.BankCategoryID,
 	)
 	return i, err
 }

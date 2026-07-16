@@ -560,6 +560,17 @@ type BankCard struct {
 	BankClientID  int64
 }
 
+type BankCategory struct {
+	ID                  int64
+	BankID              int32
+	Title               string
+	CanonicalCategoryID *int64
+	Kind                CashbackOfferKind
+	Emoji               *string
+	IsCustom            bool
+	Active              bool
+}
+
 type BankCategoryAlias struct {
 	CanonicalCategoryID int64
 	BankID              int32
@@ -584,6 +595,7 @@ type CanonicalCategory struct {
 	ID      int64
 	Slug    string
 	TitleRu string
+	Emoji   *string
 }
 
 type CashbackProgram struct {
@@ -623,6 +635,7 @@ type CategoryOffer struct {
 	Percent             *decimal.Decimal
 	Kind                CashbackOfferKind
 	Notes               *string
+	BankCategoryID      *int64
 }
 
 type Mcc struct {

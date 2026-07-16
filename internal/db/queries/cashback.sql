@@ -83,8 +83,29 @@ from canonical_category
 where slug = $1;
 
 -- name: CreateCanonicalCategory :one
-insert into canonical_category (slug, title_ru)
-values ($1, $2)
+insert into canonical_category (slug, title_ru, emoji)
+values ($1, $2, $3)
+returning *;
+
+-- name: ListBankCategories :many
+select bc.*,
+       cc.slug     as canonical_slug,
+       cc.title_ru as canonical_title_ru,
+       cc.emoji    as canonical_emoji
+from bank_category bc
+         left join canonical_category cc on cc.id = bc.canonical_category_id
+where bc.bank_id = $1
+  and bc.active
+order by bc.kind, bc.title;
+
+-- name: GetBankCategory :one
+select *
+from bank_category
+where id = $1;
+
+-- name: CreateBankCategory :one
+insert into bank_category (bank_id, title, canonical_category_id, kind, emoji, is_custom)
+values ($1, $2, $3, $4, $5, true)
 returning *;
 
 -- name: ListAliasesForBank :many
@@ -151,8 +172,8 @@ where a.id = $1
   and not exists (select 1 from partner_offer_attachment where attachment_id = $1);
 
 -- name: CreateCategoryOffer :one
-insert into category_offer (offer_period_id, raw_title, canonical_category_id, percent, kind, notes)
-values ($1, $2, $3, $4, $5, $6)
+insert into category_offer (offer_period_id, raw_title, canonical_category_id, percent, kind, notes, bank_category_id)
+values ($1, $2, $3, $4, $5, $6, $7)
 returning *;
 
 -- name: UpdateCategoryOfferForUser :one
@@ -161,7 +182,8 @@ set raw_title             = $3,
     canonical_category_id = $4,
     percent               = $5,
     kind                  = $6,
-    notes                 = $7
+    notes                 = $7,
+    bank_category_id      = $8
 from offer_period op,
      bank_client cl
 where co.id = $1
