@@ -193,6 +193,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cashback/bank-categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a custom category to a bank's picker catalog */
+        post: operations["cashback-bank-category-create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cashback/banks/{bank_id}/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The bank's picker catalog (current menu rows) */
+        get: operations["cashback-bank-category-list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cashback/canonical-categories": {
         parameters: {
             query?: never;
@@ -597,6 +631,26 @@ export interface components {
             /** Format: int64 */
             program_tier_id?: number;
         };
+        BankCategoryDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/BankCategoryDTO.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            bank_id: number;
+            /** Format: int64 */
+            canonical_category_id?: number;
+            canonical_slug?: string;
+            canonical_title_ru?: string;
+            emoji?: string;
+            /** Format: int64 */
+            id: number;
+            is_custom: boolean;
+            kind: string;
+            title: string;
+        };
         BankClientDTO: {
             /**
              * Format: uri
@@ -615,6 +669,8 @@ export interface components {
             program_tier_id?: number;
         };
         BankDTO: {
+            /** @description brand color for UI tinting (seeded from the knowledge base) */
+            color_hex?: string;
             /** Format: int32 */
             id: number;
             name: string;
@@ -626,6 +682,7 @@ export interface components {
              * @example https://example.com/schemas/CanonicalCategoryDTO.json
              */
             readonly $schema?: string;
+            emoji?: string;
             /** Format: int64 */
             id: number;
             slug: string;
@@ -684,6 +741,25 @@ export interface components {
             readonly $schema?: string;
             suggestion: components["schemas"]["CanonicalCategoryDTO"];
         };
+        "Cashback-bank-category-createRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Cashback-bank-category-createRequest.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            bank_id: number;
+            /** Format: int64 */
+            canonical_category_id?: number;
+            emoji?: string;
+            /**
+             * @default regular
+             * @enum {string}
+             */
+            kind: "regular" | "super" | "special";
+            title: string;
+        };
         "Cashback-canonical-createRequest": {
             /**
              * Format: uri
@@ -691,6 +767,7 @@ export interface components {
              * @example https://example.com/schemas/Cashback-canonical-createRequest.json
              */
             readonly $schema?: string;
+            emoji?: string;
             slug: string;
             title_ru: string;
         };
@@ -702,17 +779,7 @@ export interface components {
              */
             readonly $schema?: string;
             /** Format: int64 */
-            canonical_category_id?: number;
-            /**
-             * @default regular
-             * @enum {string}
-             */
-            kind: "regular" | "super" | "special";
-            notes?: string;
-            /** Format: int64 */
             offer_period_id: number;
-            percent?: string;
-            raw_title: string;
         };
         "Cashback-helper-contextResponse": {
             /**
@@ -787,6 +854,8 @@ export interface components {
             attachment_ids: string[] | null;
             /** Format: int64 */
             bank_client_id: number;
+            /** Format: int32 */
+            bank_id: number;
             bank_name: string;
             /** Format: int64 */
             id: number;
@@ -876,6 +945,8 @@ export interface components {
              */
             readonly $schema?: string;
             /** Format: int64 */
+            bank_category_id?: number;
+            /** Format: int64 */
             canonical_category_id?: number;
             /**
              * @default regular
@@ -893,6 +964,8 @@ export interface components {
              * @example https://example.com/schemas/CategoryOfferDTO.json
              */
             readonly $schema?: string;
+            /** Format: int64 */
+            bank_category_id?: number;
             /** Format: int64 */
             canonical_category_id?: number;
             /** Format: int64 */
@@ -1613,6 +1686,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Cashback-alias-suggestionResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-bank-category-create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Cashback-bank-category-createRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankCategoryDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-bank-category-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bank_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankCategoryDTO"][] | null;
                 };
             };
             /** @description Error */

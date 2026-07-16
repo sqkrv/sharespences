@@ -237,8 +237,9 @@ func registerAuth(api huma.API, sm *scs.SessionManager, svc *auth.Service) {
 }
 
 type BankDTO struct {
-	ID   int32  `json:"id"`
-	Name string `json:"name"`
+	ID       int32   `json:"id"`
+	Name     string  `json:"name"`
+	ColorHex *string `json:"color_hex,omitempty" doc:"brand color for UI tinting (seeded from the knowledge base)"`
 }
 
 // BankClientDTO is a person's relationship with one bank — держатель + tier
@@ -272,7 +273,7 @@ func registerBanks(api huma.API, q *db.Queries) {
 		}
 		out := make([]BankDTO, len(rows))
 		for i, b := range rows {
-			out[i] = BankDTO{ID: b.ID, Name: b.Name}
+			out[i] = BankDTO{ID: b.ID, Name: b.Name, ColorHex: b.ColorHex}
 		}
 		return &struct{ Body []BankDTO }{out}, nil
 	})

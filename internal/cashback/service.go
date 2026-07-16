@@ -20,6 +20,13 @@ import (
 // scoping never reveals which.
 var ErrNotFound = errors.New("cashback: not found")
 
+// ErrBankCategoryExists — the bank already has a catalog row with this title.
+var ErrBankCategoryExists = errors.New("cashback: категория с таким названием уже есть у этого банка")
+
+// ErrBankCategoryWrongBank — the referenced catalog row belongs to another
+// bank than the offer period's.
+var ErrBankCategoryWrongBank = errors.New("cashback: категория из каталога другого банка")
+
 // Service wires the domain rules to storage. Reference reads of bank /
 // bank_client are the seam decided at skeleton time (00003_cashback.sql,
 // re-keyed card→client in 00006). RemoveAttachmentFile is injected at
@@ -239,12 +246,59 @@ func (s *Service) SuggestAlias(ctx context.Context, userID uuid.UUID, offerPerio
 	return nil, nil
 }
 
+// ListBankCategories returns one bank's picker catalog (active rows with
+// resolved canonical info). Reference data, not user-scoped — like the
+// canonical list.
+func (s *Service) ListBankCategories(ctx context.Context, bankID int32) ([]db.ListBankCategoriesRow, error) {
+	return s.Q.ListBankCategories(ctx, bankID)
+}
+
+// CreateBankCategory adds a custom row to a bank's picker catalog — the
+// escape hatch for a category the bank introduced before the seed learned
+// it. Canonical mapping is optional (special/service rows stay
+// canonical-less by design; unmapped rows keep the S3 warning badge).
+func (s *Service) CreateBankCategory(ctx context.Context, bankID int32, title string, canonicalID *int64, kind OfferKind, emoji *string) (db.BankCategory, error) {
+	bc, err := s.Q.CreateBankCategory(ctx, db.CreateBankCategoryParams{
+		BankID:              bankID,
+		Title:               title,
+		CanonicalCategoryID: canonicalID,
+		Kind:                db.CashbackOfferKind(kind),
+		Emoji:               emoji,
+	})
+	if err != nil {
+		if isPgCode(err, "23505") {
+			return db.BankCategory{}, ErrBankCategoryExists
+		}
+		return db.BankCategory{}, err
+	}
+	return bc, nil
+}
+
+// checkBankCategory validates that a referenced catalog row exists and
+// belongs to the given bank (a picker pick can't attach another bank's row).
+func (s *Service) checkBankCategory(ctx context.Context, bankCategoryID *int64, bankID int32) error {
+	if bankCategoryID == nil {
+		return nil
+	}
+	bc, err := s.Q.GetBankCategory(ctx, *bankCategoryID)
+	if err != nil {
+		return notFound(err)
+	}
+	if bc.BankID != bankID {
+		return ErrBankCategoryWrongBank
+	}
+	return nil
+}
+
 // CreateCategoryOffer records one menu row. A provided canonical mapping is
 // remembered as a bank alias (S1: unknown titles create the mapping inline).
-func (s *Service) CreateCategoryOffer(ctx context.Context, userID uuid.UUID, offerPeriodID int64, rawTitle string, canonicalID *int64, percent *decimal.Decimal, kind OfferKind, notes *string) (db.CategoryOffer, error) {
+func (s *Service) CreateCategoryOffer(ctx context.Context, userID uuid.UUID, offerPeriodID int64, rawTitle string, canonicalID *int64, percent *decimal.Decimal, kind OfferKind, notes *string, bankCategoryID *int64) (db.CategoryOffer, error) {
 	period, err := s.Q.GetOfferPeriodForUser(ctx, db.GetOfferPeriodForUserParams{ID: offerPeriodID, UserID: userID})
 	if err != nil {
 		return db.CategoryOffer{}, notFound(err)
+	}
+	if err := s.checkBankCategory(ctx, bankCategoryID, int32(period.BankID)); err != nil {
+		return db.CategoryOffer{}, err
 	}
 	offer, err := s.Q.CreateCategoryOffer(ctx, db.CreateCategoryOfferParams{
 		OfferPeriodID:       offerPeriodID,
@@ -253,6 +307,7 @@ func (s *Service) CreateCategoryOffer(ctx context.Context, userID uuid.UUID, off
 		Percent:             percent,
 		Kind:                db.CashbackOfferKind(kind),
 		Notes:               notes,
+		BankCategoryID:      bankCategoryID,
 	})
 	if err != nil {
 		return db.CategoryOffer{}, err
@@ -327,10 +382,13 @@ func (s *Service) CreateSelection(ctx context.Context, userID uuid.UUID, categor
 // feedback 2026-07-04: entered rows must be correctable — a row mapped to a
 // canonical category after the fact starts appearing in lookups). A newly
 // set canonical mapping is remembered as a bank alias, like on create.
-func (s *Service) UpdateCategoryOffer(ctx context.Context, userID uuid.UUID, offerID int64, rawTitle string, canonicalID *int64, percent *decimal.Decimal, kind OfferKind, notes *string) (db.CategoryOffer, error) {
+func (s *Service) UpdateCategoryOffer(ctx context.Context, userID uuid.UUID, offerID int64, rawTitle string, canonicalID *int64, percent *decimal.Decimal, kind OfferKind, notes *string, bankCategoryID *int64) (db.CategoryOffer, error) {
 	ctxRow, err := s.Q.GetOfferWithContextForUser(ctx, db.GetOfferWithContextForUserParams{ID: offerID, UserID: userID})
 	if err != nil {
 		return db.CategoryOffer{}, notFound(err)
+	}
+	if err := s.checkBankCategory(ctx, bankCategoryID, int32(ctxRow.BankID)); err != nil {
+		return db.CategoryOffer{}, err
 	}
 	offer, err := s.Q.UpdateCategoryOfferForUser(ctx, db.UpdateCategoryOfferForUserParams{
 		ID:                  offerID,
@@ -340,6 +398,7 @@ func (s *Service) UpdateCategoryOffer(ctx context.Context, userID uuid.UUID, off
 		Percent:             percent,
 		Kind:                db.CashbackOfferKind(kind),
 		Notes:               notes,
+		BankCategoryID:      bankCategoryID,
 	})
 	if err != nil {
 		return db.CategoryOffer{}, notFound(err)

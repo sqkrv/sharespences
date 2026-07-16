@@ -53,7 +53,10 @@ func httpErr(err error) error {
 		errors.Is(err, ErrAlreadySelected),
 		errors.Is(err, ErrPeriodOverlap):
 		return huma.Error409Conflict(err.Error())
-	case errors.Is(err, ErrOutsidePeriod), errors.Is(err, ErrInvalidPeriod):
+	case errors.Is(err, ErrBankCategoryExists):
+		return huma.Error409Conflict(err.Error())
+	case errors.Is(err, ErrOutsidePeriod), errors.Is(err, ErrInvalidPeriod),
+		errors.Is(err, ErrBankCategoryWrongBank):
 		return huma.Error422UnprocessableEntity(err.Error())
 	}
 	return err
@@ -146,6 +149,7 @@ func offerPeriodDTO(p db.OfferPeriod) OfferPeriodDTO {
 type categoryOfferBody struct {
 	RawTitle            string  `json:"raw_title" minLength:"1"`
 	CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
+	BankCategoryID      *int64  `json:"bank_category_id,omitempty"`
 	Percent             *string `json:"percent,omitempty"`
 	Kind                string  `json:"kind,omitempty" enum:"regular,super,special" default:"regular"`
 	Notes               *string `json:"notes,omitempty"`
@@ -156,6 +160,7 @@ type CategoryOfferDTO struct {
 	OfferPeriodID       int64      `json:"offer_period_id"`
 	RawTitle            string     `json:"raw_title"`
 	CanonicalCategoryID *int64     `json:"canonical_category_id,omitempty"`
+	BankCategoryID      *int64     `json:"bank_category_id,omitempty"`
 	Percent             *string    `json:"percent,omitempty"`
 	Kind                string     `json:"kind"`
 	Notes               *string    `json:"notes,omitempty"`
@@ -258,9 +263,29 @@ func fmtDatePtr(t *time.Time) *string {
 }
 
 type CanonicalCategoryDTO struct {
-	ID      int64  `json:"id"`
-	Slug    string `json:"slug"`
-	TitleRu string `json:"title_ru"`
+	ID      int64   `json:"id"`
+	Slug    string  `json:"slug"`
+	TitleRu string  `json:"title_ru"`
+	Emoji   *string `json:"emoji,omitempty"`
+}
+
+func canonicalCategoryDTO(c db.CanonicalCategory) CanonicalCategoryDTO {
+	return CanonicalCategoryDTO{ID: c.ID, Slug: c.Slug, TitleRu: c.TitleRu, Emoji: c.Emoji}
+}
+
+// BankCategoryDTO is one row of a bank's picker catalog. Emoji is resolved
+// server-side: the row's own override, else the canonical's, else null (the
+// SPA shows a generic fallback).
+type BankCategoryDTO struct {
+	ID                  int64   `json:"id"`
+	BankID              int32   `json:"bank_id"`
+	Title               string  `json:"title"`
+	CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
+	CanonicalSlug       *string `json:"canonical_slug,omitempty"`
+	CanonicalTitleRu    *string `json:"canonical_title_ru,omitempty"`
+	Kind                string  `json:"kind"` // regular | super | special — prefill hint for the entry form
+	Emoji               *string `json:"emoji,omitempty"`
+	IsCustom            bool    `json:"is_custom"`
 }
 
 // OverviewCategoryDTO is one «Категории» row: category + its best card.
@@ -428,7 +453,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		out := make([]CanonicalCategoryDTO, len(rows))
 		for i, r := range rows {
-			out[i] = CanonicalCategoryDTO{ID: r.ID, Slug: r.Slug, TitleRu: r.TitleRu}
+			out[i] = canonicalCategoryDTO(r)
 		}
 		return &struct{ Body []CanonicalCategoryDTO }{out}, nil
 	})
@@ -439,15 +464,88 @@ func RegisterHTTP(api huma.API, s *Service) {
 		DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, in *struct {
 		Body struct {
-			Slug    string `json:"slug" minLength:"1" pattern:"^[a-z0-9-]+$"`
-			TitleRu string `json:"title_ru" minLength:"1"`
+			Slug    string  `json:"slug" minLength:"1" pattern:"^[a-z0-9-]+$"`
+			TitleRu string  `json:"title_ru" minLength:"1"`
+			Emoji   *string `json:"emoji,omitempty"`
 		}
 	}) (*struct{ Body CanonicalCategoryDTO }, error) {
-		c, err := s.Q.CreateCanonicalCategory(ctx, db.CreateCanonicalCategoryParams{Slug: in.Body.Slug, TitleRu: in.Body.TitleRu})
+		c, err := s.Q.CreateCanonicalCategory(ctx, db.CreateCanonicalCategoryParams{Slug: in.Body.Slug, TitleRu: in.Body.TitleRu, Emoji: in.Body.Emoji})
 		if err != nil {
 			return nil, httpErr(err)
 		}
-		return &struct{ Body CanonicalCategoryDTO }{CanonicalCategoryDTO{ID: c.ID, Slug: c.Slug, TitleRu: c.TitleRu}}, nil
+		return &struct{ Body CanonicalCategoryDTO }{canonicalCategoryDTO(c)}, nil
+	})
+
+	// --- bank picker catalogs ---
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-bank-category-list", Method: http.MethodGet,
+		Path: "/api/v1/cashback/banks/{bank_id}/categories", Summary: "The bank's picker catalog (current menu rows)", Tags: []string{"cashback"},
+	}, func(ctx context.Context, in *struct {
+		BankID int32 `path:"bank_id"`
+	}) (*struct{ Body []BankCategoryDTO }, error) {
+		rows, err := s.ListBankCategories(ctx, in.BankID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]BankCategoryDTO, len(rows))
+		for i, r := range rows {
+			emoji := r.Emoji
+			if emoji == nil {
+				emoji = r.CanonicalEmoji
+			}
+			out[i] = BankCategoryDTO{
+				ID: r.ID, BankID: r.BankID, Title: r.Title,
+				CanonicalCategoryID: r.CanonicalCategoryID,
+				CanonicalSlug:       r.CanonicalSlug, CanonicalTitleRu: r.CanonicalTitleRu,
+				Kind: string(r.Kind), Emoji: emoji, IsCustom: r.IsCustom,
+			}
+		}
+		return &struct{ Body []BankCategoryDTO }{out}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-bank-category-create", Method: http.MethodPost,
+		Path: "/api/v1/cashback/bank-categories", Summary: "Add a custom category to a bank's picker catalog", Tags: []string{"cashback"},
+		DefaultStatus: http.StatusCreated,
+	}, func(ctx context.Context, in *struct {
+		Body struct {
+			BankID              int32   `json:"bank_id"`
+			Title               string  `json:"title" minLength:"1"`
+			CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
+			Kind                string  `json:"kind,omitempty" enum:"regular,super,special" default:"regular"`
+			Emoji               *string `json:"emoji,omitempty"`
+		}
+	}) (*struct{ Body BankCategoryDTO }, error) {
+		kind := OfferKind(in.Body.Kind)
+		if kind == "" {
+			kind = OfferRegular
+		}
+		bc, err := s.CreateBankCategory(ctx, in.Body.BankID, in.Body.Title, in.Body.CanonicalCategoryID, kind, in.Body.Emoji)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		out := BankCategoryDTO{
+			ID: bc.ID, BankID: bc.BankID, Title: bc.Title,
+			CanonicalCategoryID: bc.CanonicalCategoryID,
+			Kind:                string(bc.Kind), Emoji: bc.Emoji, IsCustom: bc.IsCustom,
+		}
+		// Resolve the canonical's title/slug/emoji like the list does, so
+		// the SPA can use the fresh row without refetching.
+		if bc.CanonicalCategoryID != nil {
+			if cats, err := s.Q.ListCanonicalCategories(ctx); err == nil {
+				for _, c := range cats {
+					if c.ID == *bc.CanonicalCategoryID {
+						out.CanonicalSlug, out.CanonicalTitleRu = &c.Slug, &c.TitleRu
+						if out.Emoji == nil {
+							out.Emoji = c.Emoji
+						}
+						break
+					}
+				}
+			}
+		}
+		return &struct{ Body BankCategoryDTO }{out}, nil
 	})
 
 	// --- offer periods ---
@@ -510,6 +608,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 	}) (*struct {
 		Body struct {
 			OfferPeriodDTO
+			BankID      int32              `json:"bank_id"`
 			BankName    string             `json:"bank_name"`
 			Offers      []CategoryOfferDTO `json:"offers"`
 			Attachments []uuid.UUID        `json:"attachment_ids"`
@@ -530,19 +629,22 @@ func RegisterHTTP(api huma.API, s *Service) {
 		out := &struct {
 			Body struct {
 				OfferPeriodDTO
+				BankID      int32              `json:"bank_id"`
 				BankName    string             `json:"bank_name"`
 				Offers      []CategoryOfferDTO `json:"offers"`
 				Attachments []uuid.UUID        `json:"attachment_ids"`
 			}
 		}{}
 		out.Body.OfferPeriodDTO = offerPeriodDTO(db.OfferPeriod{ID: p.ID, BankClientID: p.BankClientID, PeriodStart: p.PeriodStart, PeriodEnd: p.PeriodEnd, MaxCategoriesOverride: p.MaxCategoriesOverride})
+		out.Body.BankID = int32(p.BankID)
 		out.Body.BankName = p.BankName
 		out.Body.Offers = make([]CategoryOfferDTO, len(offers))
 		for i, o := range offers {
 			out.Body.Offers[i] = CategoryOfferDTO{
 				ID: o.ID, OfferPeriodID: o.OfferPeriodID, RawTitle: o.RawTitle,
-				CanonicalCategoryID: o.CanonicalCategoryID, Percent: decToStr(o.Percent),
-				Kind: string(o.Kind), Notes: o.Notes, SelectionID: o.SelectionID,
+				CanonicalCategoryID: o.CanonicalCategoryID, BankCategoryID: o.BankCategoryID,
+				Percent: decToStr(o.Percent),
+				Kind:    string(o.Kind), Notes: o.Notes, SelectionID: o.SelectionID,
 				SelectedAt: o.SelectedAt,
 			}
 		}
@@ -606,7 +708,8 @@ func RegisterHTTP(api huma.API, s *Service) {
 			}
 		}{}
 		if c != nil {
-			out.Body.Suggestion = &CanonicalCategoryDTO{ID: c.ID, Slug: c.Slug, TitleRu: c.TitleRu}
+			dto := canonicalCategoryDTO(*c)
+			out.Body.Suggestion = &dto
 		}
 		return out, nil
 	})
@@ -617,12 +720,8 @@ func RegisterHTTP(api huma.API, s *Service) {
 		DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, in *struct {
 		Body struct {
-			OfferPeriodID       int64   `json:"offer_period_id"`
-			RawTitle            string  `json:"raw_title" minLength:"1"`
-			CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
-			Percent             *string `json:"percent,omitempty"`
-			Kind                string  `json:"kind,omitempty" enum:"regular,super,special" default:"regular"`
-			Notes               *string `json:"notes,omitempty"`
+			OfferPeriodID int64 `json:"offer_period_id"`
+			categoryOfferBody
 		}
 	}) (*struct{ Body CategoryOfferDTO }, error) {
 		pctVal, err := strToDec(in.Body.Percent, "percent")
@@ -633,14 +732,15 @@ func RegisterHTTP(api huma.API, s *Service) {
 		if kind == "" {
 			kind = OfferRegular
 		}
-		o, err := s.CreateCategoryOffer(ctx, auth.UserID(ctx), in.Body.OfferPeriodID, in.Body.RawTitle, in.Body.CanonicalCategoryID, pctVal, kind, in.Body.Notes)
+		o, err := s.CreateCategoryOffer(ctx, auth.UserID(ctx), in.Body.OfferPeriodID, in.Body.RawTitle, in.Body.CanonicalCategoryID, pctVal, kind, in.Body.Notes, in.Body.BankCategoryID)
 		if err != nil {
 			return nil, httpErr(err)
 		}
 		return &struct{ Body CategoryOfferDTO }{CategoryOfferDTO{
 			ID: o.ID, OfferPeriodID: o.OfferPeriodID, RawTitle: o.RawTitle,
-			CanonicalCategoryID: o.CanonicalCategoryID, Percent: decToStr(o.Percent),
-			Kind: string(o.Kind), Notes: o.Notes,
+			CanonicalCategoryID: o.CanonicalCategoryID, BankCategoryID: o.BankCategoryID,
+			Percent: decToStr(o.Percent),
+			Kind:    string(o.Kind), Notes: o.Notes,
 		}}, nil
 	})
 
@@ -659,14 +759,15 @@ func RegisterHTTP(api huma.API, s *Service) {
 		if kind == "" {
 			kind = OfferRegular
 		}
-		o, err := s.UpdateCategoryOffer(ctx, auth.UserID(ctx), in.ID, in.Body.RawTitle, in.Body.CanonicalCategoryID, pctVal, kind, in.Body.Notes)
+		o, err := s.UpdateCategoryOffer(ctx, auth.UserID(ctx), in.ID, in.Body.RawTitle, in.Body.CanonicalCategoryID, pctVal, kind, in.Body.Notes, in.Body.BankCategoryID)
 		if err != nil {
 			return nil, httpErr(err)
 		}
 		return &struct{ Body CategoryOfferDTO }{CategoryOfferDTO{
 			ID: o.ID, OfferPeriodID: o.OfferPeriodID, RawTitle: o.RawTitle,
-			CanonicalCategoryID: o.CanonicalCategoryID, Percent: decToStr(o.Percent),
-			Kind: string(o.Kind), Notes: o.Notes,
+			CanonicalCategoryID: o.CanonicalCategoryID, BankCategoryID: o.BankCategoryID,
+			Percent: decToStr(o.Percent),
+			Kind:    string(o.Kind), Notes: o.Notes,
 		}}, nil
 	})
 
@@ -968,7 +1069,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Message   string               `json:"message,omitempty"`
 			}
 		}{}
-		out.Body.Category = CanonicalCategoryDTO{ID: res.Category.ID, Slug: res.Category.Slug, TitleRu: res.Category.TitleRu}
+		out.Body.Category = CanonicalCategoryDTO{ID: res.Category.ID, Slug: res.Category.Slug, TitleRu: res.Category.TitleRu, Emoji: res.Category.Emoji}
 		out.Body.Date = onDate.Format("2006-01-02")
 		out.Body.Ranked = make([]LookupEntryDTO, len(res.Ranked))
 		for i, e := range res.Ranked {
