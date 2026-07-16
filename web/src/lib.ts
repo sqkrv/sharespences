@@ -1,5 +1,24 @@
 // Small display helpers shared by screens. Domain language is Russian.
 
+// Latin lowercase letters that are pixel-identical to Cyrillic ones — real
+// Альфа titles mix them into Cyrillic words. Mirrors the backend's
+// NormalizeTitle fold (internal/cashback/domain.go).
+const HOMOGLYPHS: Record<string, string> = { a: "а", c: "с", e: "е", o: "о", p: "р", x: "х", y: "у" };
+
+// normalizeTitle canonicalizes a category title for client-side search
+// filtering: NFC, lower, ё→е, Latin→Cyrillic homoglyph fold, collapsed
+// whitespace. Must stay in sync with the backend rule.
+export function normalizeTitle(s: string): string {
+  return s
+    .normalize("NFC")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .replace(/[aceopxy]/g, (ch) => HOMOGLYPHS[ch])
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ");
+}
+
 export function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }

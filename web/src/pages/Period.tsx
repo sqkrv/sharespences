@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, unwrap, attachmentURL, uploadAttachment, ApiError, type CanonicalCategory, type CategoryOffer, type HelperRow } from "../api/client";
-import { useCards, useCategories, useClients, useTierMap } from "../hooks";
+import { useBankCategories, useBanks, useCards, useCategories, useClients, useTierMap } from "../hooks";
 import { Badge, Btn, Card, CheckDot, ErrMsg, Field, GradientCard, Input, Pct, Select, Spinner } from "../components/ui";
+import { CategoryPicker, type PickedCategory } from "../components/CategoryPicker";
 import { currencyBadge, fmtRange } from "../lib";
 
 function usePeriod(id: number) {
@@ -26,79 +27,35 @@ function useHelper(id: number) {
   });
 }
 
-async function suggestCanonical(periodID: number, rawTitle: string) {
-  const res = unwrap(
-    await api.GET("/api/v1/cashback/alias-suggestion", {
-      params: { query: { offer_period_id: periodID, raw_title: rawTitle } },
-    }),
-  );
-  return res.suggestion ?? null;
-}
-
-// S1 menu entry: raw title (alias table pre-suggests the canonical
-// category), %, spec-kind toggle; unknown titles can create a canonical
-// category inline.
-function AddOfferForm({ periodID }: { periodID: number }) {
-  const categories = useCategories();
+// S1 menu entry: pick the category from the bank's catalog (searchable
+// select with emoji; custom categories live inside the picker), %, kind.
+// Picking a catalog row prefills the kind hint and the canonical mapping.
+function AddOfferForm({
+  periodID,
+  bankID,
+  bankName,
+  bankColor,
+}: {
+  periodID: number;
+  bankID: number;
+  bankName: string;
+  bankColor?: string | null;
+}) {
   const qc = useQueryClient();
-  const [rawTitle, setRawTitle] = useState("");
-  const [canonicalID, setCanonicalID] = useState("");
-  const [canonicalTouched, setCanonicalTouched] = useState(false);
-  const [suggestion, setSuggestion] = useState<{ id: number; title_ru: string } | null>(null);
+  const [picked, setPicked] = useState<PickedCategory | null>(null);
   const [percent, setPercent] = useState("");
   const [kind, setKind] = useState<"regular" | "super" | "special">("regular");
-  const [newCat, setNewCat] = useState(false);
-  const [newSlug, setNewSlug] = useState("");
-  const [newTitle, setNewTitle] = useState("");
-
-  // Debounced alias pre-suggestion (S1) — fills the canonical select unless
-  // the user already picked one by hand.
-  useEffect(() => {
-    if (rawTitle.trim() === "") {
-      setSuggestion(null);
-      return;
-    }
-    const t = setTimeout(async () => {
-      try {
-        const s = await suggestCanonical(periodID, rawTitle);
-        setSuggestion(s);
-        if (s && !canonicalTouched) setCanonicalID(String(s.id));
-      } catch {
-        // suggestion is best-effort; entry must never block on it
-      }
-    }, 400);
-    return () => clearTimeout(t);
-  }, [rawTitle, periodID, canonicalTouched]);
 
   const create = useMutation({
     mutationFn: async () => {
-      let catID = canonicalID ? Number(canonicalID) : undefined;
-      if (newCat && newSlug && newTitle) {
-        const created = unwrap(
-          await api.POST("/api/v1/cashback/canonical-categories", {
-            body: { slug: newSlug, title_ru: newTitle },
-          }),
-        );
-        catID = created.id;
-        qc.invalidateQueries({ queryKey: ["categories"] });
-      }
-      // The debounce may not have fired yet (fast submit) — resolve the
-      // suggestion synchronously so the row doesn't silently lose its
-      // canonical mapping and vanish from «Какой картой?».
-      if (catID == null && !newCat && !canonicalTouched) {
-        try {
-          const s = await suggestCanonical(periodID, rawTitle);
-          if (s) catID = s.id;
-        } catch {
-          // best effort
-        }
-      }
+      if (!picked) return;
       return unwrap(
         await api.POST("/api/v1/cashback/category-offers", {
           body: {
             offer_period_id: periodID,
-            raw_title: rawTitle,
-            ...(catID != null ? { canonical_category_id: catID } : {}),
+            raw_title: picked.title,
+            ...(picked.bankCategoryID != null ? { bank_category_id: picked.bankCategoryID } : {}),
+            ...(picked.canonicalID != null ? { canonical_category_id: picked.canonicalID } : {}),
             ...(percent ? { percent } : {}),
             kind,
           },
@@ -106,15 +63,9 @@ function AddOfferForm({ periodID }: { periodID: number }) {
       );
     },
     onSuccess: () => {
-      setRawTitle("");
-      setCanonicalID("");
-      setCanonicalTouched(false);
-      setSuggestion(null);
+      setPicked(null);
       setPercent("");
       setKind("regular");
-      setNewCat(false);
-      setNewSlug("");
-      setNewTitle("");
       qc.invalidateQueries({ queryKey: ["period", periodID] });
       qc.invalidateQueries({ queryKey: ["helper", periodID] });
       qc.invalidateQueries({ queryKey: ["overview"] });
@@ -131,31 +82,19 @@ function AddOfferForm({ periodID }: { periodID: number }) {
         }}
       >
         <h3 className="text-[13px] font-bold">Добавить категорию из меню банка</h3>
-        <Field label="Название — как в приложении банка">
-          <Input required value={rawTitle} onChange={(e) => setRawTitle(e.target.value)} placeholder="Супермаркеты" />
-        </Field>
-        {suggestion && (
-          <p className="text-xs font-medium text-mint">
-            ≈ распознано: <b>{suggestion.title_ru}</b>
-          </p>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Каноническая категория">
-            <Select
-              value={canonicalID}
-              onChange={(e) => {
-                setCanonicalID(e.target.value);
-                setCanonicalTouched(true);
+        <div className="grid grid-cols-[1fr_88px] gap-3">
+          <Field label="Категория">
+            <CategoryPicker
+              bankID={bankID}
+              bankName={bankName}
+              bankColor={bankColor}
+              periodID={periodID}
+              value={picked}
+              onChange={(v) => {
+                setPicked(v);
+                if (v.kind) setKind(v.kind);
               }}
-              disabled={newCat}
-            >
-              <option value="">— без категории —</option>
-              {(categories.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title_ru}
-                </option>
-              ))}
-            </Select>
+            />
           </Field>
           <Field label="Процент">
             <Input inputMode="decimal" value={percent} onChange={(e) => setPercent(e.target.value)} placeholder="5" />
@@ -180,22 +119,8 @@ function AddOfferForm({ periodID }: { periodID: number }) {
               </button>
             ))}
           </span>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={newCat} onChange={(e) => setNewCat(e.target.checked)} />
-            новая категория
-          </label>
         </div>
-        {newCat && (
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Slug (латиницей)">
-              <Input value={newSlug} onChange={(e) => setNewSlug(e.target.value)} pattern="[a-z0-9-]+" placeholder="coffee-shops" />
-            </Field>
-            <Field label="Название (по-русски)">
-              <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Кофейни" />
-            </Field>
-          </div>
-        )}
-        <Btn type="submit" disabled={create.isPending || !rawTitle}>
+        <Btn type="submit" disabled={create.isPending || !picked}>
           Добавить
         </Btn>
         <ErrMsg error={create.error} />
@@ -210,15 +135,31 @@ function AddOfferForm({ periodID }: { periodID: number }) {
 function EditOfferForm({
   offer,
   categories,
+  bankID,
+  bankName,
+  bankColor,
   onDone,
 }: {
   offer: CategoryOffer;
   categories: CanonicalCategory[];
+  bankID: number;
+  bankName: string;
+  bankColor?: string | null;
   onDone: () => void;
 }) {
   const qc = useQueryClient();
-  const [rawTitle, setRawTitle] = useState(offer.raw_title);
-  const [canonicalID, setCanonicalID] = useState(offer.canonical_category_id != null ? String(offer.canonical_category_id) : "");
+  const bankCats = useBankCategories(bankID);
+  const [picked, setPicked] = useState<PickedCategory>(() => {
+    const canon = categories.find((c) => c.id === offer.canonical_category_id);
+    return {
+      bankCategoryID: offer.bank_category_id ?? undefined,
+      title: offer.raw_title,
+      canonicalID: offer.canonical_category_id ?? null,
+      canonicalTitle: canon?.title_ru ?? null,
+      emoji:
+        (bankCats.data ?? []).find((r) => r.id === offer.bank_category_id)?.emoji ?? canon?.emoji ?? null,
+    };
+  });
   const [percent, setPercent] = useState(offer.percent ?? "");
   const [kind, setKind] = useState(offer.kind);
   const [notes, setNotes] = useState(offer.notes ?? "");
@@ -236,8 +177,9 @@ function EditOfferForm({
         await api.PUT("/api/v1/cashback/category-offers/{id}", {
           params: { path: { id: offer.id } },
           body: {
-            raw_title: rawTitle,
-            ...(canonicalID ? { canonical_category_id: Number(canonicalID) } : {}),
+            raw_title: picked.title,
+            ...(picked.bankCategoryID != null ? { bank_category_id: picked.bankCategoryID } : {}),
+            ...(picked.canonicalID != null ? { canonical_category_id: picked.canonicalID } : {}),
             ...(percent ? { percent } : {}),
             kind: kind as "regular" | "super" | "special",
             ...(notes ? { notes } : {}),
@@ -267,19 +209,19 @@ function EditOfferForm({
         save.mutate();
       }}
     >
-      <Field label="Название">
-        <Input required value={rawTitle} onChange={(e) => setRawTitle(e.target.value)} />
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Каноническая категория">
-          <Select value={canonicalID} onChange={(e) => setCanonicalID(e.target.value)}>
-            <option value="">— без категории —</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.title_ru}
-              </option>
-            ))}
-          </Select>
+      <div className="grid grid-cols-[1fr_88px] gap-3">
+        <Field label="Категория">
+          <CategoryPicker
+            bankID={bankID}
+            bankName={bankName}
+            bankColor={bankColor}
+            periodID={offer.offer_period_id}
+            value={picked}
+            onChange={(v) => {
+              setPicked(v);
+              if (v.kind) setKind(v.kind);
+            }}
+          />
         </Field>
         <Field label="Процент">
           <Input inputMode="decimal" value={percent} onChange={(e) => setPercent(e.target.value)} />
@@ -469,6 +411,8 @@ export default function Period() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const categories = useCategories();
+  const banks = useBanks();
+  const bankCats = useBankCategories(period.data?.bank_id);
   const [backfill, setBackfill] = useState(false);
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [editingID, setEditingID] = useState<number | null>(null);
@@ -534,6 +478,14 @@ export default function Period() {
   const h = helper.data;
   const slotsFull = h.max_categories != null && h.slots_used >= h.max_categories;
   const collisionCount = (h.rows ?? []).filter((r) => (r.collisions ?? []).length > 0).length;
+
+  const bankColor = (banks.data ?? []).find((b) => b.id === p.bank_id)?.color_hex ?? null;
+  // Emoji for a menu row: its catalog row's (override→canonical resolved
+  // server-side), else the canonical's, else none.
+  const offerEmoji = (offer: CategoryOffer) =>
+    (bankCats.data ?? []).find((r) => r.id === offer.bank_category_id)?.emoji ??
+    (categories.data ?? []).find((c) => c.id === offer.canonical_category_id)?.emoji ??
+    null;
 
   const client = (clients.data ?? []).find((c) => c.id === p.bank_client_id);
   const tierInfo = client?.program_tier_id != null ? tierMap.data?.get(client.program_tier_id) : undefined;
@@ -612,6 +564,7 @@ export default function Period() {
                   <span className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md bg-gold/15 text-[11px] font-extrabold text-gold">★</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-[12.5px] font-semibold text-gold">
+                      {offerEmoji(offer) && <span className="mr-1">{offerEmoji(offer)}</span>}
                       {offer.raw_title} · {offer.kind === "super" ? "барабан" : "спец"}
                     </p>
                     <p className="text-[9.5px] font-medium text-tx4">
@@ -631,7 +584,9 @@ export default function Period() {
                     ✎
                   </button>
                 </div>
-                {editingID === offer.id && <EditOfferForm offer={offer} categories={categories.data ?? []} onDone={() => setEditingID(null)} />}
+                {editingID === offer.id && (
+                  <EditOfferForm offer={offer} categories={categories.data ?? []} bankID={p.bank_id} bankName={p.bank_name} bankColor={bankColor} onDone={() => setEditingID(null)} />
+                )}
               </div>
             );
           }
@@ -641,6 +596,7 @@ export default function Period() {
                 <CheckDot checked={selected} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[13px] font-semibold">
+                    {offerEmoji(offer) && <span className="mr-1">{offerEmoji(offer)}</span>}
                     {offer.raw_title}
                     {canonTitle && canonTitle !== offer.raw_title && <span className="text-[10px] font-medium text-tx4"> → {canonTitle}</span>}
                   </p>
@@ -689,7 +645,9 @@ export default function Period() {
                   Сравнение: {(hrow?.comparisons ?? []).map((cmp) => `${cmp.client_label} — ${cmp.percent != null ? cmp.percent + "%" : "—"}`).join(" · ")}
                 </p>
               )}
-              {editingID === offer.id && <EditOfferForm offer={offer} categories={categories.data ?? []} onDone={() => setEditingID(null)} />}
+              {editingID === offer.id && (
+                <EditOfferForm offer={offer} categories={categories.data ?? []} bankID={p.bank_id} bankName={p.bank_name} bankColor={bankColor} onDone={() => setEditingID(null)} />
+              )}
             </div>
           );
         })}
@@ -718,7 +676,7 @@ export default function Period() {
         </Btn>
       </div>
 
-      <AddOfferForm periodID={id} />
+      <AddOfferForm periodID={id} bankID={p.bank_id} bankName={p.bank_name} bankColor={bankColor} />
 
       <div className="pt-1 text-right">
         <Btn

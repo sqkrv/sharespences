@@ -8,6 +8,7 @@ export type Card = Schemas["CardDTO"];
 export type Program = Schemas["ProgramDTO"];
 export type Tier = Schemas["TierDTO"];
 export type CanonicalCategory = Schemas["CanonicalCategoryDTO"];
+export type BankCategory = Schemas["BankCategoryDTO"];
 export type CategoryOffer = Schemas["CategoryOfferDTO"];
 export type HelperRow = Schemas["HelperRowDTO"];
 export type LookupEntry = Schemas["LookupEntryDTO"];

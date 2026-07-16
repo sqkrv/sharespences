@@ -99,13 +99,16 @@ export function SegTabs<T extends string>({
   );
 }
 
-// Two-letter bank avatar («АБ», «ОЗ»…), lilac on soft accent.
-export function BankBadge({ name, size = 33 }: { name: string; size?: number }) {
+// Two-letter bank avatar («АБ», «ОЗ»…), lilac on soft accent — or tinted
+// with the bank's brand color when the API provides one.
+export function BankBadge({ name, size = 33, color }: { name: string; size?: number; color?: string | null }) {
+  const style: React.CSSProperties = { width: size, height: size, fontSize: Math.max(8, Math.round(size / 3)) };
+  if (color) {
+    style.background = `${color}26`; // ~15% alpha tint
+    style.color = color;
+  }
   return (
-    <span
-      className="flex flex-none items-center justify-center rounded-[10px] bg-acc/15 font-bold text-accl"
-      style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size / 3)) }}
-    >
+    <span className="flex flex-none items-center justify-center rounded-[10px] bg-acc/15 font-bold text-accl" style={style}>
       {bankAbbrev(name)}
     </span>
   );

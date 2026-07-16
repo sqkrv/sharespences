@@ -25,6 +25,22 @@ export function useCards() {
   });
 }
 
+// One bank's picker catalog (current menu rows, seeded from the knowledge
+// base + user-created custom rows).
+export function useBankCategories(bankID: number | undefined) {
+  return useQuery({
+    queryKey: ["bank-categories", bankID],
+    enabled: bankID != null,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/cashback/banks/{bank_id}/categories", {
+          params: { path: { bank_id: bankID! } },
+        }),
+      ) ?? [],
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useCategories() {
   return useQuery({
     queryKey: ["categories"],
