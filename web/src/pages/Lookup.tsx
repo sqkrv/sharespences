@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { api, unwrap, type LookupEntry, type Schemas } from "../api/client";
+import { api, unwrap, ApiError, type LookupEntry, type Schemas } from "../api/client";
 import { useCards, useCategories } from "../hooks";
 import { BankBadge, Btn, Card, ErrMsg, GradientCard, Pct, SegTabs, Spinner } from "../components/ui";
 import { capNote, currencyBadge, fmtPercent } from "../lib";
@@ -50,6 +50,144 @@ function MapStub() {
   );
 }
 
+// «Поиск» — MCC search against the dictionary: type a code (3-4 digits) or
+// a name fragment, see which category the code lands in at each bank, then
+// hand off to the wired «Категория» lookup for the actual card ranking.
+function MccSearch({ onCategory }: { onCategory: (slug: string) => void }) {
+  const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [picked, setPicked] = useState<string | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(q.trim()), 400);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  // A picked suggestion wins; a bare 3-4 digit entry auto-resolves.
+  const code = picked ?? (/^\d{3,4}$/.test(debouncedQ) ? debouncedQ : null);
+
+  const suggest = useQuery({
+    queryKey: ["mcc-search", debouncedQ],
+    enabled: code == null && debouncedQ.length >= 2,
+    queryFn: async () =>
+      unwrap(await api.GET("/api/v1/mcc/codes", { params: { query: { query: debouncedQ } } })) ?? [],
+  });
+
+  const resolve = useQuery({
+    queryKey: ["mcc-resolve", code],
+    enabled: code != null,
+    retry: false,
+    queryFn: async () =>
+      unwrap(await api.GET("/api/v1/mcc/resolve", { params: { query: { code: code! } } })),
+  });
+
+  const unknownCode = resolve.isError && resolve.error instanceof ApiError && resolve.error.status === 404;
+
+  return (
+    <>
+      <div className="flex items-center gap-2.5 rounded-xl border border-brd2 bg-srf2 px-3 py-2.5 focus-within:border-acc">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-none text-tx4">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.4-3.4" />
+        </svg>
+        <input
+          autoFocus
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPicked(null);
+          }}
+          placeholder="MCC-код или название категории"
+          inputMode="search"
+          className="flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-tx4"
+        />
+      </div>
+      <p className="mx-1 text-[10.5px] leading-snug font-medium text-tx4">
+        MCC мерчанта можно узнать на mcc-codes.ru или из чека/выписки — база покажет, какой категорией он считается у каждого банка.
+      </p>
+
+      {code == null && suggest.data && suggest.data.length > 0 && (
+        <div className="space-y-1">
+          {suggest.data.map((s) => (
+            <button
+              key={s.code}
+              type="button"
+              onClick={() => setPicked(s.code)}
+              className="flex w-full items-center gap-2.5 rounded-xl border border-brd bg-srf px-3 py-2 text-left hover:bg-srf2"
+            >
+              <span className="flex-none font-mono text-[12px] font-bold text-accl">{s.code}</span>
+              <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-tx2">{s.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {code == null && debouncedQ.length >= 2 && suggest.data && suggest.data.length === 0 && (
+        <p className="px-1 text-center text-xs font-medium text-tx4">Ничего не найдено в справочнике MCC</p>
+      )}
+
+      {code != null && resolve.isPending && <Spinner />}
+      {unknownCode && (
+        <Card className="p-4 text-center">
+          <p className="text-sm font-medium text-tx3">Код {code} не найден в справочнике MCC.</p>
+        </Card>
+      )}
+      {resolve.isError && !unknownCode && <ErrMsg error={resolve.error} />}
+      {resolve.data && (
+        <>
+          <Card className="flex items-center gap-2.5 p-3.5">
+            <span className="flex-none font-mono text-[15px] font-extrabold text-accl">{resolve.data.code.code}</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-bold">{resolve.data.code.name}</p>
+              {resolve.data.code.description && (
+                <p className="mt-0.5 line-clamp-2 text-[10px] font-medium text-tx4">{resolve.data.code.description}</p>
+              )}
+            </div>
+          </Card>
+
+          {(resolve.data.banks ?? []).length === 0 ? (
+            <Card className="p-4 text-center">
+              <p className="text-sm font-medium text-tx3">
+                Пока ни у одного банка нет этого кода в известных составах категорий — база пополняется из документов банков.
+              </p>
+            </Card>
+          ) : (
+            <>
+              <p className="mx-0.5 text-[11px] font-semibold text-tx3">Как это считают банки</p>
+              <div className="space-y-1.5">
+                {(resolve.data.banks ?? []).map((b) => (
+                  <div key={b.bank_category_id} className="flex items-center gap-2.5 rounded-xl border border-brd bg-srf px-3 py-2.5">
+                    <BankBadge name={b.bank_name} size={26} color={b.bank_color_hex} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold">
+                        {b.emoji && <span className="mr-1">{b.emoji}</span>}
+                        {b.title}
+                        {b.kind === "special" && (
+                          <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] text-[9px] font-bold text-gold">спец</span>
+                        )}
+                      </p>
+                      <p className="truncate text-[10px] font-medium text-tx4">{b.bank_name}{b.note ? ` · ${b.note}` : ""}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {(resolve.data.canonicals ?? []).length > 0 && (
+                <div className="space-y-1.5">
+                  {(resolve.data.canonicals ?? []).map((c) => (
+                    <Btn key={c.slug} variant="soft" className="w-full" onClick={() => onCategory(c.slug)}>
+                      Какой картой → {c.title}
+                    </Btn>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 function ComingSoon({ text, onPickCategory }: { text: string; onPickCategory: () => void }) {
   return (
     <Card className="space-y-3 p-4 text-center">
@@ -79,9 +217,10 @@ function OtherCardRow({ e }: { e: LookupEntry }) {
   );
 }
 
-// «Какой картой платить?» — design screens 04–06. «Рядом» and «Поиск» need
-// a places/MCC base the backend doesn't have yet (OUT of v1) — they render
-// the designed shell with an honest «скоро»; «Категория» is fully wired.
+// «Какой картой платить?» — design screens 04–06. «Категория» is fully
+// wired; «Поиск» resolves MCC codes through the mcc module (2026-07-21) and
+// hands off here for ranking; «Рядом» still needs the places base — honest
+// «скоро» shell.
 export default function Lookup() {
   const categories = useCategories();
   const cards = useCards();
@@ -171,17 +310,12 @@ export default function Lookup() {
       )}
 
       {mode === "search" && (
-        <>
-          <div className="flex items-center gap-2.5 rounded-xl border border-brd2 bg-srf2 px-3 py-2.5">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-none text-tx4">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.4-3.4" />
-            </svg>
-            <input disabled placeholder="Название, сайт или адрес" className="flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-tx4" />
-          </div>
-          <p className="mx-1 text-[10.5px] leading-snug font-medium text-tx4">Онлайн-оплата? Гео не нужно — поиск по названию или сайту (как mcc-codes.ru).</p>
-          <ComingSoon text="Поиск мест появится вместе с базой точек и MCC — пока подскажем по категории." onPickCategory={() => setMode("cat")} />
-        </>
+        <MccSearch
+          onCategory={(s) => {
+            pick(s);
+            setMode("cat");
+          }}
+        />
       )}
 
       {mode === "cat" && (
