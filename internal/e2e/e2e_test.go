@@ -801,11 +801,13 @@ func TestCashbackE2E(t *testing.T) {
 	if cafe.CanonicalCategoryID == nil || cafe.CanonicalTitleRu == nil || cafe.Emoji == nil || *cafe.Emoji != "🍽️" || cafe.Kind != "regular" {
 		t.Fatalf("catalog «Кафе и рестораны» = %+v, want mapped regular with inherited 🍽️", cafe)
 	}
-	// A special/service row has no canonical and its own emoji override —
-	// the whole reason bank_category exists next to bank_category_alias.
+	// A service row has no canonical and its own emoji override — but it is
+	// an ORDINARY regular category (owner correction 2026-07-21: special is
+	// reserved for granted bonus mechanics, never catalog rows). This is the
+	// whole reason bank_category exists next to bank_category_alias.
 	trevel := findCatalogRow("Альфа-Тревел")
-	if trevel.CanonicalCategoryID != nil || trevel.Kind != "special" || trevel.Emoji == nil || *trevel.Emoji != "🧳" {
-		t.Fatalf("catalog «Альфа-Тревел» = %+v, want canonical-less special with 🧳", trevel)
+	if trevel.CanonicalCategoryID != nil || trevel.Kind != "regular" || trevel.Emoji == nil || *trevel.Emoji != "🧳" {
+		t.Fatalf("catalog «Альфа-Тревел» = %+v, want canonical-less REGULAR with 🧳", trevel)
 	}
 
 	// Custom escape hatch: a new bank category, unmapped; duplicate → 409.

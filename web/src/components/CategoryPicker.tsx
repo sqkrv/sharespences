@@ -156,7 +156,9 @@ export function CategoryPicker({
                 {!fallbackMode &&
                   rows.map((r) => {
                     const selected = value?.bankCategoryID === r.id;
-                    const unmapped = r.kind === "regular" && r.canonical_category_id == null;
+                    // Canonical-less catalog rows (Альфа-Тревел, канальные…)
+                    // are deliberate — ordinary categories without a
+                    // cross-bank identity, no warning (owner 2026-07-21).
                     return (
                       <button
                         key={r.id}
@@ -168,10 +170,7 @@ export function CategoryPicker({
                       >
                         <span className="flex-none text-[15px]">{r.emoji ?? FALLBACK_EMOJI}</span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px]">
-                            {r.title}
-                            {unmapped && <span className="ml-1.5 inline-block h-[5px] w-[5px] rounded-full bg-warn align-middle" title="без канонической — не попадёт в «Какой картой?»" />}
-                          </span>
+                          <span className="block truncate text-[13px]">{r.title}</span>
                           {r.canonical_title_ru && r.canonical_title_ru !== r.title && (
                             <span className={`block truncate text-[10px] font-medium ${selected ? "text-white/75" : "text-tx4"}`}>
                               → {r.canonical_title_ru}
@@ -244,7 +243,6 @@ function AddCustomForm({
   const categories = useCategories();
   const [title, setTitle] = useState(initialTitle.trim());
   const [emoji, setEmoji] = useState("");
-  const [kind, setKind] = useState<"regular" | "special">("regular");
   const [canonicalID, setCanonicalID] = useState("");
   const [canonicalTouched, setCanonicalTouched] = useState(false);
   const [newCat, setNewCat] = useState(false);
@@ -282,12 +280,15 @@ function AddCustomForm({
         catID = created.id;
         qc.invalidateQueries({ queryKey: ["categories"] });
       }
+      // Catalog rows are always kind=regular — canonical-less ones are
+      // ordinary categories without a cross-bank identity, not «спец»
+      // (owner 2026-07-21; special is for granted bonus mechanics).
       return unwrap(
         await api.POST("/api/v1/cashback/bank-categories", {
           body: {
             bank_id: bankID,
             title: title.trim(),
-            kind,
+            kind: "regular",
             ...(catID != null ? { canonical_category_id: catID } : {}),
             // A new canonical already carries the emoji — the row inherits it.
             ...(emoji.trim() && !newCat ? { emoji: emoji.trim() } : {}),
@@ -330,23 +331,6 @@ function AddCustomForm({
         </Field>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-[11px] font-medium text-tx2">
-        <span className="inline-flex overflow-hidden rounded-lg border border-brd2">
-          {(
-            [
-              ["regular", "обычная"],
-              ["special", "спец/сервисная"],
-            ] as const
-          ).map(([k, label]) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setKind(k)}
-              className={`px-2.5 py-1.5 text-[11px] font-semibold ${kind === k ? "grad-acc text-white" : "bg-srf2 text-tx3"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </span>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={newCat} onChange={(e) => setNewCat(e.target.checked)} />
           новая каноническая

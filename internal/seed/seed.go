@@ -9,10 +9,10 @@
 // relying on them for real decisions.
 //
 // Idempotent: safe to run repeatedly (natural-key upserts). Knowledge-
-// derived reference facts (program policy, emoji, brand colors) are
-// refreshed unconditionally on existing rows; user-editable rows
-// (bank_category — users add custom ones) are insert-only: an existing row
-// with the same (bank, title), custom or not, always wins over the seed.
+// derived reference facts (program policy, emoji, brand colors, seeded
+// bank_category rows) are refreshed on existing rows; user-created custom
+// bank_category rows are never touched — a custom row with the same
+// (bank, title) always wins over the seed.
 package seed
 
 import (
@@ -412,8 +412,10 @@ var bankColors = map[string]string{
 
 // Per-bank picker catalogs: the CURRENTLY selectable menu rows, from the
 // taxonomy page's «Bank catalogs» section (⚠️-flagged rows there pending
-// live-app re-verification). slug "" = special/service row without a
-// canonical; kind "" = regular; emoji "" = inherit the canonical's.
+// live-app re-verification). slug "" = canonical-less service/channel row —
+// still ordinary kind=regular (owner correction 2026-07-21: special is for
+// granted bonus mechanics like Пятница/колесо, never catalog rows); emoji
+// "" = inherit the canonical's.
 var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	// Альфа-Банк (as of 2026-01 PDF; menus 2025-01/02)
 	{bank: "Альфа-Банк", title: "Супермаркеты", slug: "supermarkets"},
@@ -450,20 +452,20 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Альфа-Банк", title: "Здоровье", slug: "health"},
 	{bank: "Альфа-Банк", title: "Алкоголь", slug: "alcohol"},
 	{bank: "Альфа-Банк", title: "За все покупки", slug: "all-purchases"},
-	{bank: "Альфа-Банк", title: "Альфа-Тревел", kind: "special", emoji: "🧳"},
-	{bank: "Альфа-Банк", title: "Альфа-Заправки", kind: "special", emoji: "⛽"},
-	{bank: "Альфа-Банк", title: "Альфа-Маркет", kind: "special", emoji: "🛍️"},
-	{bank: "Альфа-Банк", title: "Альфа-Афиша", kind: "special", emoji: "🎟️"},
-	{bank: "Альфа-Банк", title: "Интернет", kind: "special", emoji: "🌐"},
-	{bank: "Альфа-Банк", title: "Налоги", kind: "special", emoji: "🏛️"},
-	{bank: "Альфа-Банк", title: "Транспортные карты", kind: "special", emoji: "🚇"},
-	{bank: "Альфа-Банк", title: "На связь Билайн", kind: "special", emoji: "📶"},
-	{bank: "Альфа-Банк", title: "Яндекс Еда", kind: "special", emoji: "🍱"},
-	{bank: "Альфа-Банк", title: "Яндекс Плюс", kind: "special", emoji: "➕"},
-	{bank: "Альфа-Банк", title: "Яндекс Такси", kind: "special", emoji: "🚖"},
-	{bank: "Альфа-Банк", title: "Деливери", kind: "special", emoji: "🛵"},
-	{bank: "Альфа-Банк", title: "KASSIR.RU", kind: "special", emoji: "🎫"},
-	{bank: "Альфа-Банк", title: "Подели", kind: "special", emoji: "💳"},
+	{bank: "Альфа-Банк", title: "Альфа-Тревел", emoji: "🧳"},
+	{bank: "Альфа-Банк", title: "Альфа-Заправки", emoji: "⛽"},
+	{bank: "Альфа-Банк", title: "Альфа-Маркет", emoji: "🛍️"},
+	{bank: "Альфа-Банк", title: "Альфа-Афиша", emoji: "🎟️"},
+	{bank: "Альфа-Банк", title: "Интернет", emoji: "🌐"},
+	{bank: "Альфа-Банк", title: "Налоги", emoji: "🏛️"},
+	{bank: "Альфа-Банк", title: "Транспортные карты", emoji: "🚇"},
+	{bank: "Альфа-Банк", title: "На связь Билайн", emoji: "📶"},
+	{bank: "Альфа-Банк", title: "Яндекс Еда", emoji: "🍱"},
+	{bank: "Альфа-Банк", title: "Яндекс Плюс", emoji: "➕"},
+	{bank: "Альфа-Банк", title: "Яндекс Такси", emoji: "🚖"},
+	{bank: "Альфа-Банк", title: "Деливери", emoji: "🛵"},
+	{bank: "Альфа-Банк", title: "KASSIR.RU", emoji: "🎫"},
+	{bank: "Альфа-Банк", title: "Подели", emoji: "💳"},
 	// Озон Банк (as of 2026-07 help page)
 	{bank: "Озон Банк", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "Озон Банк", title: "Рестораны", slug: "restaurants"},
@@ -539,8 +541,8 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "ВТБ", title: "Бытовые услуги", slug: "household-services"},
 	{bank: "ВТБ", title: "Все покупки", slug: "all-purchases"},
 	{bank: "ВТБ", title: "Все остальные покупки", slug: "all-purchases"},
-	{bank: "ВТБ", title: "Оплата ЖКУ в ВТБ-Онлайн", kind: "special", emoji: "🧾"},
-	{bank: "ВТБ", title: "Оплата сотовой связи в ВТБ-Онлайн", kind: "special", emoji: "📱"},
+	{bank: "ВТБ", title: "Оплата ЖКУ в ВТБ-Онлайн", emoji: "🧾"},
+	{bank: "ВТБ", title: "Оплата сотовой связи в ВТБ-Онлайн", emoji: "📱"},
 	// Т-Банк (as of 2026-04 MCC appendix; reference-only bank)
 	{bank: "Т-Банк", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "Т-Банк", title: "Рестораны", slug: "restaurants"},
@@ -600,15 +602,15 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Яндекс Пэй", title: "Ювелирные изделия", slug: "jewelry"},
 	{bank: "Яндекс Пэй", title: "Медицина", slug: "medicine"},
 	{bank: "Яндекс Пэй", title: "На всё", slug: "all-purchases"},
-	{bank: "Яндекс Пэй", title: "Сервис «Яндекс Маркет»", kind: "special", emoji: "🛍️"},
-	{bank: "Яндекс Пэй", title: "Сервис «Яндекс Go»", kind: "special", emoji: "🚖"},
-	{bank: "Яндекс Пэй", title: "1% в Сервисах Яндекса", kind: "special", emoji: "🟡"},
-	{bank: "Яндекс Пэй", title: "Оплата через Яндекс Сплит", kind: "special", emoji: "💳"},
-	{bank: "Яндекс Пэй", title: "Оплата через СБП со Счёта в Яндексе", kind: "special", emoji: "💸"},
-	{bank: "Яндекс Пэй", title: "Оплата через SberPay QR", kind: "special", emoji: "🔳"},
-	{bank: "Яндекс Пэй", title: "Оплата токеном по NFC", kind: "special", emoji: "📲"},
-	{bank: "Яндекс Пэй", title: "Яндекс Такси", kind: "special", emoji: "🚕"},
-	{bank: "Яндекс Пэй", title: "Подписка Яндекс Плюс", kind: "special", emoji: "➕"},
+	{bank: "Яндекс Пэй", title: "Сервис «Яндекс Маркет»", emoji: "🛍️"},
+	{bank: "Яндекс Пэй", title: "Сервис «Яндекс Go»", emoji: "🚖"},
+	{bank: "Яндекс Пэй", title: "1% в Сервисах Яндекса", emoji: "🟡"},
+	{bank: "Яндекс Пэй", title: "Оплата через Яндекс Сплит", emoji: "💳"},
+	{bank: "Яндекс Пэй", title: "Оплата через СБП со Счёта в Яндексе", emoji: "💸"},
+	{bank: "Яндекс Пэй", title: "Оплата через SberPay QR", emoji: "🔳"},
+	{bank: "Яндекс Пэй", title: "Оплата токеном по NFC", emoji: "📲"},
+	{bank: "Яндекс Пэй", title: "Яндекс Такси", emoji: "🚕"},
+	{bank: "Яндекс Пэй", title: "Подписка Яндекс Плюс", emoji: "➕"},
 }
 
 // Run loads all seed data.
@@ -704,10 +706,10 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 
-	// Picker catalogs are insert-only: a pre-existing row with the same
-	// (bank, title) — typically a user-created custom one — always wins, and
-	// re-running seed never mutates kind/canonical on existing rows
-	// (knowledge corrections need a new title or manual SQL).
+	// Picker catalogs: seeded rows are knowledge-derived, so kind/canonical/
+	// emoji REFRESH on re-runs (the 2026-07-21 спец→regular correction proved
+	// manual-SQL-per-correction unworkable) — but only on non-custom rows: a
+	// user-created row with the same (bank, title) always wins untouched.
 	for _, c := range bankCategories {
 		kind := c.kind
 		if kind == "" {
@@ -720,7 +722,11 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 			       $4::cashback_offer_kind, nullif($5, ''), false
 			from bank b
 			where b.name = $1
-			on conflict (bank_id, title) do nothing`,
+			on conflict (bank_id, title) do update
+				set canonical_category_id = excluded.canonical_category_id,
+				    kind                  = excluded.kind,
+				    emoji                 = excluded.emoji
+			where not bank_category.is_custom`,
 			c.bank, c.title, c.slug, kind, c.emoji); err != nil {
 			return fmt.Errorf("seed bank category %s/%s: %w", c.bank, c.title, err)
 		}
