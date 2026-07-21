@@ -315,6 +315,51 @@ func (ns NullCashbackSelectionMode) Value() (driver.Value, error) {
 	return string(ns.CashbackSelectionMode), nil
 }
 
+type MccChangeAction string
+
+const (
+	MccChangeActionImported        MccChangeAction = "imported"
+	MccChangeActionAdded           MccChangeAction = "added"
+	MccChangeActionRemoved         MccChangeAction = "removed"
+	MccChangeActionCategoryAdded   MccChangeAction = "category_added"
+	MccChangeActionCategoryRemoved MccChangeAction = "category_removed"
+)
+
+func (e *MccChangeAction) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = MccChangeAction(s)
+	case string:
+		*e = MccChangeAction(s)
+	default:
+		return fmt.Errorf("unsupported scan type for MccChangeAction: %T", src)
+	}
+	return nil
+}
+
+type NullMccChangeAction struct {
+	MccChangeAction MccChangeAction
+	Valid           bool // Valid is true if MccChangeAction is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullMccChangeAction) Scan(value interface{}) error {
+	if value == nil {
+		ns.MccChangeAction, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.MccChangeAction.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullMccChangeAction) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.MccChangeAction), nil
+}
+
 type PaymentSystem string
 
 const (
@@ -577,6 +622,12 @@ type BankCategoryAlias struct {
 	RawTitle            string
 }
 
+type BankCategoryMcc struct {
+	BankCategoryID int64
+	MccCode        int16
+	Note           *string
+}
+
 type BankClient struct {
 	ID            int64
 	UserID        uuid.UUID
@@ -642,6 +693,18 @@ type Mcc struct {
 	Code        int16
 	Name        string
 	Description *string
+}
+
+type MccChange struct {
+	ID             int64
+	BankID         int32
+	BankCategoryID *int64
+	CategoryTitle  string
+	MccCode        *int16
+	Action         MccChangeAction
+	NotedAt        time.Time
+	Source         string
+	Note           *string
 }
 
 type OfferPeriod struct {
