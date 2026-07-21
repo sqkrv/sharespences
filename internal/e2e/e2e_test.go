@@ -880,4 +880,111 @@ func TestCashbackE2E(t *testing.T) {
 	if homoglyphSuggestion.Suggestion == nil || homoglyphSuggestion.Suggestion.Slug != "restaurants" {
 		t.Fatalf("homoglyph title suggestion = %+v, want restaurants", homoglyphSuggestion.Suggestion)
 	}
+
+	// --- MCC module (2026-07-21): embedded dictionary + membership seed,
+	// search, per-bank resolve, change journal ---
+
+	if got := anon.do("GET", "/api/v1/mcc/resolve?code=5411", nil, nil); got != http.StatusUnauthorized {
+		t.Fatalf("anonymous mcc resolve: %d, want 401", got)
+	}
+
+	type mccCodeJSON struct {
+		Code string `json:"code"`
+		Name string `json:"name"`
+	}
+	var codes []mccCodeJSON
+	owner.must("GET", "/api/v1/mcc/codes?query=5411", nil, &codes, http.StatusOK)
+	found5411 := false
+	for _, c := range codes {
+		if c.Code == "5411" {
+			found5411 = true
+			if c.Name == "" {
+				t.Fatal("5411 dictionary row has empty name")
+			}
+		}
+	}
+	if !found5411 {
+		t.Fatalf("codes?query=5411 = %+v, want a 5411 row", codes)
+	}
+	// Leading-zero code path (742 stored as smallint, padded in the API).
+	owner.must("GET", "/api/v1/mcc/codes?query=0742", nil, &codes, http.StatusOK)
+	if len(codes) == 0 || codes[0].Code != "0742" {
+		t.Fatalf("codes?query=0742 = %+v, want 0742 first", codes)
+	}
+	// Name-substring search in Cyrillic.
+	owner.must("GET", "/api/v1/mcc/codes?query="+url.QueryEscape("аптек"), nil, &codes, http.StatusOK)
+	if len(codes) == 0 {
+		t.Fatal("codes?query=аптек returned nothing")
+	}
+
+	var resolved struct {
+		Code  mccCodeJSON `json:"code"`
+		Banks []struct {
+			BankName      string  `json:"bank_name"`
+			Title         string  `json:"title"`
+			Kind          string  `json:"kind"`
+			Emoji         *string `json:"emoji"`
+			CanonicalSlug *string `json:"canonical_slug"`
+		} `json:"banks"`
+		Canonicals []struct {
+			Slug string `json:"slug"`
+		} `json:"canonicals"`
+	}
+	owner.must("GET", "/api/v1/mcc/resolve?code=5411", nil, &resolved, http.StatusOK)
+	gotBanks := map[string]string{}
+	for _, b := range resolved.Banks {
+		gotBanks[b.BankName] = b.Title
+		if b.BankName == "Альфа-Банк" && (b.Emoji == nil || *b.Emoji != "🛒") {
+			t.Fatalf("5411 Альфа-Банк emoji = %v, want inherited 🛒", b.Emoji)
+		}
+	}
+	for _, bank := range []string{"Альфа-Банк", "ВТБ", "Озон Банк"} {
+		if gotBanks[bank] != "Супермаркеты" {
+			t.Fatalf("5411 at %s = %q, want Супермаркеты (all: %v)", bank, gotBanks[bank], gotBanks)
+		}
+	}
+	haveSupermarkets := false
+	for _, c := range resolved.Canonicals {
+		if c.Slug == "supermarkets" {
+			haveSupermarkets = true
+		}
+	}
+	if !haveSupermarkets {
+		t.Fatalf("5411 canonicals = %+v, want supermarkets", resolved.Canonicals)
+	}
+	// Unknown code → 404 (dictionary is the gate).
+	if got := owner.do("GET", "/api/v1/mcc/resolve?code=0001", nil, nil); got != http.StatusNotFound {
+		t.Fatalf("resolve unknown code: %d, want 404", got)
+	}
+
+	// The seed was the first import: journal is non-empty, all `imported`.
+	var changes []struct {
+		Action string `json:"action"`
+		Source string `json:"source"`
+	}
+	owner.must("GET", "/api/v1/mcc/changes?limit=500", nil, &changes, http.StatusOK)
+	if len(changes) == 0 {
+		t.Fatal("mcc change journal empty after seed")
+	}
+	for _, c := range changes {
+		if c.Action != "imported" {
+			t.Fatalf("baseline journal action = %q (%s), want imported", c.Action, c.Source)
+		}
+	}
+	// Idempotency of the journal itself: a third seed run writes nothing new
+	// (the double run at the top already proved membership idempotency).
+	var journalCount int
+	if err := pool.QueryRow(ctx, "select count(*) from mcc_change").Scan(&journalCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Run(ctx, pool); err != nil {
+		t.Fatalf("third seed run: %v", err)
+	}
+	var journalAfter int
+	if err := pool.QueryRow(ctx, "select count(*) from mcc_change").Scan(&journalAfter); err != nil {
+		t.Fatal(err)
+	}
+	if journalAfter != journalCount {
+		t.Fatalf("journal grew on a no-change seed re-run: %d → %d", journalCount, journalAfter)
+	}
 }
