@@ -28,6 +28,7 @@ import (
 	"github.com/sqkrv/sharespences/internal/auth"
 	"github.com/sqkrv/sharespences/internal/cashback"
 	"github.com/sqkrv/sharespences/internal/db"
+	"github.com/sqkrv/sharespences/internal/mcc"
 	"github.com/sqkrv/sharespences/internal/web"
 )
 
@@ -81,11 +82,13 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 	authSvc := &auth.Service{Q: q}
 	store := &attach.Store{Q: q, Dir: cfg.AttachmentsDir}
 	cbSvc := &cashback.Service{Q: q, RemoveAttachmentFile: store.Remove}
+	mccSvc := &mcc.Service{Q: q}
 
 	registerAuth(api, sm, authSvc)
 	registerBanks(api, q)
 	registerAttachments(api, store)
 	cashback.RegisterHTTP(api, cbSvc)
+	mcc.RegisterHTTP(api, mccSvc)
 
 	// Raw attachment bytes; outside the JSON API (and its OpenAPI doc).
 	r.Get("/api/v1/attachments/{id}/content", func(w http.ResponseWriter, req *http.Request) {

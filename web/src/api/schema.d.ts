@@ -539,6 +539,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mcc/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Newest category/MCC rule changes (journal) */
+        get: operations["mcc-changes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mcc/codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search the MCC dictionary (code prefix or name substring) */
+        get: operations["mcc-code-search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mcc/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which bank category the MCC falls into, per bank */
+        get: operations["mcc-resolve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -687,6 +738,10 @@ export interface components {
             id: number;
             slug: string;
             title_ru: string;
+        };
+        CanonicalRefDTO: {
+            slug: string;
+            title: string;
         };
         "Card-createRequest": {
             /**
@@ -993,6 +1048,28 @@ export interface components {
             /** Format: int64 */
             selection_id?: number;
         };
+        ChangeDTO: {
+            /** @enum {string} */
+            action: "imported" | "added" | "removed" | "category_added" | "category_removed";
+            /** Format: int64 */
+            bank_category_id?: number;
+            /** Format: int32 */
+            bank_id: number;
+            bank_name: string;
+            category_title: string;
+            /** Format: int64 */
+            id: number;
+            mcc_code?: string;
+            note?: string;
+            /** Format: date-time */
+            noted_at: string;
+            source: string;
+        };
+        CodeDTO: {
+            code: string;
+            description?: string;
+            name: string;
+        };
         CollisionDTO: {
             bank_name: string;
             cap_note?: string;
@@ -1087,6 +1164,17 @@ export interface components {
             period_end: string;
             period_start: string;
             points_label?: string;
+        };
+        "Mcc-resolveResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Mcc-resolveResponse.json
+             */
+            readonly $schema?: string;
+            banks: components["schemas"]["ResolveEntryDTO"][] | null;
+            canonicals: components["schemas"]["CanonicalRefDTO"][] | null;
+            code: components["schemas"]["CodeDTO"];
         };
         OfferPeriodDTO: {
             /**
@@ -1232,6 +1320,20 @@ export interface components {
             selection_mode: string;
             /** Format: int32 */
             selection_opens_day?: number;
+        };
+        ResolveEntryDTO: {
+            /** Format: int64 */
+            bank_category_id: number;
+            bank_color_hex?: string;
+            /** Format: int32 */
+            bank_id: number;
+            bank_name: string;
+            canonical_slug?: string;
+            canonical_title?: string;
+            emoji?: string;
+            kind: string;
+            note?: string;
+            title: string;
         };
         TierBody: {
             /**
@@ -2519,6 +2621,100 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TierDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "mcc-changes": {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "mcc-code-search": {
+        parameters: {
+            query: {
+                query: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodeDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "mcc-resolve": {
+        parameters: {
+            query: {
+                code: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Mcc-resolveResponse"];
                 };
             };
             /** @description Error */
