@@ -736,7 +736,10 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 			return fmt.Errorf("seed bank color %s: %w", name, err)
 		}
 	}
-	return nil
+
+	// MCC dictionary + per-bank category→MCC membership (embedded CSVs,
+	// derived from the meta-repo curation — see mcc.go).
+	return seedMCC(ctx, pool)
 }
 
 func seedBank(ctx context.Context, pool *pgxpool.Pool, name string) error {
