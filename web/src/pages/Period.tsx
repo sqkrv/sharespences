@@ -554,7 +554,10 @@ export default function Period() {
           // never blocked by a full menu (super ranks in lookup, special is
           // display-only — the difference lives on the lookup/overview side).
           const isBonus = offer.kind !== "regular";
-          const unmapped = !isBonus && offer.canonical_category_id == null;
+          // Canonical-less is only a data gap when the row wasn't picked
+          // from the catalog: catalog rows without a canonical (Альфа-Тревел,
+          // канальные…) are deliberately so (owner 2026-07-21).
+          const unmapped = !isBonus && offer.canonical_category_id == null && offer.bank_category_id == null;
           const blocked = !selected && !isBonus && slotsFull;
           const canonTitle = (categories.data ?? []).find((c) => c.id === offer.canonical_category_id)?.title_ru;
           if (isBonus) {
@@ -618,15 +621,18 @@ export default function Period() {
                     </Btn>
                   </>
                 ) : (
-                  <Btn
-                    variant="soft"
-                    className="!px-2.5 !py-1.5 text-xs whitespace-nowrap"
-                    onClick={() => select.mutate(offer.id)}
-                    disabled={select.isPending || blocked}
-                    title={blocked ? "Лимит категорий исчерпан" : undefined}
-                  >
-                    выбрать {offer.percent != null ? `${offer.percent}%` : ""}
-                  </Btn>
+                  <>
+                    <Pct percent={offer.percent} currency={currency} className="text-[14px]" />
+                    <Btn
+                      variant="soft"
+                      className="!px-2.5 !py-1.5 text-xs whitespace-nowrap"
+                      onClick={() => select.mutate(offer.id)}
+                      disabled={select.isPending || blocked}
+                      title={blocked ? "Лимит категорий исчерпан" : undefined}
+                    >
+                      выбрать
+                    </Btn>
+                  </>
                 )}
                 <button type="button" className="px-1 text-tx4" onClick={() => setEditingID(editingID === offer.id ? null : offer.id)} title="Редактировать">
                   ✎
