@@ -684,6 +684,14 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 	if err != nil {
 		return OverviewResult{}, err
 	}
+	// Periods come from the period list, NOT from the offers join — a
+	// freshly created period has no menu rows yet and would otherwise be
+	// invisible here while still blocking re-creation with a 409 overlap
+	// (owner bug report 2026-07-22).
+	periods, err := s.Q.ListOfferPeriodsForUser(ctx, userID)
+	if err != nil {
+		return OverviewResult{}, err
+	}
 	cards, err := s.Q.ListCardsForUser(ctx, userID)
 	if err != nil {
 		return OverviewResult{}, err
@@ -819,16 +827,21 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 				res.SelectionOpensDay = program.SelectionOpensDay
 			}
 		}
+		// Invariant 4 guarantees at most one period per client covers a date.
+		for _, p := range periods {
+			if p.BankClientID != client.ID || !rowRange(p.PeriodStart, p.PeriodEnd).Contains(onDate) {
+				continue
+			}
+			id, start, end := p.ID, p.PeriodStart, p.PeriodEnd
+			oc.PeriodID, oc.PeriodStart, oc.PeriodEnd = &id, &start, &end
+			if p.MaxCategoriesOverride != nil {
+				oc.MaxCategories = p.MaxCategoriesOverride
+			}
+			break
+		}
 		for _, o := range offers {
 			if o.BankClientID != client.ID || !rowRange(o.PeriodStart, o.PeriodEnd).Contains(onDate) {
 				continue
-			}
-			if oc.PeriodID == nil {
-				id, start, end := o.OfferPeriodID, o.PeriodStart, o.PeriodEnd
-				oc.PeriodID, oc.PeriodStart, oc.PeriodEnd = &id, &start, &end
-				if o.MaxCategoriesOverride != nil {
-					oc.MaxCategories = o.MaxCategoriesOverride
-				}
 			}
 			if !o.Selected {
 				continue

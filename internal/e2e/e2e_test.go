@@ -332,6 +332,23 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("overlapping period: status %d, want 409", got)
 	}
 
+	// Regression (owner bug report 2026-07-22): a freshly created period has
+	// no menu rows yet — the overview must still show it on the client card
+	// (it used to derive periods from the offers join, so an empty period
+	// was invisible while re-creation 409'd on overlap).
+	var freshOverview struct {
+		Clients []struct {
+			BankName string `json:"bank_name"`
+			PeriodID *int64 `json:"period_id"`
+		} `json:"clients"`
+	}
+	owner.must("GET", "/api/v1/cashback/overview?date=2026-07-15", nil, &freshOverview, http.StatusOK)
+	for _, c := range freshOverview.Clients {
+		if (c.BankName == "Альфа-Банк" || c.BankName == "Озон Банк") && c.PeriodID == nil {
+			t.Fatalf("empty (offer-less) period invisible on overview for %s", c.BankName)
+		}
+	}
+
 	// The seeded alias table pre-suggests canonical categories (S1).
 	suggest := func(periodID int64, raw string) int64 {
 		var s suggestionJSON
