@@ -403,6 +403,46 @@ func registerBanks(api huma.API, q *db.Queries) {
 	})
 
 	huma.Register(api, huma.Operation{
+		OperationID: "card-delete", Method: http.MethodDelete,
+		Path: "/api/v1/cards/{id}", Summary: "Delete a card", Tags: []string{"banks"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID int32 `path:"id"`
+	}) (*struct{}, error) {
+		n, err := q.DeleteCardForUser(ctx, db.DeleteCardForUserParams{ID: in.ID, UserID: auth.UserID(ctx)})
+		if err != nil {
+			if isPgCode(err, "23503") {
+				return nil, huma.Error409Conflict("card is referenced elsewhere")
+			}
+			return nil, err
+		}
+		if n == 0 {
+			return nil, huma.Error404NotFound("not found")
+		}
+		return &struct{}{}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "bank-client-delete", Method: http.MethodDelete,
+		Path: "/api/v1/bank-clients/{id}", Summary: "Delete a bank client (with its cards)", Tags: []string{"banks"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID int64 `path:"id"`
+	}) (*struct{}, error) {
+		n, err := q.DeleteBankClientForUser(ctx, db.DeleteBankClientForUserParams{ID: in.ID, UserID: auth.UserID(ctx)})
+		if err != nil {
+			if isPgCode(err, "23503") {
+				return nil, huma.Error409Conflict("bank client has КБ history (offer periods or partner offers) — delete those first")
+			}
+			return nil, err
+		}
+		if n == 0 {
+			return nil, huma.Error404NotFound("not found")
+		}
+		return &struct{}{}, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID: "card-list", Method: http.MethodGet,
 		Path: "/api/v1/cards", Summary: "List the user's cards", Tags: []string{"banks"},
 	}, func(ctx context.Context, _ *struct{}) (*struct{ Body []CardDTO }, error) {

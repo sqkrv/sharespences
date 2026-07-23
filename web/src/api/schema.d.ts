@@ -118,7 +118,8 @@ export interface paths {
         /** Edit a bank client (держатель, tier) */
         put: operations["bank-client-update"];
         post?: never;
-        delete?: never;
+        /** Delete a bank client (with its cards) */
+        delete: operations["bank-client-delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -170,7 +171,8 @@ export interface paths {
         /** Edit a card (last 4, payment system) */
         put: operations["card-update"];
         post?: never;
-        delete?: never;
+        /** Delete a card */
+        delete: operations["card-delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1655,6 +1657,35 @@ export interface operations {
             };
         };
     };
+    "bank-client-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "bank-list": {
         parameters: {
             query?: never;
@@ -1769,6 +1800,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CardDTO"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "card-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

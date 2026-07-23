@@ -137,6 +137,10 @@ type clientJSON struct {
 	ID int64 `json:"id"`
 }
 
+type cardJSON struct {
+	ID int32 `json:"id"`
+}
+
 type periodJSON struct {
 	ID int64 `json:"id"`
 }
@@ -1006,5 +1010,74 @@ func TestCashbackE2E(t *testing.T) {
 	}
 	if journalAfter != journalCount {
 		t.Fatalf("journal grew on a no-change seed re-run: %d → %d", journalCount, journalAfter)
+	}
+
+	// --- Bank-first flow (2026-07-23): DELETE for cards and bank clients.
+	// Card delete is plain but scoped; client delete takes its cards with it
+	// and is refused (409) while КБ history exists — offer_period /
+	// partner_offer keep plain FKs to bank_client, so history physically
+	// blocks the delete. ---
+
+	// A scratch card on the owner's Озон client: invisible to the other
+	// user (404), gone for the owner (204).
+	var scratchCard cardJSON
+	owner.must("POST", "/api/v1/cards", map[string]any{
+		"bank_client_id": ozonClient.ID, "last_4_digits": 4444, "payment_system": "mir",
+	}, &scratchCard, http.StatusCreated)
+	if got := other.do("DELETE", fmt.Sprintf("/api/v1/cards/%d", scratchCard.ID), nil, nil); got != http.StatusNotFound {
+		t.Fatalf("foreign card delete: %d, want 404", got)
+	}
+	owner.must("DELETE", fmt.Sprintf("/api/v1/cards/%d", scratchCard.ID), nil, nil, http.StatusNoContent)
+	var cardsLeft []cardJSON
+	owner.must("GET", "/api/v1/cards", nil, &cardsLeft, http.StatusOK)
+	for _, c := range cardsLeft {
+		if c.ID == scratchCard.ID {
+			t.Fatal("deleted card still listed")
+		}
+	}
+
+	// The Альфа-Банк client owns July periods → its delete is blocked.
+	if got := owner.do("DELETE", fmt.Sprintf("/api/v1/bank-clients/%d", alfaClient.ID), nil, nil); got != http.StatusConflict {
+		t.Fatalf("delete client with periods: %d, want 409", got)
+	}
+
+	// A partner offer alone is history too.
+	var partnerClient clientJSON
+	owner.must("POST", "/api/v1/bank-clients", map[string]any{
+		"bank_id": vtbID, "label": "Партнёрский",
+	}, &partnerClient, http.StatusCreated)
+	owner.must("POST", "/api/v1/cashback/partner-offers", map[string]any{
+		"bank_id": vtbID, "bank_client_id": partnerClient.ID, "merchant_title": "Кофейня у дома",
+	}, nil, http.StatusCreated)
+	if got := owner.do("DELETE", fmt.Sprintf("/api/v1/bank-clients/%d", partnerClient.ID), nil, nil); got != http.StatusConflict {
+		t.Fatalf("delete client with partner offer: %d, want 409", got)
+	}
+	// Foreign client delete is invisible, like every other scoped op.
+	if got := other.do("DELETE", fmt.Sprintf("/api/v1/bank-clients/%d", partnerClient.ID), nil, nil); got != http.StatusNotFound {
+		t.Fatalf("foreign client delete: %d, want 404", got)
+	}
+
+	// A clean client goes away in one shot, cards and all.
+	var scratchClient clientJSON
+	owner.must("POST", "/api/v1/bank-clients", map[string]any{
+		"bank_id": vtbID, "label": "Скретч",
+	}, &scratchClient, http.StatusCreated)
+	var scratchClientCard cardJSON
+	owner.must("POST", "/api/v1/cards", map[string]any{
+		"bank_client_id": scratchClient.ID, "last_4_digits": 7777, "payment_system": "mir",
+	}, &scratchClientCard, http.StatusCreated)
+	owner.must("DELETE", fmt.Sprintf("/api/v1/bank-clients/%d", scratchClient.ID), nil, nil, http.StatusNoContent)
+	var clientsLeft []clientJSON
+	owner.must("GET", "/api/v1/bank-clients", nil, &clientsLeft, http.StatusOK)
+	for _, c := range clientsLeft {
+		if c.ID == scratchClient.ID {
+			t.Fatal("deleted bank client still listed")
+		}
+	}
+	owner.must("GET", "/api/v1/cards", nil, &cardsLeft, http.StatusOK)
+	for _, c := range cardsLeft {
+		if c.ID == scratchClientCard.ID {
+			t.Fatal("deleted client's card still listed")
+		}
 	}
 }

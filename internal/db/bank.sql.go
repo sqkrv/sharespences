@@ -79,6 +79,58 @@ func (q *Queries) CreateCard(ctx context.Context, arg CreateCardParams) (BankCar
 	return i, err
 }
 
+const deleteBankClientForUser = `-- name: DeleteBankClientForUser :execrows
+with gone_cards as (
+    delete from bank_card bc
+        where bc.bank_client_id in (select cl.id
+                                    from bank_client cl
+                                    where cl.id = $1
+                                      and cl.user_id = $2))
+delete
+from bank_client
+where bank_client.id = $1
+  and bank_client.user_id = $2
+`
+
+type DeleteBankClientForUserParams struct {
+	ID     int64
+	UserID uuid.UUID
+}
+
+// DeleteBankClientForUser removes the client and its cards in one atomic
+// statement (RI fires at statement end). КБ history — offer_period /
+// partner_offer rows, plain FKs to bank_client — makes the whole statement
+// fail with 23503, which the handler maps to 409; no cross-module read.
+func (q *Queries) DeleteBankClientForUser(ctx context.Context, arg DeleteBankClientForUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteBankClientForUser, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteCardForUser = `-- name: DeleteCardForUser :execrows
+delete
+from bank_card bc
+    using bank_client cl
+where bc.id = $1
+  and cl.id = bc.bank_client_id
+  and cl.user_id = $2
+`
+
+type DeleteCardForUserParams struct {
+	ID     int32
+	UserID uuid.UUID
+}
+
+func (q *Queries) DeleteCardForUser(ctx context.Context, arg DeleteCardForUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCardForUser, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getBankByName = `-- name: GetBankByName :one
 select id, name, logo_filename, color_hex
 from bank
