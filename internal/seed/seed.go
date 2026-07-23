@@ -397,6 +397,15 @@ var aliases = []struct{ bank, raw, slug string }{
 	{"Яндекс Пэй", "На всё", "all-purchases"},
 }
 
+// Seeded titles that were later renamed/retired: the refresh upsert keys on
+// (bank, title), so a rename leaves the old row behind — this list removes
+// it from existing DBs. Deleting is safe: offers keep their raw_title
+// snapshot (FK nulls out), MCC memberships cascade and re-land on the new
+// title via the seed CSV.
+var retiredBankCategories = []struct{ bank, title string }{
+	{"Альфа-Банк", "Супермаркеты"}, // → «Продукты» (owner-verified 2026-07-22)
+}
+
 // Brand colors for UI bank tinting (knowledge: bank pages + index,
 // as of 2026-07).
 var bankColors = map[string]string{
@@ -417,8 +426,8 @@ var bankColors = map[string]string{
 // granted bonus mechanics like Пятница/колесо, never catalog rows); emoji
 // "" = inherit the canonical's.
 var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
-	// Альфа-Банк (as of 2026-01 PDF; menus 2025-01/02)
-	{bank: "Альфа-Банк", title: "Супермаркеты", slug: "supermarkets"},
+	// Альфа-Банк (as of 2026-01 PDF; menus 2025-01/02; «Продукты» owner-verified live 2026-07-22)
+	{bank: "Альфа-Банк", title: "Продукты", slug: "supermarkets"},
 	{bank: "Альфа-Банк", title: "Кафе и рестораны", slug: "restaurants"},
 	{bank: "Альфа-Банк", title: "Фастфуд", slug: "fastfood"},
 	{bank: "Альфа-Банк", title: "АЗС", slug: "gas-stations"},
@@ -703,6 +712,19 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 			  and b.name = $2
 			on conflict (bank_id, raw_title) do nothing`, a.slug, a.bank, a.raw); err != nil {
 			return fmt.Errorf("seed alias %s/%s: %w", a.bank, a.raw, err)
+		}
+	}
+
+	// Retired titles go first, so a rename never leaves both spellings behind.
+	for _, r := range retiredBankCategories {
+		if _, err := pool.Exec(ctx, `
+			delete from bank_category bc
+			using bank b
+			where b.id = bc.bank_id
+			  and b.name = $1
+			  and bc.title = $2
+			  and not bc.is_custom`, r.bank, r.title); err != nil {
+			return fmt.Errorf("seed retire bank category %s/%s: %w", r.bank, r.title, err)
 		}
 	}
 

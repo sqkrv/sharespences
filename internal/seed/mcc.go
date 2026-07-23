@@ -115,13 +115,7 @@ func seedMCC(ctx context.Context, pool *pgxpool.Pool) error {
 		desired[c.id][int16(code)] = rec[3]
 	}
 
-	// 4. Current membership + journal baseline flag.
-	var total int
-	if err := tx.QueryRow(ctx, `select count(*) from bank_category_mcc`).Scan(&total); err != nil {
-		return fmt.Errorf("seed mcc: count: %w", err)
-	}
-	wasEmpty := total == 0
-
+	// 4. Current membership.
 	current := map[int64]map[int16]*string{}
 	rows, err = tx.Query(ctx, `select bank_category_id, mcc_code, note from bank_category_mcc`)
 	if err != nil {
@@ -145,11 +139,11 @@ func seedMCC(ctx context.Context, pool *pgxpool.Pool) error {
 
 	// 5. Diff — only over catalog rows the CSV names; other rows (future
 	// crowd-sourced or manual memberships) are never seed's to touch.
-	action, source := "added", "seed refresh"
-	if wasEmpty {
-		action, source = "imported", mccImportSource
-	}
-	journal := func(c catalogRow, code int16, act string) error {
+	// Baseline is judged PER CATEGORY: a category whose membership was empty
+	// (fresh DB, or a renamed catalog row re-landing its codes) journals as
+	// `imported`, not as a burst of «bank added X» noise; real diffs on a
+	// populated category journal as added/removed.
+	journal := func(c catalogRow, code int16, act, source string) error {
 		_, err := tx.Exec(ctx, `
 			insert into mcc_change (bank_id, bank_category_id, category_title, mcc_code, action, source)
 			values ($1, $2, $3, $4, $5::mcc_change_action, $6)`,
@@ -159,6 +153,10 @@ func seedMCC(ctx context.Context, pool *pgxpool.Pool) error {
 	for id, want := range desired {
 		c := byID[id]
 		have := current[id]
+		action, source := "added", "seed refresh"
+		if len(have) == 0 {
+			action, source = "imported", mccImportSource
+		}
 		for code, note := range want {
 			if cur, ok := have[code]; ok {
 				curNote := ""
@@ -179,7 +177,7 @@ func seedMCC(ctx context.Context, pool *pgxpool.Pool) error {
 				values ($1, $2, nullif($3, ''))`, id, code, note); err != nil {
 				return fmt.Errorf("seed mcc: insert %d/%d: %w", id, code, err)
 			}
-			if err := journal(c, code, action); err != nil {
+			if err := journal(c, code, action, source); err != nil {
 				return fmt.Errorf("seed mcc: journal add: %w", err)
 			}
 		}
@@ -191,7 +189,7 @@ func seedMCC(ctx context.Context, pool *pgxpool.Pool) error {
 				delete from bank_category_mcc where bank_category_id = $1 and mcc_code = $2`, id, code); err != nil {
 				return fmt.Errorf("seed mcc: delete %d/%d: %w", id, code, err)
 			}
-			if err := journal(c, code, "removed"); err != nil {
+			if err := journal(c, code, "removed", "seed refresh"); err != nil {
 				return fmt.Errorf("seed mcc: journal remove: %w", err)
 			}
 		}

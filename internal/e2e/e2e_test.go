@@ -957,9 +957,10 @@ func TestCashbackE2E(t *testing.T) {
 			t.Fatalf("5411 Альфа-Банк emoji = %v, want inherited 🛒", b.Emoji)
 		}
 	}
-	for _, bank := range []string{"Альфа-Банк", "ВТБ", "Озон Банк"} {
-		if gotBanks[bank] != "Супермаркеты" {
-			t.Fatalf("5411 at %s = %q, want Супермаркеты (all: %v)", bank, gotBanks[bank], gotBanks)
+	// Альфа's live menu says «Продукты» (owner-verified 2026-07-22).
+	for bank, want := range map[string]string{"Альфа-Банк": "Продукты", "ВТБ": "Супермаркеты", "Озон Банк": "Супермаркеты"} {
+		if gotBanks[bank] != want {
+			t.Fatalf("5411 at %s = %q, want %s (all: %v)", bank, gotBanks[bank], want, gotBanks)
 		}
 	}
 	haveSupermarkets := false
