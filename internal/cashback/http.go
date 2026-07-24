@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -30,7 +31,8 @@ func strToDec(s *string, field string) (*decimal.Decimal, error) {
 	if s == nil {
 		return nil, nil
 	}
-	d, err := decimal.NewFromString(*s)
+	// RU keyboards type «1,5» — the comma is a decimal separator here.
+	d, err := decimal.NewFromString(strings.ReplaceAll(*s, ",", "."))
 	if err != nil {
 		return nil, huma.Error422UnprocessableEntity(fmt.Sprintf("%s: not a decimal number: %q", field, *s))
 	}
@@ -153,6 +155,7 @@ type categoryOfferBody struct {
 	Percent             *string `json:"percent,omitempty"`
 	Kind                string  `json:"kind,omitempty" enum:"regular,super,special" default:"regular"`
 	Notes               *string `json:"notes,omitempty"`
+	CapValue            *string `json:"cap_value,omitempty" doc:"per-offer КБ cap for the period (ВТБ «Кешбэк до N ₽»); static display, no tracking"`
 }
 
 type CategoryOfferDTO struct {
@@ -164,6 +167,7 @@ type CategoryOfferDTO struct {
 	Percent             *string    `json:"percent,omitempty"`
 	Kind                string     `json:"kind"`
 	Notes               *string    `json:"notes,omitempty"`
+	CapValue            *string    `json:"cap_value,omitempty"`
 	SelectionID         *int64     `json:"selection_id,omitempty"`
 	SelectedAt          *time.Time `json:"selected_at,omitempty"`
 }
@@ -215,6 +219,7 @@ type LookupEntryDTO struct {
 	CapValue       *string `json:"cap_value,omitempty"`
 	CapPerCategory *string `json:"cap_per_category,omitempty"`
 	CapScope       string  `json:"cap_scope,omitempty"`
+	OfferCapValue  *string `json:"offer_cap_value,omitempty" doc:"per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap"`
 	PeriodStart    string  `json:"period_start"`
 	PeriodEnd      string  `json:"period_end"`
 }
@@ -225,7 +230,7 @@ func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 		BankName: e.BankName, ClientLabel: e.ClientLabel, HolderLabel: e.HolderLabel, Percent: decToStr(e.Percent),
 		CurrencyKind: string(e.CurrencyKind), PointsLabel: e.PointsLabel,
 		CapValue: decToStr(e.CapValue), CapPerCategory: decToStr(e.CapPerCategory),
-		CapScope:    string(e.CapScope),
+		CapScope: string(e.CapScope), OfferCapValue: decToStr(e.OfferCapValue),
 		PeriodStart: e.Period.Start.Format("2006-01-02"),
 		PeriodEnd:   e.Period.End.Format("2006-01-02"),
 	}
@@ -643,8 +648,8 @@ func RegisterHTTP(api huma.API, s *Service) {
 			out.Body.Offers[i] = CategoryOfferDTO{
 				ID: o.ID, OfferPeriodID: o.OfferPeriodID, RawTitle: o.RawTitle,
 				CanonicalCategoryID: o.CanonicalCategoryID, BankCategoryID: o.BankCategoryID,
-				Percent: decToStr(o.Percent),
-				Kind:    string(o.Kind), Notes: o.Notes, SelectionID: o.SelectionID,
+				Percent: decToStr(o.Percent), CapValue: decToStr(o.CapValue),
+				Kind: string(o.Kind), Notes: o.Notes, SelectionID: o.SelectionID,
 				SelectedAt: o.SelectedAt,
 			}
 		}
@@ -727,9 +732,14 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Percent             *string `json:"percent,omitempty"`
 			Kind                string  `json:"kind,omitempty" enum:"regular,super,special" default:"regular"`
 			Notes               *string `json:"notes,omitempty"`
+			CapValue            *string `json:"cap_value,omitempty" doc:"per-offer КБ cap for the period (ВТБ «Кешбэк до N ₽»); static display, no tracking"`
 		}
 	}) (*struct{ Body CategoryOfferDTO }, error) {
 		pctVal, err := strToDec(in.Body.Percent, "percent")
+		if err != nil {
+			return nil, err
+		}
+		capVal, err := strToDec(in.Body.CapValue, "cap_value")
 		if err != nil {
 			return nil, err
 		}
@@ -737,15 +747,15 @@ func RegisterHTTP(api huma.API, s *Service) {
 		if kind == "" {
 			kind = OfferRegular
 		}
-		o, err := s.CreateCategoryOffer(ctx, auth.UserID(ctx), in.Body.OfferPeriodID, in.Body.RawTitle, in.Body.CanonicalCategoryID, pctVal, kind, in.Body.Notes, in.Body.BankCategoryID)
+		o, err := s.CreateCategoryOffer(ctx, auth.UserID(ctx), in.Body.OfferPeriodID, in.Body.RawTitle, in.Body.CanonicalCategoryID, pctVal, kind, in.Body.Notes, in.Body.BankCategoryID, capVal)
 		if err != nil {
 			return nil, httpErr(err)
 		}
 		return &struct{ Body CategoryOfferDTO }{CategoryOfferDTO{
 			ID: o.ID, OfferPeriodID: o.OfferPeriodID, RawTitle: o.RawTitle,
 			CanonicalCategoryID: o.CanonicalCategoryID, BankCategoryID: o.BankCategoryID,
-			Percent: decToStr(o.Percent),
-			Kind:    string(o.Kind), Notes: o.Notes,
+			Percent: decToStr(o.Percent), CapValue: decToStr(o.CapValue),
+			Kind: string(o.Kind), Notes: o.Notes,
 		}}, nil
 	})
 
@@ -760,19 +770,23 @@ func RegisterHTTP(api huma.API, s *Service) {
 		if err != nil {
 			return nil, err
 		}
+		capVal, err := strToDec(in.Body.CapValue, "cap_value")
+		if err != nil {
+			return nil, err
+		}
 		kind := OfferKind(in.Body.Kind)
 		if kind == "" {
 			kind = OfferRegular
 		}
-		o, err := s.UpdateCategoryOffer(ctx, auth.UserID(ctx), in.ID, in.Body.RawTitle, in.Body.CanonicalCategoryID, pctVal, kind, in.Body.Notes, in.Body.BankCategoryID)
+		o, err := s.UpdateCategoryOffer(ctx, auth.UserID(ctx), in.ID, in.Body.RawTitle, in.Body.CanonicalCategoryID, pctVal, kind, in.Body.Notes, in.Body.BankCategoryID, capVal)
 		if err != nil {
 			return nil, httpErr(err)
 		}
 		return &struct{ Body CategoryOfferDTO }{CategoryOfferDTO{
 			ID: o.ID, OfferPeriodID: o.OfferPeriodID, RawTitle: o.RawTitle,
 			CanonicalCategoryID: o.CanonicalCategoryID, BankCategoryID: o.BankCategoryID,
-			Percent: decToStr(o.Percent),
-			Kind:    string(o.Kind), Notes: o.Notes,
+			Percent: decToStr(o.Percent), CapValue: decToStr(o.CapValue),
+			Kind: string(o.Kind), Notes: o.Notes,
 		}}, nil
 	})
 

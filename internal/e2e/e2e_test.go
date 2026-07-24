@@ -176,11 +176,12 @@ type helperJSON struct {
 
 type lookupJSON struct {
 	Ranked []struct {
-		BankName     string  `json:"bank_name"`
-		HolderLabel  string  `json:"holder_label"`
-		Percent      *string `json:"percent"`
-		CurrencyKind string  `json:"currency_kind"`
-		CapValue     *string `json:"cap_value"`
+		BankName      string  `json:"bank_name"`
+		HolderLabel   string  `json:"holder_label"`
+		Percent       *string `json:"percent"`
+		CurrencyKind  string  `json:"currency_kind"`
+		CapValue      *string `json:"cap_value"`
+		OfferCapValue *string `json:"offer_cap_value"`
 	} `json:"ranked"`
 	Special  []any `json:"special"`
 	Fallback []struct {
@@ -1079,5 +1080,41 @@ func TestCashbackE2E(t *testing.T) {
 		if c.ID == scratchClientCard.ID {
 			t.Fatal("deleted client's card still listed")
 		}
+	}
+
+	// --- Per-offer cap + comma decimals (owner feedback 2026-07-24, ВТБ
+	// menu): «Театры и кино — кешбэк до 5 000 ₽» while the program cap keeps
+	// burning, and the RU-keyboard «1,5» percent. Static display only;
+	// lookup surfaces the offer cap over the tier cap. ---
+	var capPeriod periodJSON
+	owner.must("POST", "/api/v1/cashback/offer-periods", map[string]any{
+		"bank_client_id": partnerClient.ID, "period_start": "2026-09-01", "period_end": "2026-09-30",
+	}, &capPeriod, http.StatusCreated)
+	cinemaID := suggest(capPeriod.ID, "Театры и кино")
+	var capOffer struct {
+		ID       int64   `json:"id"`
+		Percent  *string `json:"percent"`
+		CapValue *string `json:"cap_value"`
+	}
+	owner.must("POST", "/api/v1/cashback/category-offers", map[string]any{
+		"offer_period_id": capPeriod.ID, "raw_title": "Театры и кино",
+		"canonical_category_id": cinemaID, "percent": "1,5", "cap_value": "5000",
+	}, &capOffer, http.StatusCreated)
+	if capOffer.Percent == nil || *capOffer.Percent != "1.5" {
+		t.Fatalf("comma percent = %v, want 1.5", capOffer.Percent)
+	}
+	if capOffer.CapValue == nil || *capOffer.CapValue != "5000" {
+		t.Fatalf("offer cap = %v, want 5000", capOffer.CapValue)
+	}
+	if got := sel(capOffer.ID, "2026-09-10T10:00:00Z"); got != http.StatusCreated {
+		t.Fatalf("select capped offer: %d", got)
+	}
+	owner.must("GET", "/api/v1/cashback/lookup?category=cinema&date=2026-09-15", nil, &lookup, http.StatusOK)
+	if len(lookup.Ranked) != 1 || lookup.Ranked[0].BankName != "ВТБ" {
+		t.Fatalf("cinema ranked = %+v, want ВТБ", lookup.Ranked)
+	}
+	if got := lookup.Ranked[0]; got.Percent == nil || *got.Percent != "1.5" ||
+		got.OfferCapValue == nil || *got.OfferCapValue != "5000" {
+		t.Fatalf("cinema entry = %+v, want percent 1.5 + offer cap 5000", got)
 	}
 }

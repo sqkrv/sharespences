@@ -329,6 +329,7 @@ type LookupEntry struct {
 	CapValue       *decimal.Decimal
 	CapPerCategory *decimal.Decimal
 	CapScope       CapScope
+	OfferCapValue  *decimal.Decimal // per-offer cap (ВТБ «Кешбэк до N ₽» rows); wins over the tier cap in display
 	PointsLabel    string // 'Баллы Плюс', 'баллы МКБ'; empty for rubles
 }
 

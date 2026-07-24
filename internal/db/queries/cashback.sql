@@ -172,8 +172,8 @@ where a.id = $1
   and not exists (select 1 from partner_offer_attachment where attachment_id = $1);
 
 -- name: CreateCategoryOffer :one
-insert into category_offer (offer_period_id, raw_title, canonical_category_id, percent, kind, notes, bank_category_id)
-values ($1, $2, $3, $4, $5, $6, $7)
+insert into category_offer (offer_period_id, raw_title, canonical_category_id, percent, kind, notes, bank_category_id, cap_value)
+values ($1, $2, $3, $4, $5, $6, $7, $8)
 returning *;
 
 -- name: UpdateCategoryOfferForUser :one
@@ -183,7 +183,8 @@ set raw_title             = $3,
     percent               = $5,
     kind                  = $6,
     notes                 = $7,
-    bank_category_id      = $8
+    bank_category_id      = $8,
+    cap_value             = $9
 from offer_period op,
      bank_client cl
 where co.id = $1
@@ -281,6 +282,7 @@ select co.id                     as category_offer_id,
        co.canonical_category_id,
        co.percent,
        co.kind,
+       co.cap_value              as offer_cap_value,
        op.id                     as offer_period_id,
        op.bank_client_id,
        op.period_start,

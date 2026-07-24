@@ -687,6 +687,8 @@ type CategoryOffer struct {
 	Kind                CashbackOfferKind
 	Notes               *string
 	BankCategoryID      *int64
+	// Per-offer КБ cap for the period (ВТБ «Кешбэк до N ₽» rows); null = tier cap applies; static display, no tracking
+	CapValue *decimal.Decimal
 }
 
 type Mcc struct {

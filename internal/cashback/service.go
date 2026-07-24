@@ -55,13 +55,17 @@ func holderOf(h *string) string {
 
 // capNote renders the static cap reference the helper and warnings display,
 // e.g. «лимит 1500₽/кат, всего 3000₽» (Озон), «лимит 7000₽» (Альфа-Смарт).
-func capNote(capValue, capPerCategory *decimal.Decimal, scope db.NullCashbackCapScope, currency db.NullCashbackCurrencyKind, pointsLabel *string) string {
+func capNote(offerCap, capValue, capPerCategory *decimal.Decimal, scope db.NullCashbackCapScope, currency db.NullCashbackCurrencyKind, pointsLabel *string) string {
 	unit := "₽"
 	if currency.Valid && currency.CashbackCurrencyKind == db.CashbackCurrencyKindPoints {
 		unit = " баллов"
 		if pointsLabel != nil {
 			unit = " " + *pointsLabel
 		}
+	}
+	// A per-offer cap (ВТБ «Кешбэк до N ₽» rows) wins over the tier cap.
+	if offerCap != nil {
+		return fmt.Sprintf("лимит %s%s", offerCap.String(), unit)
 	}
 	if !scope.Valid {
 		return ""
@@ -119,6 +123,7 @@ func entryOf(o db.ListUserOffersRow) LookupEntry {
 		CapValue:       o.CapValue,
 		CapPerCategory: o.CapPerCategory,
 		CapScope:       capScope,
+		OfferCapValue:  o.OfferCapValue,
 		PointsLabel:    pointsLabel,
 	}
 }
@@ -135,7 +140,7 @@ func activeSelectionOf(row db.ListUserOffersRow) ActiveSelection {
 		Kind:                OfferKind(row.Kind),
 		Percent:             row.Percent,
 		CurrencyKind:        currencyOf(row),
-		CapNote:             capNote(row.CapValue, row.CapPerCategory, row.TierCapScope, row.ProgramCurrencyKind, row.PointsLabel),
+		CapNote:             capNote(row.OfferCapValue, row.CapValue, row.CapPerCategory, row.TierCapScope, row.ProgramCurrencyKind, row.PointsLabel),
 	}
 }
 
@@ -292,7 +297,7 @@ func (s *Service) checkBankCategory(ctx context.Context, bankCategoryID *int64, 
 
 // CreateCategoryOffer records one menu row. A provided canonical mapping is
 // remembered as a bank alias (S1: unknown titles create the mapping inline).
-func (s *Service) CreateCategoryOffer(ctx context.Context, userID uuid.UUID, offerPeriodID int64, rawTitle string, canonicalID *int64, percent *decimal.Decimal, kind OfferKind, notes *string, bankCategoryID *int64) (db.CategoryOffer, error) {
+func (s *Service) CreateCategoryOffer(ctx context.Context, userID uuid.UUID, offerPeriodID int64, rawTitle string, canonicalID *int64, percent *decimal.Decimal, kind OfferKind, notes *string, bankCategoryID *int64, capValue *decimal.Decimal) (db.CategoryOffer, error) {
 	period, err := s.Q.GetOfferPeriodForUser(ctx, db.GetOfferPeriodForUserParams{ID: offerPeriodID, UserID: userID})
 	if err != nil {
 		return db.CategoryOffer{}, notFound(err)
@@ -308,6 +313,7 @@ func (s *Service) CreateCategoryOffer(ctx context.Context, userID uuid.UUID, off
 		Kind:                db.CashbackOfferKind(kind),
 		Notes:               notes,
 		BankCategoryID:      bankCategoryID,
+		CapValue:            capValue,
 	})
 	if err != nil {
 		return db.CategoryOffer{}, err
@@ -382,7 +388,7 @@ func (s *Service) CreateSelection(ctx context.Context, userID uuid.UUID, categor
 // feedback 2026-07-04: entered rows must be correctable — a row mapped to a
 // canonical category after the fact starts appearing in lookups). A newly
 // set canonical mapping is remembered as a bank alias, like on create.
-func (s *Service) UpdateCategoryOffer(ctx context.Context, userID uuid.UUID, offerID int64, rawTitle string, canonicalID *int64, percent *decimal.Decimal, kind OfferKind, notes *string, bankCategoryID *int64) (db.CategoryOffer, error) {
+func (s *Service) UpdateCategoryOffer(ctx context.Context, userID uuid.UUID, offerID int64, rawTitle string, canonicalID *int64, percent *decimal.Decimal, kind OfferKind, notes *string, bankCategoryID *int64, capValue *decimal.Decimal) (db.CategoryOffer, error) {
 	ctxRow, err := s.Q.GetOfferWithContextForUser(ctx, db.GetOfferWithContextForUserParams{ID: offerID, UserID: userID})
 	if err != nil {
 		return db.CategoryOffer{}, notFound(err)
@@ -399,6 +405,7 @@ func (s *Service) UpdateCategoryOffer(ctx context.Context, userID uuid.UUID, off
 		Kind:                db.CashbackOfferKind(kind),
 		Notes:               notes,
 		BankCategoryID:      bankCategoryID,
+		CapValue:            capValue,
 	})
 	if err != nil {
 		return db.CategoryOffer{}, notFound(err)

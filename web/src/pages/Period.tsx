@@ -44,6 +44,7 @@ function AddOfferForm({
   const qc = useQueryClient();
   const [picked, setPicked] = useState<PickedCategory | null>(null);
   const [percent, setPercent] = useState("");
+  const [cap, setCap] = useState("");
   const [kind, setKind] = useState<"regular" | "super" | "special">("regular");
 
   const create = useMutation({
@@ -57,6 +58,7 @@ function AddOfferForm({
             ...(picked.bankCategoryID != null ? { bank_category_id: picked.bankCategoryID } : {}),
             ...(picked.canonicalID != null ? { canonical_category_id: picked.canonicalID } : {}),
             ...(percent ? { percent } : {}),
+            ...(cap ? { cap_value: cap } : {}),
             kind,
           },
         }),
@@ -65,6 +67,7 @@ function AddOfferForm({
     onSuccess: () => {
       setPicked(null);
       setPercent("");
+      setCap("");
       setKind("regular");
       qc.invalidateQueries({ queryKey: ["period", periodID] });
       qc.invalidateQueries({ queryKey: ["helper", periodID] });
@@ -119,6 +122,8 @@ function AddOfferForm({
               </button>
             ))}
           </span>
+          {/* Per-offer cap (ВТБ «Кешбэк до N ₽») — static display, no tracking. */}
+          <Input inputMode="decimal" className="w-32 flex-none" value={cap} onChange={(e) => setCap(e.target.value)} placeholder="лимит (до ₽)" />
         </div>
         <Btn type="submit" disabled={create.isPending || !picked}>
           Добавить
@@ -161,6 +166,7 @@ function EditOfferForm({
     };
   });
   const [percent, setPercent] = useState(offer.percent ?? "");
+  const [cap, setCap] = useState(offer.cap_value ?? "");
   const [kind, setKind] = useState(offer.kind);
   const [notes, setNotes] = useState(offer.notes ?? "");
 
@@ -181,6 +187,7 @@ function EditOfferForm({
             ...(picked.bankCategoryID != null ? { bank_category_id: picked.bankCategoryID } : {}),
             ...(picked.canonicalID != null ? { canonical_category_id: picked.canonicalID } : {}),
             ...(percent ? { percent } : {}),
+            ...(cap ? { cap_value: cap } : {}),
             kind: kind as "regular" | "super" | "special",
             ...(notes ? { notes } : {}),
           },
@@ -234,6 +241,9 @@ function EditOfferForm({
             <option value="super">барабан (суперкэшбэк)</option>
             <option value="special">спец (Пятница/колесо)</option>
           </Select>
+        </Field>
+        <Field label="Лимит (до)">
+          <Input inputMode="decimal" placeholder="необязательно" value={cap} onChange={(e) => setCap(e.target.value)} />
         </Field>
         <Field label="Заметки">
           <Input placeholder="необязательно" value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -572,6 +582,7 @@ export default function Period() {
                     </p>
                     <p className="text-[9.5px] font-medium text-tx4">
                       не занимает слот · {offer.kind === "super" ? "ранжируется в «Какой картой?»" : "сверх меню"}
+                      {offer.cap_value && ` · до ${offer.cap_value} ${currency === "points" ? "баллов" : "₽"}`}
                     </p>
                   </div>
                   {selected ? (
@@ -611,6 +622,9 @@ export default function Period() {
                   )}
                   {selected && offer.selected_at && (
                     <p className="mt-0.5 text-[9.5px] font-medium text-tx4">выбрано {new Date(offer.selected_at).toLocaleDateString("ru-RU")}</p>
+                  )}
+                  {offer.cap_value && (
+                    <p className="mt-0.5 text-[9.5px] font-medium text-tx4">кешбэк до {offer.cap_value} {currency === "points" ? "баллов" : "₽"}</p>
                   )}
                 </div>
                 {selected ? (

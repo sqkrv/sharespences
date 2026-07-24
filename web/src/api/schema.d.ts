@@ -646,6 +646,8 @@ export interface components {
             currency_kind: string;
             holder_label?: string;
             kind: string;
+            /** @description per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap */
+            offer_cap_value?: string;
             /**
              * Format: int64
              * @description category_offer id — «Отметить выбранной» posts the ordinary selection for it
@@ -839,6 +841,8 @@ export interface components {
             bank_category_id?: number;
             /** Format: int64 */
             canonical_category_id?: number;
+            /** @description per-offer КБ cap for the period (ВТБ «Кешбэк до N ₽»); static display, no tracking */
+            cap_value?: string;
             /**
              * @default regular
              * @enum {string}
@@ -1017,6 +1021,8 @@ export interface components {
             bank_category_id?: number;
             /** Format: int64 */
             canonical_category_id?: number;
+            /** @description per-offer КБ cap for the period (ВТБ «Кешбэк до N ₽»); static display, no tracking */
+            cap_value?: string;
             /**
              * @default regular
              * @enum {string}
@@ -1037,6 +1043,7 @@ export interface components {
             bank_category_id?: number;
             /** Format: int64 */
             canonical_category_id?: number;
+            cap_value?: string;
             /** Format: int64 */
             id: number;
             kind: string;
@@ -1162,6 +1169,8 @@ export interface components {
             currency_kind: string;
             holder_label?: string;
             kind: string;
+            /** @description per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap */
+            offer_cap_value?: string;
             percent?: string;
             period_end: string;
             period_start: string;

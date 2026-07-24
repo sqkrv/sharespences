@@ -121,9 +121,9 @@ func (q *Queries) CreateCanonicalCategory(ctx context.Context, arg CreateCanonic
 }
 
 const createCategoryOffer = `-- name: CreateCategoryOffer :one
-insert into category_offer (offer_period_id, raw_title, canonical_category_id, percent, kind, notes, bank_category_id)
-values ($1, $2, $3, $4, $5, $6, $7)
-returning id, offer_period_id, raw_title, canonical_category_id, percent, kind, notes, bank_category_id
+insert into category_offer (offer_period_id, raw_title, canonical_category_id, percent, kind, notes, bank_category_id, cap_value)
+values ($1, $2, $3, $4, $5, $6, $7, $8)
+returning id, offer_period_id, raw_title, canonical_category_id, percent, kind, notes, bank_category_id, cap_value
 `
 
 type CreateCategoryOfferParams struct {
@@ -134,6 +134,7 @@ type CreateCategoryOfferParams struct {
 	Kind                CashbackOfferKind
 	Notes               *string
 	BankCategoryID      *int64
+	CapValue            *decimal.Decimal
 }
 
 func (q *Queries) CreateCategoryOffer(ctx context.Context, arg CreateCategoryOfferParams) (CategoryOffer, error) {
@@ -145,6 +146,7 @@ func (q *Queries) CreateCategoryOffer(ctx context.Context, arg CreateCategoryOff
 		arg.Kind,
 		arg.Notes,
 		arg.BankCategoryID,
+		arg.CapValue,
 	)
 	var i CategoryOffer
 	err := row.Scan(
@@ -156,6 +158,7 @@ func (q *Queries) CreateCategoryOffer(ctx context.Context, arg CreateCategoryOff
 		&i.Kind,
 		&i.Notes,
 		&i.BankCategoryID,
+		&i.CapValue,
 	)
 	return i, err
 }
@@ -592,7 +595,7 @@ func (q *Queries) GetOfferPeriodForUser(ctx context.Context, arg GetOfferPeriodF
 }
 
 const getOfferWithContextForUser = `-- name: GetOfferWithContextForUser :one
-select co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes, co.bank_category_id,
+select co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes, co.bank_category_id, co.cap_value,
        op.bank_client_id,
        op.period_start,
        op.period_end,
@@ -622,6 +625,7 @@ type GetOfferWithContextForUserRow struct {
 	Kind                  CashbackOfferKind
 	Notes                 *string
 	BankCategoryID        *int64
+	CapValue              *decimal.Decimal
 	BankClientID          int64
 	PeriodStart           time.Time
 	PeriodEnd             time.Time
@@ -643,6 +647,7 @@ func (q *Queries) GetOfferWithContextForUser(ctx context.Context, arg GetOfferWi
 		&i.Kind,
 		&i.Notes,
 		&i.BankCategoryID,
+		&i.CapValue,
 		&i.BankClientID,
 		&i.PeriodStart,
 		&i.PeriodEnd,
@@ -926,7 +931,7 @@ func (q *Queries) ListOfferPeriodsForUser(ctx context.Context, userID uuid.UUID)
 }
 
 const listOffersForPeriod = `-- name: ListOffersForPeriod :many
-select co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes, co.bank_category_id, s.id as selection_id, s.selected_at
+select co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes, co.bank_category_id, co.cap_value, s.id as selection_id, s.selected_at
 from category_offer co
          left join selection s on s.category_offer_id = co.id
 where co.offer_period_id = $1
@@ -942,6 +947,7 @@ type ListOffersForPeriodRow struct {
 	Kind                CashbackOfferKind
 	Notes               *string
 	BankCategoryID      *int64
+	CapValue            *decimal.Decimal
 	SelectionID         *int64
 	SelectedAt          *time.Time
 }
@@ -964,6 +970,7 @@ func (q *Queries) ListOffersForPeriod(ctx context.Context, offerPeriodID int64) 
 			&i.Kind,
 			&i.Notes,
 			&i.BankCategoryID,
+			&i.CapValue,
 			&i.SelectionID,
 			&i.SelectedAt,
 		); err != nil {
@@ -1161,6 +1168,7 @@ select co.id                     as category_offer_id,
        co.canonical_category_id,
        co.percent,
        co.kind,
+       co.cap_value              as offer_cap_value,
        op.id                     as offer_period_id,
        op.bank_client_id,
        op.period_start,
@@ -1204,6 +1212,7 @@ type ListUserOffersRow struct {
 	CanonicalCategoryID   *int64
 	Percent               *decimal.Decimal
 	Kind                  CashbackOfferKind
+	OfferCapValue         *decimal.Decimal
 	OfferPeriodID         int64
 	BankClientID          int64
 	PeriodStart           time.Time
@@ -1242,6 +1251,7 @@ func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListU
 			&i.CanonicalCategoryID,
 			&i.Percent,
 			&i.Kind,
+			&i.OfferCapValue,
 			&i.OfferPeriodID,
 			&i.BankClientID,
 			&i.PeriodStart,
@@ -1306,14 +1316,15 @@ set raw_title             = $3,
     percent               = $5,
     kind                  = $6,
     notes                 = $7,
-    bank_category_id      = $8
+    bank_category_id      = $8,
+    cap_value             = $9
 from offer_period op,
      bank_client cl
 where co.id = $1
   and op.id = co.offer_period_id
   and cl.id = op.bank_client_id
   and cl.user_id = $2
-returning co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes, co.bank_category_id
+returning co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes, co.bank_category_id, co.cap_value
 `
 
 type UpdateCategoryOfferForUserParams struct {
@@ -1325,6 +1336,7 @@ type UpdateCategoryOfferForUserParams struct {
 	Kind                CashbackOfferKind
 	Notes               *string
 	BankCategoryID      *int64
+	CapValue            *decimal.Decimal
 }
 
 func (q *Queries) UpdateCategoryOfferForUser(ctx context.Context, arg UpdateCategoryOfferForUserParams) (CategoryOffer, error) {
@@ -1337,6 +1349,7 @@ func (q *Queries) UpdateCategoryOfferForUser(ctx context.Context, arg UpdateCate
 		arg.Kind,
 		arg.Notes,
 		arg.BankCategoryID,
+		arg.CapValue,
 	)
 	var i CategoryOffer
 	err := row.Scan(
@@ -1348,6 +1361,7 @@ func (q *Queries) UpdateCategoryOfferForUser(ctx context.Context, arg UpdateCate
 		&i.Kind,
 		&i.Notes,
 		&i.BankCategoryID,
+		&i.CapValue,
 	)
 	return i, err
 }

@@ -71,14 +71,17 @@ export function currencyBadge(kind?: string, pointsLabel?: string): string {
 
 // Static cap reference, e.g. «лимит 1500₽/кат, всего 3000₽» (Озон) or
 // «лимит 7000₽» (Альфа-Смарт). Caps are configured values, not remaining.
+// A per-offer cap (ВТБ «Кешбэк до N ₽» rows) wins over the tier cap.
 export function capNote(e: {
   cap_value?: string;
   cap_per_category?: string;
   cap_scope?: string;
   currency_kind?: string;
   points_label?: string;
+  offer_cap_value?: string;
 }): string {
   const unit = e.currency_kind === "points" ? ` ${e.points_label || "баллов"}` : "₽";
+  if (e.offer_cap_value) return `лимит ${e.offer_cap_value}${unit}`;
   switch (e.cap_scope) {
     case "per_category":
       return e.cap_per_category ? `лимит ${e.cap_per_category}${unit}/кат` : "";
