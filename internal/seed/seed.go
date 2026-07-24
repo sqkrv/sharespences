@@ -372,6 +372,10 @@ var aliases = []struct{ bank, raw, slug string }{
 	{"Т-Банк", "Одежда и обувь", "clothes"},
 	{"Т-Банк", "Подарки и творчество", "hobby"},
 	{"Т-Банк", "Цветы", "flowers"},
+	// Beyond the 2026-04 MCC appendix — owner live app, 2026-07-24.
+	{"Т-Банк", "Все покупки", "all-purchases"},
+	{"Т-Банк", "Топливо в городе", "gas-stations"},
+	{"Т-Банк", "Бензин в городе", "gas-stations"},
 	{"Яндекс Пэй", "Кафе, рестораны и бары", "restaurants"},
 	{"Яндекс Пэй", "Образование", "education"},
 	{"Яндекс Пэй", "Одежда и обувь", "clothes"},
@@ -587,6 +591,11 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Т-Банк", title: "Детские товары", slug: "kids"},
 	{bank: "Т-Банк", title: "Маркетплейсы", slug: "marketplaces"},
 	{bank: "Т-Банк", title: "Подарки и творчество", slug: "hobby"},
+	// Beyond the 2026-04 MCC appendix — owner live app, 2026-07-24 (the
+	// appendix lacks these; full live-menu ingest queued in the knowledge log).
+	{bank: "Т-Банк", title: "Все покупки", slug: "all-purchases"},
+	{bank: "Т-Банк", title: "Топливо в городе", slug: "gas-stations"},
+	{bank: "Т-Банк", title: "Бензин в городе", slug: "gas-stations"},
 	// Яндекс Пэй (as of 2026-07-14 rules)
 	{bank: "Яндекс Пэй", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "Яндекс Пэй", title: "Кафе, рестораны и бары", slug: "restaurants"},
