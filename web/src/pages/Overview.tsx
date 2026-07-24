@@ -65,6 +65,16 @@ function storedGrouping(): BanksGrouping {
   return localStorage.getItem(GROUP_KEY) === "holder" ? "holder" : "bank";
 }
 
+// «Категории» sort (owner 2026-07-24): по проценту keeps the API order
+// (currency → ranked-before-спец → percent desc → title); the others
+// re-sort client-side. Persisted like the grouping toggle.
+type CatsSort = "percent" | "alpha" | "bank";
+const CATS_SORT_KEY = "overview-cats-sort";
+function storedCatsSort(): CatsSort {
+  const v = localStorage.getItem(CATS_SORT_KEY);
+  return v === "alpha" || v === "bank" ? v : "percent";
+}
+
 // Держатель + тариф live on the bank client — the cards merely hang off it.
 // Deletes live here too: cards go one by one; the bank goes with its cards,
 // unless КБ history holds it (the API refuses with 409).
@@ -503,6 +513,7 @@ type AddingState = { kind: "bank" | "card"; bankID?: number } | null;
 export default function Overview() {
   const [cut, setCut] = useState<"cats" | "banks">("cats");
   const [grouping, setGroupingState] = useState<BanksGrouping>(storedGrouping);
+  const [catsSort, setCatsSortState] = useState<CatsSort>(storedCatsSort);
   const [adding, setAdding] = useState<AddingState>(null);
   const [editingClientID, setEditingClientID] = useState<number | null>(null);
   const now = new Date();
@@ -519,6 +530,10 @@ export default function Overview() {
     localStorage.setItem(GROUP_KEY, g);
     setGroupingState(g);
   };
+  const setCatsSort = (s: CatsSort) => {
+    localStorage.setItem(CATS_SORT_KEY, s);
+    setCatsSortState(s);
+  };
 
   if (overview.isPending) return <Spinner />;
   if (overview.isError) return <ErrMsg error={overview.error} />;
@@ -526,6 +541,13 @@ export default function Overview() {
   const categories = data.categories ?? [];
   const clients = data.clients ?? [];
   const bankColor = new Map((banks.data ?? []).map((b) => [b.id, b.color_hex]));
+  // Stable sort keeps the API's percent-desc order within a same-key group.
+  const sortedCategories =
+    catsSort === "alpha"
+      ? [...categories].sort((a, b) => a.title_ru.localeCompare(b.title_ru, "ru"))
+      : catsSort === "bank"
+        ? [...categories].sort((a, b) => a.best.bank_name.localeCompare(b.best.bank_name, "ru"))
+        : categories;
 
   const clientCard = (c: OverviewClient, titleMode: "bank" | "holder") => (
     <ClientCard
@@ -574,6 +596,26 @@ export default function Overview() {
             <span className="text-[11px] font-semibold text-tx3">Лучшая карта по категории</span>
             <span className="text-[10px] font-semibold uppercase tracking-wide text-tx4">{monthName}</span>
           </div>
+          {categories.length > 0 && (
+            <div className="mx-0.5 flex items-center justify-end gap-2.5">
+              {(
+                [
+                  ["percent", "по проценту"],
+                  ["alpha", "по алфавиту"],
+                  ["bank", "по банку"],
+                ] as const
+              ).map(([s, label]) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setCatsSort(s)}
+                  className={`text-[10.5px] ${catsSort === s ? "font-bold text-accl" : "font-semibold text-tx4"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           <Card className="px-4 py-1">
             {categories.length === 0 ? (
               <p className="py-4 text-center text-sm font-medium text-tx3">
@@ -586,7 +628,7 @@ export default function Overview() {
                   <span>Карта</span>
                   <span className="w-10 text-right">%</span>
                 </div>
-                {categories.map((g) => (
+                {sortedCategories.map((g) => (
                   <button
                     key={g.category_id}
                     type="button"
