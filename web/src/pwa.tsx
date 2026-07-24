@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { api, unwrap } from "./api/client";
@@ -7,17 +7,58 @@ import { midMonthISO } from "./lib";
 // PWA glue per docs/specs/pwa.md (meta-repo): offline indicator, prompt-style
 // update toast, install affordances, and the offline-read cache warm-up.
 
-function subscribeOnline(cb: () => void) {
-  window.addEventListener("online", cb);
-  window.addEventListener("offline", cb);
-  return () => {
-    window.removeEventListener("online", cb);
-    window.removeEventListener("offline", cb);
-  };
+// «Offline» = the server didn't answer a probe. navigator.onLine alone can't
+// carry the chip: it tracks the OS network interface, so a dead server,
+// WiFi-without-internet, and iOS standalone (onLine stuck true, WebKit bug)
+// all read «online» while every response is silently cache-served. The probe
+// is HEAD (the SW caches match GET only, so it always reaches the network)
+// + no-store (skips the HTTP cache); any HTTP status counts as reachable.
+let offline = !navigator.onLine;
+const netSubs = new Set<() => void>();
+let recoverTimer: ReturnType<typeof setInterval> | undefined;
+
+function setOffline(next: boolean) {
+  // While offline, re-probe periodically — recovery can't wait for the
+  // `online` event (it may never fire in iOS standalone).
+  if (next && recoverTimer == null) recoverTimer = setInterval(() => void probe(), 15_000);
+  if (!next && recoverTimer != null) {
+    clearInterval(recoverTimer);
+    recoverTimer = undefined;
+  }
+  if (next === offline) return;
+  offline = next;
+  netSubs.forEach((cb) => cb());
+}
+
+async function probe() {
+  try {
+    await fetch("/manifest.webmanifest", {
+      method: "HEAD",
+      cache: "no-store",
+      signal: AbortSignal.timeout(4_000), // hung ≈ offline; the SW falls back to cache at 3s anyway
+    });
+    setOffline(false);
+  } catch {
+    setOffline(true);
+  }
+}
+
+window.addEventListener("offline", () => setOffline(true)); // OS says down — trust it
+window.addEventListener("online", () => void probe()); // OS says up — verify first
+document.addEventListener("visibilitychange", () => {
+  // The checkout moment: the app is re-opened exactly when connectivity is
+  // in doubt — re-check on every return to foreground.
+  if (document.visibilityState === "visible") void probe();
+});
+void probe();
+
+function subscribeNet(cb: () => void) {
+  netSubs.add(cb);
+  return () => netSubs.delete(cb);
 }
 
 export function useOnline(): boolean {
-  return useSyncExternalStore(subscribeOnline, () => navigator.onLine);
+  return useSyncExternalStore(subscribeNet, () => !offline);
 }
 
 // «нет сети» pill under the status bar; data on screen is cache-served.
@@ -61,20 +102,33 @@ export function ReloadPrompt() {
 
 type BeforeInstallPromptEvent = Event & { prompt: () => Promise<void> };
 
-// Chromium fires beforeinstallprompt; iOS Safari never does — there the UX
-// is a static «Поделиться → На экран „Домой"» hint (Services screen).
+// Chromium fires beforeinstallprompt ONCE, shortly after load — long before
+// the user SPA-navigates to «Сервисы». A listener added on Services mount
+// misses it every time, so it lives at module scope (main.tsx imports this
+// module at startup). iOS Safari never fires it — there the UX is a static
+// «Поделиться → На экран „Домой"» hint (Services screen).
+let deferredInstall: BeforeInstallPromptEvent | null = null;
+const installSubs = new Set<() => void>();
+
+function setDeferredInstall(e: BeforeInstallPromptEvent | null) {
+  deferredInstall = e;
+  installSubs.forEach((cb) => cb());
+}
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  setDeferredInstall(e as BeforeInstallPromptEvent);
+});
+// Installed via our button or the browser's own UI — the affordance goes.
+window.addEventListener("appinstalled", () => setDeferredInstall(null));
+
+function subscribeInstall(cb: () => void) {
+  installSubs.add(cb);
+  return () => installSubs.delete(cb);
+}
+
 export function useInstallPrompt() {
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
-
-  useEffect(() => {
-    const onPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferred(e as BeforeInstallPromptEvent);
-    };
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
-  }, []);
-
+  const canInstall = useSyncExternalStore(subscribeInstall, () => deferredInstall != null);
   const isStandalone =
     window.matchMedia("(display-mode: standalone)").matches ||
     ("standalone" in navigator && (navigator as { standalone?: boolean }).standalone === true);
@@ -83,10 +137,10 @@ export function useInstallPrompt() {
   return {
     isStandalone,
     isIOS,
-    canInstall: deferred != null,
+    canInstall,
     install: async () => {
-      await deferred?.prompt();
-      setDeferred(null);
+      await deferredInstall?.prompt();
+      setDeferredInstall(null);
     },
   };
 }
