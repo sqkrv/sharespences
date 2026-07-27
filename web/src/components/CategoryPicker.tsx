@@ -98,7 +98,7 @@ export function CategoryPicker({
   };
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} data-sid="W-02" className="relative">
       <button
         type="button"
         aria-haspopup="listbox"

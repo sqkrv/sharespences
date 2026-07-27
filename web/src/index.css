@@ -92,6 +92,59 @@ body {
   background: linear-gradient(140deg, #8b6fff, #5b3fe0);
 }
 
+/*
+ * Dev mode (web/src/dev/): the .devmode class on <html> IS the region-label
+ * mechanism — a labelled block costs one `data-sid` attribute and no React,
+ * no wrapper, no re-render. Colors are deliberately neutral: mint/lilac/gold
+ * carry the currency legend (docs/design/ui-preferences.md) and must never
+ * mean anything else.
+ *
+ * One rule for tagging: never put `data-sid` on a fixed/absolute/sticky
+ * element — the `position: relative` below would knock it out of place. Tag
+ * its inner container instead (this is why NavBar's ID sits on the row, not
+ * on the <nav>).
+ */
+/* :not(:focus-visible) — an author outline beats the UA focus ring, and one
+   tagged element IS a control (the slots button, CB-03.d): without this,
+   tabbing to it in dev mode produces no visible focus change at all. */
+.devmode [data-sid]:not(:focus-visible) {
+  outline: 1px dashed var(--t-dash);
+  outline-offset: 2px;
+}
+.devmode [data-sid] {
+  position: relative;
+}
+.devmode [data-sid]::after {
+  content: attr(data-sid);
+  position: absolute;
+  /* Above the box, not on top of it: the shell stacks blocks with a 1rem
+     gutter, so a 13px tag sits in the gap and never hides a control. */
+  top: -12px;
+  right: 0;
+  /* Above the block's own content, below the app's overlays: the month and
+     category popovers sit at z-30, and at 30 the tags would tie with them and
+     win on tree order, overprinting an open panel. */
+  z-index: 1;
+  padding: 0 3px;
+  border-radius: 4px 4px 0 0;
+  background: var(--t-inset);
+  color: var(--t-tx2); /* 9px bold needs the stronger ink in the light theme */
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 13px;
+  letter-spacing: 0;
+  pointer-events: none;
+}
+/* A block that clips its own overflow (GradientCard, MapStub) would swallow a
+   tag hung above it — those opt into an inside tag instead. */
+.devmode [data-sid][data-sid-inside]::after {
+  /* Inset past the corner radius, which would otherwise clip the tag. */
+  top: 3px;
+  right: 7px;
+  border-radius: 4px;
+}
+
 @keyframes locpulse {
   0% {
     transform: translate(-50%, -50%) scale(1);

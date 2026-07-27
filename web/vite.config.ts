@@ -3,13 +3,28 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Build stamp for dev mode (web/src/dev/devmode.ts): __BUILD__ is compiled
+// into the bundle, build.json ships the same value as a file. Dev mode
+// compares them — they differ exactly when a service worker is still serving
+// an old bundle. build.json is precache-free by construction (the workbox
+// globPatterns below list no .json) and the Go static handler sends
+// `no-cache` for everything outside assets/, so the fetch reaches the server.
+const BUILD = new Date().toISOString();
+
 // Build output goes to internal/web/dist so the Go binary can go:embed it
 // (embed can't cross package directories). emptyOutDir stays false to keep
 // the committed .placeholder; stale hashed assets are harmless and ignored.
 export default defineConfig({
+  define: { __BUILD__: JSON.stringify(BUILD) },
   plugins: [
     react(),
     tailwindcss(),
+    {
+      name: "build-stamp",
+      generateBundle() {
+        this.emitFile({ type: "asset", fileName: "build.json", source: JSON.stringify({ build: BUILD }) });
+      },
+    },
     // PWA per docs/specs/pwa.md (meta-repo): installable + offline READ.
     // Update flow is `prompt` (toast in the shell), never a silent swap.
     VitePWA({

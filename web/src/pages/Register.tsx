@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import { Btn, Card, Field, Input, ErrMsg } from "../components/ui";
 import { BrandMark } from "./Login";
+import DevChip from "../dev/DevChip";
 
 export default function Register() {
   const [form, setForm] = useState({ username: "", display_name: "", email: "", password: "" });
@@ -56,6 +57,7 @@ export default function Register() {
           </p>
         </form>
       </Card>
+      <DevChip />
     </div>
   );
 }

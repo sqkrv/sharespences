@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import { ApiError } from "./api/client";
 import { RequireAuth } from "./auth";
 import { OfflineChip, ReloadPrompt, usePrefetchOffline } from "./pwa";
+import DevChip from "./dev/DevChip";
 import NavBar from "./components/NavBar";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -43,6 +44,7 @@ function Shell() {
       <NavBar />
       <OfflineChip />
       <ReloadPrompt />
+      <DevChip />
     </div>
   );
 }

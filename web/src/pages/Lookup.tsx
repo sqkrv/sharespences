@@ -38,7 +38,7 @@ type Mode = "near" | "search" | "cat";
 // The design's map placeholder: striped blocks, two «roads», pulsing dot.
 function MapStub() {
   return (
-    <div className="relative h-16 overflow-hidden rounded-2xl border border-brd" style={{ background: "repeating-linear-gradient(126deg, var(--t-srf2) 0 13px, var(--t-srf) 13px 26px)" }}>
+    <div data-sid="CB-04.b" data-sid-inside="" className="relative h-16 overflow-hidden rounded-2xl border border-brd" style={{ background: "repeating-linear-gradient(126deg, var(--t-srf2) 0 13px, var(--t-srf) 13px 26px)" }}>
       <div className="absolute top-[58%] -right-[12%] -left-[12%] h-2 -rotate-[9deg] bg-inset" />
       <div className="absolute -top-1/4 -bottom-1/4 left-2/3 w-2 rotate-[7deg] bg-inset" />
       <div className="absolute top-1/2 left-1/2">
@@ -85,7 +85,7 @@ function MccSearch({ onCategory }: { onCategory: (slug: string) => void }) {
 
   return (
     <>
-      <div className="flex items-center gap-2.5 rounded-xl border border-brd2 bg-srf2 px-3 py-2.5 focus-within:border-acc">
+      <div data-sid="CB-04.c" className="flex items-center gap-2.5 rounded-xl border border-brd2 bg-srf2 px-3 py-2.5 focus-within:border-acc">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-none text-tx4">
           <circle cx="11" cy="11" r="7" />
           <path d="m20 20-3.4-3.4" />
@@ -309,6 +309,7 @@ export default function Lookup() {
       <h1 className="text-[22px] font-extrabold tracking-tight">Какой картой платить?</h1>
 
       <SegTabs
+        sid="CB-04.a"
         value={mode}
         onChange={setMode}
         options={[
@@ -382,7 +383,7 @@ export default function Lookup() {
                         <p className="mx-0.5 text-[11px] font-semibold text-tx3">
                           Лучшая карта · {selectedCat?.emoji || FALLBACK_EMOJI} {selectedCat?.title_ru}
                         </p>
-                        <GradientCard className="p-4">
+                        <GradientCard className="p-4" data-sid="CB-04.d" data-sid-inside="">
                           <p className="text-[9.5px] font-bold uppercase tracking-[.16em] text-white/75">Платите этой картой</p>
                           <div className="mt-3 flex items-end justify-between">
                             <div className="min-w-0">
@@ -415,7 +416,7 @@ export default function Lookup() {
                   {others.length > 0 && (
                     <>
                       <p className="mx-0.5 text-[11px] font-semibold text-tx3">Другие карты для «{selectedCat?.title_ru}»</p>
-                      <div className="space-y-1.5">
+                      <div data-sid="CB-04.e" className="space-y-1.5">
                         {others.map((e, i) => (
                           <OtherCardRow key={i} e={e} />
                         ))}
@@ -428,7 +429,7 @@ export default function Lookup() {
                       <p className="mx-0.5 text-[11px] font-semibold text-accl">
                         Можно выбрать · есть в меню, но не выбрано
                       </p>
-                      <div className="space-y-1.5">
+                      <div data-sid="CB-04.f" className="space-y-1.5">
                         {(lookup.data.available ?? []).map((e) => {
                           const actionable = ACTIONABLE.has(e.verdict);
                           return (

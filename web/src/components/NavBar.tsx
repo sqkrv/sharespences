@@ -63,7 +63,7 @@ const TABS: { to: string; label: string; icon: React.ReactNode }[] = [
 export default function NavBar() {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md border-t border-brd bg-bg/85 pb-[max(env(safe-area-inset-bottom),10px)] backdrop-blur">
-      <div className="flex items-end gap-0.5 px-1.5 pt-2">
+      <div data-sid="W-03" className="flex items-end gap-0.5 px-1.5 pt-2">
         {TABS.map((t) => (
           <NavLink
             key={t.to}

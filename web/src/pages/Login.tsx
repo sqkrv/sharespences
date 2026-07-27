@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import { Btn, Card, Field, Input, ErrMsg } from "../components/ui";
+import DevChip from "../dev/DevChip";
 
 export function BrandMark() {
   return (
@@ -58,6 +59,8 @@ export default function Login() {
           </p>
         </form>
       </Card>
+      {/* Login/Register render outside the Shell, so they mount the chip themselves. */}
+      <DevChip />
     </div>
   );
 }

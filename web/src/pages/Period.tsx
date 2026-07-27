@@ -76,7 +76,7 @@ function AddOfferForm({
   });
 
   return (
-    <Card className="p-4">
+    <Card className="p-4" data-sid="CB-03.a">
       <form
         className="space-y-3"
         onSubmit={(e) => {
@@ -219,6 +219,7 @@ function EditOfferForm({
 
   return (
     <form
+      data-sid="CB-03.b"
       className="mt-3 space-y-3 rounded-xl bg-srf2 p-3"
       onSubmit={(e) => {
         e.preventDefault();
@@ -317,7 +318,7 @@ function ScreenshotStrip({ periodID, attachmentIDs }: { periodID: number; attach
   });
 
   return (
-    <div>
+    <div data-sid="CB-03.c">
       <div className="flex gap-2 overflow-x-auto">
         {attachmentIDs.map((aid) => (
           <div key={aid} className="relative flex-none">
@@ -407,6 +408,7 @@ function SlotsEditor({
   return (
     <button
       type="button"
+      data-sid="CB-03.d"
       className="text-[11px] font-semibold text-tx3"
       onClick={() => {
         setValue(max != null ? String(max) : "");

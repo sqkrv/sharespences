@@ -131,6 +131,7 @@ function ClientEditForm({ client, onDone }: { client: OverviewClient; onDone: ()
 
   return (
     <form
+      data-sid="CB-01.g"
       className="mt-3 space-y-3 rounded-xl bg-srf2 p-3"
       onClick={(e) => e.stopPropagation()}
       onSubmit={(e) => {
@@ -234,7 +235,7 @@ function AddBankForm({ initialBankID, onDone }: { initialBankID?: number; onDone
   });
 
   return (
-    <Card className="p-4">
+    <Card className="p-4" data-sid="CB-01.e">
       <form
         className="space-y-3"
         onSubmit={(e) => {
@@ -328,7 +329,7 @@ function AddCardForm({
 
   if (!clients.isPending && options.length === 0) {
     return (
-      <Card className="space-y-3 p-4">
+      <Card className="space-y-3 p-4" data-sid="CB-01.f">
         <p className="text-sm font-medium text-tx3">Сначала добавьте банк — карта появится под ним.</p>
         <div className="flex gap-2">
           <Btn type="button" onClick={onAddBank}>
@@ -343,7 +344,7 @@ function AddCardForm({
   }
 
   return (
-    <Card className="p-4">
+    <Card className="p-4" data-sid="CB-01.f">
       <form
         className="space-y-3"
         onSubmit={(e) => {
@@ -583,6 +584,7 @@ export default function Overview() {
       </div>
 
       <SegTabs
+        sid="CB-01.a"
         value={cut}
         onChange={setCut}
         options={[
@@ -598,7 +600,7 @@ export default function Overview() {
             <span className="text-[10px] font-semibold uppercase tracking-wide text-tx4">{monthName}</span>
           </div>
           {categories.length > 0 && (
-            <div className="mx-0.5 flex items-center justify-end gap-2.5">
+            <div data-sid="CB-01.b" className="mx-0.5 flex items-center justify-end gap-2.5">
               {(
                 [
                   ["percent", "по проценту"],
@@ -617,7 +619,7 @@ export default function Overview() {
               ))}
             </div>
           )}
-          <Card className="px-4 py-1">
+          <Card className="px-4 py-1" data-sid="CB-01.c">
             {categories.length === 0 ? (
               <p className="py-4 text-center text-sm font-medium text-tx3">
                 Нет активных выборов — откройте период во вкладке «Банки».
@@ -695,7 +697,7 @@ export default function Overview() {
       )}
 
       {cut === "banks" && (
-        <div className="space-y-2.5">
+        <div data-sid="CB-01.d" className="space-y-2.5">
           {data.selection_opens_day != null && isCurrentMonth && (
             <div className="flex items-center gap-2 rounded-xl border border-acc/25 bg-acc/10 px-3 py-2">
               <span className="h-1.5 w-1.5 flex-none rounded-full bg-acc" />

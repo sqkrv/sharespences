@@ -5,13 +5,24 @@ import { ApiError } from "../api/client";
 // with brd borders, the accent gradient for the primary action, mint for
 // ruble cashback, lilac (accl) for points, gold for спец-предложения.
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-2xl border border-brd bg-srf ${className}`}>{children}</div>;
+// Card/Section forward the rest of their props so a caller can tag the block
+// with `data-sid` (dev mode — web/src/dev/), which costs one attribute and
+// no wrapper element.
+export function Card({ children, className = "", ...rest }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div {...rest} className={`rounded-2xl border border-brd bg-srf ${className}`}>
+      {children}
+    </div>
+  );
 }
 
-export function Section({ title, children }: { title?: string; children: ReactNode }) {
+export function Section({
+  title,
+  children,
+  ...rest
+}: { title?: string } & React.HTMLAttributes<HTMLElement>) {
   return (
-    <section>
+    <section {...rest}>
       {title && <h2 className="mx-0.5 mb-2 text-[11px] font-semibold tracking-wide text-tx3">{title}</h2>}
       {children}
     </section>
@@ -74,13 +85,15 @@ export function SegTabs<T extends string>({
   value,
   onChange,
   options,
+  sid,
 }: {
   value: T;
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
+  sid?: string; // dev-mode region ID; the generic props rule out a props spread
 }) {
   return (
-    <div className="flex gap-1 rounded-2xl border border-brd2 bg-srf2 p-1">
+    <div data-sid={sid} className="flex gap-1 rounded-2xl border border-brd2 bg-srf2 p-1">
       {options.map((o) => (
         <button
           key={o.value}
@@ -212,9 +225,9 @@ export function CheckDot({ checked }: { checked: boolean }) {
 }
 
 // Filled accent-gradient hero card (tier header, «платите этой картой»).
-export function GradientCard({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function GradientCard({ children, className = "", ...rest }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={`grad-acc relative overflow-hidden rounded-[20px] text-white ${className}`}>
+    <div {...rest} className={`grad-acc relative overflow-hidden rounded-[20px] text-white ${className}`}>
       <div className="pointer-events-none absolute -top-6 -right-4 h-28 w-28 rounded-full bg-white/10" />
       <div className="relative">{children}</div>
     </div>

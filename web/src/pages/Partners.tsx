@@ -142,7 +142,7 @@ export default function Partners() {
       </div>
 
       {adding && (
-        <Card className="p-4">
+        <Card className="p-4" data-sid="CB-05.a">
           <form
             className="space-y-3"
             onSubmit={(e) => {

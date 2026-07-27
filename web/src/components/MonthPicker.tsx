@@ -50,7 +50,7 @@ export function MonthPicker({
   }, [open]);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} data-sid="W-01" className="relative">
       <button
         type="button"
         aria-haspopup="true"
