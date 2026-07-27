@@ -772,7 +772,7 @@ type ReceiptPosition struct {
 	TransactionID uuid.UUID
 	Name          string
 	Quantity      float32
-	Total         interface{}
+	Total         decimal.Decimal
 }
 
 type Selection struct {
@@ -790,7 +790,7 @@ type Session struct {
 type Subscription struct {
 	ID                 int32
 	Name               string
-	Price              interface{}
+	Price              decimal.Decimal
 	RecurrenceDate     time.Time
 	RecurrenceInterval pgtype.Interval
 	BankCardID         *int32
@@ -812,14 +812,14 @@ type Transaction struct {
 	OgID                string
 	Timestamp           time.Time
 	Title               string
-	Amount              interface{}
+	Amount              decimal.Decimal
 	Direction           TransactionDirection
 	BankID              *int16
 	MerchandiserLogoUrl *string
 	BankComment         *string
 	MccCode             *int16
 	CategoryID          *int32
-	LoyaltyAmount       interface{}
+	LoyaltyAmount       *decimal.Decimal
 	Status              TransactionStatus
 	Location            interface{}
 	BankCardID          *int32

@@ -27,6 +27,22 @@ sql:
               import: "github.com/shopspring/decimal"
               type: "Decimal"
               pointer: true
+          # money_type is a domain over numeric(19,4) (migration 00001).
+          # sqlc does not follow domains to their base type, so without this
+          # it generates interface{} — every money column wired so far has
+          # been plain numeric, which is why nobody hit it. group-expenses
+          # (group_expense.amount, receipt_line.total) is the first module
+          # that queries one.
+          - db_type: "money_type"
+            go_type:
+              import: "github.com/shopspring/decimal"
+              type: "Decimal"
+          - db_type: "money_type"
+            nullable: true
+            go_type:
+              import: "github.com/shopspring/decimal"
+              type: "Decimal"
+              pointer: true
           - db_type: "pg_catalog.timestamptz"
             go_type: "time.Time"
           - db_type: "pg_catalog.timestamptz"
