@@ -480,39 +480,42 @@ func TestComparableOffers(t *testing.T) {
 
 // TestRankActiveSelections covers S3: lookup «какой картой платить?».
 // E2E step 5 shape: supermarkets on July 15 → Альфа-Банк and Озон ranked
-// together (same currency), points entries grouped separately, specials
-// listed apart, inactive periods filtered.
+// together (same currency), points entries grouped separately, inactive
+// periods filtered. Since the invariant-6 amendment (owner 2026-07-27)
+// specials rank too — by percent, keeping their kind so the UI can mark them.
 func TestRankActiveSelections(t *testing.T) {
 	entries := []LookupEntry{
 		{ClientID: clientOzon, BankName: "Озон Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, CapValue: pct("3000"), CapPerCategory: pct("1500"), CapScope: CapBoth},
 		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, CapValue: pct("7000"), CapScope: CapTotal},
 		{ClientID: 5, BankName: "ВТБ", Percent: pct("15"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: june2026, CapValue: pct("3000"), CapScope: CapTotal}, // expired
 		{ClientID: 4, BankName: "Яндекс Пэй", Percent: pct("10"), CurrencyKind: CurrencyPoints, Kind: OfferRegular, Period: july2026, PointsLabel: "Баллы Плюс"},
-		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("100"), CurrencyKind: CurrencyRub, Kind: OfferSpecial, Period: july2026},
+		{ClientID: clientAlfa, BankName: "Альфа-Банк", RawTitle: "Пятница", Percent: pct("100"), CurrencyKind: CurrencyRub, Kind: OfferSpecial, Period: july2026},
 	}
 
 	got := RankActiveSelections(Date(2026, time.July, 15), entries)
 
-	if len(got.Ranked) != 3 {
-		t.Fatalf("Ranked has %d entries, want 3 (expired ВТБ filtered, special separated)", len(got.Ranked))
+	if len(got.Ranked) != 4 {
+		t.Fatalf("Ranked has %d entries, want 4 (expired ВТБ filtered, special ranked in)", len(got.Ranked))
+	}
+	// The 100% special leads the rub group (amendment 2026-07-27: a better
+	// offer is never buried below a worse one), keeping kind + raw title.
+	if got.Ranked[0].Kind != OfferSpecial || got.Ranked[0].RawTitle != "Пятница" {
+		t.Errorf("Ranked[0] = %s/%q, want the special «Пятница» ranked first by percent", got.Ranked[0].Kind, got.Ranked[0].RawTitle)
 	}
 	// Rub group first (Альфа-Банк vs Озон tie on 5% → bank-name order), then points.
-	if got.Ranked[0].BankName != "Альфа-Банк" || got.Ranked[1].BankName != "Озон Банк" {
+	if got.Ranked[1].BankName != "Альфа-Банк" || got.Ranked[2].BankName != "Озон Банк" {
 		t.Errorf("rub group order = [%s, %s], want [Альфа-Банк, Озон Банк] (tie on 5%% → bank name)",
-			got.Ranked[0].BankName, got.Ranked[1].BankName)
+			got.Ranked[1].BankName, got.Ranked[2].BankName)
 	}
-	if got.Ranked[2].CurrencyKind != CurrencyPoints {
-		t.Errorf("Ranked[2].CurrencyKind = %s, want points grouped after rub", got.Ranked[2].CurrencyKind)
+	if got.Ranked[3].CurrencyKind != CurrencyPoints {
+		t.Errorf("Ranked[3].CurrencyKind = %s, want points grouped after rub", got.Ranked[3].CurrencyKind)
 	}
-	if got.Ranked[0].CapValue == nil || !got.Ranked[0].CapValue.Equal(decimal.RequireFromString("7000")) {
+	if got.Ranked[1].CapValue == nil || !got.Ranked[1].CapValue.Equal(decimal.RequireFromString("7000")) {
 		t.Errorf("Альфа-Банк entry must pass through its static 7000₽ cap (E2E step 5)")
-	}
-	if len(got.Special) != 1 || got.Special[0].Kind != OfferSpecial {
-		t.Fatalf("Special = %+v, want exactly the one special offer, unranked", got.Special)
 	}
 
 	empty := RankActiveSelections(Date(2026, time.July, 15), nil)
-	if len(empty.Ranked) != 0 || len(empty.Special) != 0 {
+	if len(empty.Ranked) != 0 {
 		t.Errorf("no entries → empty result (S3: «нет активных выборов»), got %+v", empty)
 	}
 
@@ -620,8 +623,8 @@ func TestOfferSuper(t *testing.T) {
 		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
 		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("15"), CurrencyKind: CurrencyRub, Kind: OfferSuper, Period: july2026},
 	})
-	if len(res.Ranked) != 2 || len(res.Special) != 0 {
-		t.Fatalf("super must rank: got Ranked=%d Special=%d, want 2/0", len(res.Ranked), len(res.Special))
+	if len(res.Ranked) != 2 {
+		t.Fatalf("super must rank: got Ranked=%d, want 2", len(res.Ranked))
 	}
 	if res.Ranked[0].Kind != OfferSuper || !res.Ranked[0].Percent.Equal(decimal.RequireFromString("15")) {
 		t.Errorf("super 15%% must rank above the regular 7%%, got %s %v", res.Ranked[0].Kind, res.Ranked[0].Percent)
@@ -650,6 +653,46 @@ func TestOfferSuper(t *testing.T) {
 	// Not a menu alternative: a super candidate has no comparisons.
 	if got := ComparableOffers(OfferView{OfferID: 1, Kind: OfferSuper, CurrencyKind: CurrencyRub}, nil); got != nil {
 		t.Errorf("super candidate has no comparisons, got %v", got)
+	}
+}
+
+// TestOfferSpecialRanks is the regression guard for the owner's 2026-07-27
+// report: Озон такси 5% (regular, selected) was answered as «лучшая карта»
+// while an Альфа 7% special sat below under «вне рейтинга». Specials now
+// rank by percent — but stay granted, not chosen (no slot, no collision, no
+// comparisons), so the UI marks them instead of the ranking hiding them.
+func TestOfferSpecialRanks(t *testing.T) {
+	res := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
+		{ClientID: clientOzon, BankName: "Озон Банк", RawTitle: "Такси", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: clientAlfa, BankName: "Альфа-Банк", RawTitle: "Барабан суперкэшбека", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferSpecial, Period: july2026},
+	})
+	if len(res.Ranked) != 2 {
+		t.Fatalf("special must rank: got Ranked=%d, want 2", len(res.Ranked))
+	}
+	if res.Ranked[0].BankName != "Альфа-Банк" || res.Ranked[0].Kind != OfferSpecial {
+		t.Errorf("special 7%% must rank above the regular 5%%, got %s/%s", res.Ranked[0].BankName, res.Ranked[0].Kind)
+	}
+
+	// Currency segregation still wins over percent (invariant 5): a 100%
+	// points special never outranks a rub row.
+	mixed := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
+		{ClientID: 4, BankName: "Яндекс Пэй", Percent: pct("100"), CurrencyKind: CurrencyPoints, Kind: OfferSpecial, Period: july2026},
+		{ClientID: clientOzon, BankName: "Озон Банк", Percent: pct("1"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+	})
+	if mixed.Ranked[0].CurrencyKind != CurrencyRub {
+		t.Errorf("rub group still leads a points special (invariant 5), got %s first", mixed.Ranked[0].CurrencyKind)
+	}
+
+	// Still granted, not chosen: no slot, no collision, no comparisons.
+	if err := ValidateSelection(SelectionCheck{
+		Period: july2026, SelectedAt: Date(2026, time.July, 10), OfferKind: OfferSpecial,
+		MaxCategories: maxCats(3), RegularSelectedCount: 3,
+	}); err != nil {
+		t.Errorf("special consumes no slot even at the regular cap, got %v", err)
+	}
+	specCand := CandidateSelection{ClientID: clientOzon, CanonicalCategoryID: catID(supermarketsID), Period: july2026, Kind: OfferSpecial}
+	if got := DetectCollisions(specCand, []ActiveSelection{alfaSupermarkets()}); len(got) != 0 {
+		t.Errorf("special candidate must raise no collision, got %d", len(got))
 	}
 }
 

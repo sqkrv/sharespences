@@ -657,6 +657,7 @@ export interface components {
             period_end: string;
             period_start: string;
             points_label?: string;
+            /** @description the bank's own menu title — names the mechanic on marked super/special rows («Пятница») */
             raw_title: string;
             /** @enum {string} */
             verdict: "free" | "paid" | "locked" | "slots_full" | "unknown";
@@ -890,8 +891,8 @@ export interface components {
             fallback?: components["schemas"]["LookupEntryDTO"][] | null;
             message?: string;
             partner?: components["schemas"]["PartnerOfferDTO"][] | null;
+            /** @description regular + super + special, marked by kind (invariant 6 amendment 2026-07-27) */
             ranked: components["schemas"]["LookupEntryDTO"][] | null;
-            special?: components["schemas"]["LookupEntryDTO"][] | null;
         };
         "Cashback-offer-period-attachRequest": {
             /**
@@ -1175,6 +1176,8 @@ export interface components {
             period_end: string;
             period_start: string;
             points_label?: string;
+            /** @description the bank's own menu title — names the mechanic on marked super/special rows («Пятница») */
+            raw_title: string;
         };
         "Mcc-resolveResponse": {
             /**
@@ -1216,6 +1219,8 @@ export interface components {
         };
         OverviewBaseDTO: {
             best: components["schemas"]["LookupEntryDTO"];
+            /** @description all-purchases icon — keeps the list's icon column aligned */
+            emoji?: string;
             /** Format: int64 */
             others_count: number;
         };
@@ -1230,6 +1235,8 @@ export interface components {
             best: components["schemas"]["LookupEntryDTO"];
             /** Format: int64 */
             category_id: number;
+            /** @description canonical category icon for the list */
+            emoji?: string;
             /** Format: int64 */
             others_count: number;
             slug: string;

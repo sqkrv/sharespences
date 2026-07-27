@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { api, unwrap, ApiError, type LookupEntry, type Schemas } from "../api/client";
 import { useCards, useCategories } from "../hooks";
 import { BankBadge, Btn, Card, ErrMsg, GradientCard, Pct, SegTabs, Spinner } from "../components/ui";
-import { capNote, currencyBadge, fmtPercent } from "../lib";
+import { capNote, currencyBadge, FALLBACK_EMOJI, fmtPercent } from "../lib";
 
 type AvailableEntry = Schemas["AvailableEntryDTO"];
 
@@ -199,18 +199,37 @@ function ComingSoon({ text, onPickCategory }: { text: string; onPickCategory: ()
   );
 }
 
+// Granted-bonus marks on ranked rows (invariant 6 amendment 2026-07-27, all
+// kinds rank): барабан is deterministic and stacks; спец ranks by percent but
+// its condition (пятница, только в сервисе) is not modelled — so it always
+// carries the mechanic's own title and «проверь условие».
+function KindBadge({ kind }: { kind?: string }) {
+  if (kind !== "super" && kind !== "special") return null;
+  return (
+    <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] text-[9px] font-bold text-gold">
+      {kind === "super" ? "барабан" : "спец"}
+    </span>
+  );
+}
+
+function specialNote(e: LookupEntry): string {
+  return [e.raw_title, "проверь условие в банке"].filter(Boolean).join(" · ");
+}
+
 function OtherCardRow({ e }: { e: LookupEntry }) {
   const cap = capNote(e);
   return (
-    <div className="flex items-center gap-2.5 rounded-xl border border-brd bg-srf px-3 py-2.5">
+    <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 ${e.kind === "special" ? "border-gold/30 bg-gold/5" : "border-brd bg-srf"}`}>
       <BankBadge name={e.bank_name} size={26} />
       <div className="min-w-0 flex-1">
         <p className="text-[13px] font-semibold">
           {e.bank_name}
           {e.holder_label && <span className="font-medium text-tx4"> · {e.holder_label}</span>}
-          {e.kind === "super" && <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] text-[9px] font-bold text-gold">барабан</span>}
+          <KindBadge kind={e.kind} />
         </p>
-        <p className="text-[10px] font-medium text-tx4">{cap || currencyBadge(e.currency_kind, e.points_label)}</p>
+        <p className="text-[10px] font-medium text-tx4">
+          {e.kind === "special" ? specialNote(e) : cap || currencyBadge(e.currency_kind, e.points_label)}
+        </p>
       </div>
       <Pct percent={e.percent} currency={e.currency_kind} className="text-[14px]" />
     </div>
@@ -333,6 +352,7 @@ export default function Lookup() {
                     : "border border-brd bg-srf font-semibold text-tx2"
                 }`}
               >
+                <span className="mr-1">{c.emoji || FALLBACK_EMOJI}</span>
                 {c.title_ru}
               </button>
             ))}
@@ -359,7 +379,9 @@ export default function Lookup() {
                   ) : (
                     best && (
                       <>
-                        <p className="mx-0.5 text-[11px] font-semibold text-tx3">Лучшая карта · {selectedCat?.title_ru}</p>
+                        <p className="mx-0.5 text-[11px] font-semibold text-tx3">
+                          Лучшая карта · {selectedCat?.emoji || FALLBACK_EMOJI} {selectedCat?.title_ru}
+                        </p>
                         <GradientCard className="p-4">
                           <p className="text-[9.5px] font-bold uppercase tracking-[.16em] text-white/75">Платите этой картой</p>
                           <div className="mt-3 flex items-end justify-between">
@@ -367,6 +389,9 @@ export default function Lookup() {
                               <p className="text-[22px] leading-none font-extrabold tracking-tight">{best.bank_name}</p>
                               {best.kind === "super" && (
                                 <span className="mt-1.5 inline-flex rounded-[8px] bg-white/20 px-2 py-0.5 text-[10px] font-bold">барабан · суммируется</span>
+                              )}
+                              {best.kind === "special" && (
+                                <span className="mt-1.5 inline-flex rounded-[8px] bg-white/20 px-2 py-0.5 text-[10px] font-bold">спец · {specialNote(best)}</span>
                               )}
                               <p className="mt-1.5 text-[11px] font-semibold text-white/85">
                                 {[best.holder_label, cardChipsOf(best) || "любая карта"].filter(Boolean).join(" · ")}
@@ -418,9 +443,7 @@ export default function Lookup() {
                                 <p className="text-[13px] font-semibold">
                                   {e.bank_name}
                                   {e.holder_label && <span className="font-medium text-tx4"> · {e.holder_label}</span>}
-                                  {e.kind === "super" && (
-                                    <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] text-[9px] font-bold text-gold">барабан</span>
-                                  )}
+                                  <KindBadge kind={e.kind} />
                                 </p>
                                 <p className="text-[10px] font-medium text-tx4">{verdictNote(e)}</p>
                               </div>
@@ -443,21 +466,6 @@ export default function Lookup() {
                         Сначала выбери категорию в приложении банка, потом отметь здесь.
                       </p>
                       <ErrMsg error={mark.error} />
-                    </>
-                  )}
-
-                  {(lookup.data.special ?? []).length > 0 && (
-                    <>
-                      <p className="mx-0.5 text-[11px] font-semibold text-gold">Спец-предложения (вне рейтинга)</p>
-                      <div className="space-y-1.5">
-                        {(lookup.data.special ?? []).map((e, i) => (
-                          <div key={i} className="flex items-center gap-2.5 rounded-xl border border-dashed border-gold/30 bg-gold/5 px-3 py-2.5">
-                            <BankBadge name={e.bank_name} size={26} />
-                            <span className="flex-1 text-[13px] font-semibold">{e.bank_name}</span>
-                            <span className="text-[13px] font-extrabold text-gold">{fmtPercent(e.percent)}</span>
-                          </div>
-                        ))}
-                      </div>
                     </>
                   )}
 

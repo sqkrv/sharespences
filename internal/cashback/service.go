@@ -116,6 +116,7 @@ func entryOf(o db.ListUserOffersRow) LookupEntry {
 		ClientLabel:    clientLabel(o.BankName, o.HolderLabel),
 		HolderLabel:    holderOf(o.HolderLabel),
 		BankName:       o.BankName,
+		RawTitle:       o.RawTitle,
 		Percent:        o.Percent,
 		CurrencyKind:   currencyOf(o),
 		Kind:           OfferKind(o.Kind),
@@ -594,6 +595,7 @@ type OverviewCategoryGroup struct {
 	CategoryID  int64
 	Slug        string
 	TitleRu     string
+	Emoji       string // canonical category icon for the list (owner 2026-07-27)
 	Best        LookupEntry
 	OthersCount int
 }
@@ -644,8 +646,18 @@ type OverviewClient struct {
 // OverviewBase is the «Остальное» row: the best base-rate card («За все
 // покупки» granted rows plus regular rows mapped to all-purchases).
 type OverviewBase struct {
+	Emoji       string // all-purchases icon — keeps the list's icon column aligned
 	Best        LookupEntry
 	OthersCount int
+}
+
+// emojiOf unwraps a canonical category's optional UI icon (seeded from the
+// knowledge taxonomy; empty means «no icon», the frontend falls back).
+func emojiOf(c db.CanonicalCategory) string {
+	if c.Emoji == nil {
+		return ""
+	}
+	return *c.Emoji
 }
 
 // OverviewResult answers GET /cashback/overview: the design's two cuts of
@@ -746,45 +758,27 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		if !ok {
 			continue
 		}
-		var best LookupEntry
-		var others int
-		switch {
-		case len(ranked.Ranked) > 0:
-			// regular + super rank; super (барабан) can be the best card.
-			best, others = ranked.Ranked[0], len(ranked.Ranked)-1
-		case len(ranked.Special) > 0:
-			// only display-only specials (Пятница/колесо/timed): surface the
-			// category as a spec row so it isn't invisible (owner 2026-07-15),
-			// but it's NOT a ranked answer — the frontend styles it apart.
-			best, others = bestByPercent(ranked.Special), len(ranked.Special)-1
-		default:
+		if len(ranked.Ranked) == 0 {
 			continue // nothing active
 		}
+		// All three kinds rank (invariant 6 amendment, owner 2026-07-27): the
+		// best card may be a барабан or a спец — the frontend marks it.
 		res.Categories = append(res.Categories, OverviewCategoryGroup{
 			CategoryID:  catID,
 			Slug:        cat.Slug,
 			TitleRu:     cat.TitleRu,
-			Best:        best,
-			OthersCount: others,
+			Emoji:       emojiOf(cat),
+			Best:        ranked.Ranked[0],
+			OthersCount: len(ranked.Ranked) - 1,
 		})
 	}
-	// Sort: rub before points; within a currency, ranked (regular/super)
-	// before display-only special; then percent desc; then title.
-	specialRank := func(k OfferKind) int {
-		if k.ranksInLookup() {
-			return 0
-		}
-		return 1
-	}
+	// Sort: rub before points; then percent desc; then title.
 	sort.SliceStable(res.Categories, func(i, j int) bool {
 		a, b := res.Categories[i].Best, res.Categories[j].Best
 		ca := map[CurrencyKind]int{CurrencyRub: 0, CurrencyPoints: 1}[a.CurrencyKind]
 		cb := map[CurrencyKind]int{CurrencyRub: 0, CurrencyPoints: 1}[b.CurrencyKind]
 		if ca != cb {
 			return ca < cb
-		}
-		if sa, sb := specialRank(a.Kind), specialRank(b.Kind); sa != sb {
-			return sa < sb
 		}
 		if c := cmpPercentDesc(a.Percent, b.Percent); c != 0 {
 			return c < 0
@@ -795,7 +789,11 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 	// «Остальное»: best selected «За все покупки» across clients.
 	fb := RankActiveSelections(onDate, fallbackEntries(offers, allPurposesID, nil, entryOf))
 	if len(fb.Ranked) > 0 {
-		res.Base = &OverviewBase{Best: fb.Ranked[0], OthersCount: len(fb.Ranked) - 1}
+		base := OverviewBase{Best: fb.Ranked[0], OthersCount: len(fb.Ranked) - 1}
+		if allPurposesID != nil {
+			base.Emoji = emojiOf(catByID[*allPurposesID])
+		}
+		res.Base = &base
 	}
 
 	// --- «Карты»: every bank client with its plastics, and the client's
@@ -872,8 +870,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 // (matched by merchant/notes text against the category title).
 type LookupResultView struct {
 	Category  db.CanonicalCategory
-	Ranked    []LookupEntry
-	Special   []LookupEntry
+	Ranked    []LookupEntry    // regular + super + special, marked by kind (amendment 2026-07-27)
 	Fallback  []LookupEntry    // selected «За все покупки» — pays when nothing ranks
 	Available []AvailableEntry // S3b: offered-but-unselected rows with verdicts
 	Partner   []db.ListPartnerOffersForUserRow
@@ -920,9 +917,8 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 			max = o.MaxCategories
 		}
 		available = append(available, AvailableEntry{
-			Entry:    entryOf(o),
-			OfferID:  o.CategoryOfferID,
-			RawTitle: o.RawTitle,
+			Entry:   entryOf(o),
+			OfferID: o.CategoryOfferID,
 			Verdict: AssessAvailability(AvailabilityCheck{
 				Kind:                 kind,
 				Policy:               MidPeriodAddPolicy(o.MidPeriodAdd),
@@ -967,7 +963,7 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 		}
 	}
 	return LookupResultView{
-		Category: cat, Ranked: ranked.Ranked, Special: ranked.Special,
+		Category: cat, Ranked: ranked.Ranked,
 		Fallback: fallback, Available: RankAvailable(available), Partner: footnote,
 	}, nil
 }

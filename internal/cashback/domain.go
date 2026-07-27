@@ -39,8 +39,13 @@ const (
 //     special — is granted, not chosen: no slot, no collision warning
 //     (owner 2026-07-15).
 //   - special — a time-boxed / non-stacking / channel bonus (Альфа-Пятница,
-//     Яндекс колесо, timed flash, сервис-категории): record-only, shown
-//     apart, never ranked, no slot.
+//     Яндекс колесо, timed flash): granted, not chosen — no slot, no
+//     collision, never a comparison candidate, never offered in S3b. It DOES
+//     rank in lookup/overview since the invariant-6 amendment (owner
+//     2026-07-27: a 7% special must not hide below a 5% regular); the UI
+//     marks it «спец» with the offer's raw title and a «проверь условие»
+//     caveat, because its condition (пятница, только в сервисе) is not
+//     modelled.
 //
 // «За все покупки» is an ORDINARY regular row (owner 2026-07-09): it takes a
 // slot and collides like any category; it merely pays only when no other
@@ -53,10 +58,6 @@ const (
 	OfferSuper   OfferKind = "super"
 	OfferSpecial OfferKind = "special"
 )
-
-// ranksInLookup reports whether an offer of this kind participates in
-// best-card ranking. Only special is excluded (invariant 6); super ranks.
-func (k OfferKind) ranksInLookup() bool { return k != OfferSpecial }
 
 // PeriodType mirrors cashback_program.period_type.
 type PeriodType string
@@ -261,18 +262,6 @@ func cmpPercentDesc(a, b *decimal.Decimal) int {
 	}
 }
 
-// bestByPercent returns the entry with the highest percent (unknown last).
-// Caller guarantees a non-empty slice.
-func bestByPercent(entries []LookupEntry) LookupEntry {
-	best := entries[0]
-	for _, e := range entries[1:] {
-		if cmpPercentDesc(e.Percent, best.Percent) < 0 {
-			best = e
-		}
-	}
-	return best
-}
-
 // OfferView is a menu row as the helper compares them.
 type OfferView struct {
 	OfferID      int64
@@ -322,6 +311,7 @@ type LookupEntry struct {
 	ClientLabel    string
 	HolderLabel    string // держатель («Мама»); empty = the owner
 	BankName       string
+	RawTitle       string // the bank's own menu title — names the mechanic on marked super/special rows («Пятница»)
 	Percent        *decimal.Decimal
 	CurrencyKind   CurrencyKind
 	Kind           OfferKind
@@ -330,7 +320,7 @@ type LookupEntry struct {
 	CapPerCategory *decimal.Decimal
 	CapScope       CapScope
 	OfferCapValue  *decimal.Decimal // per-offer cap (ВТБ «Кешбэк до N ₽» rows); wins over the tier cap in display
-	PointsLabel    string // 'Баллы Плюс', 'баллы МКБ'; empty for rubles
+	PointsLabel    string           // 'Баллы Плюс', 'баллы МКБ'; empty for rubles
 }
 
 // MidPeriodAddPolicy mirrors cashback_program.mid_period_add (owner
@@ -406,9 +396,8 @@ func AssessAvailability(c AvailabilityCheck) AvailabilityVerdict {
 // AvailableEntry is one S3b row: the menu offer, its verdict and the
 // program's activation timing (next_day must be warned about).
 type AvailableEntry struct {
-	Entry      LookupEntry
+	Entry      LookupEntry // carries the row's raw title
 	OfferID    int64
-	RawTitle   string
 	Verdict    AvailabilityVerdict
 	Activation ActivationKind
 }
@@ -465,27 +454,22 @@ func RankAvailable(entries []AvailableEntry) []AvailableEntry {
 	return out
 }
 
-// LookupResult is the S3 answer: ranked selections (regular + super) plus
-// special offers listed separately, unranked (invariant 6).
+// LookupResult is the S3 answer: the ranked selections. All three kinds rank
+// since the invariant-6 amendment (owner 2026-07-27) — kind rides along on
+// each entry so the UI can mark барабан/спец rows.
 type LookupResult struct {
-	Ranked  []LookupEntry
-	Special []LookupEntry
+	Ranked []LookupEntry
 }
 
 // RankActiveSelections filters entries to those whose period covers onDate,
-// then ranks the rankable ones (regular + super): grouped by currency (rub
-// before points — groups are never compared to each other, invariant 5),
-// percent descending within a group (unknown percent last), ties by bank name
-// then client label. Special entries active on the date go to Special in
-// input order (invariant 6).
+// then ranks them: grouped by currency (rub before points — groups are never
+// compared to each other, invariant 5), percent descending within a group
+// (unknown percent last), ties by bank name then client label. Kind does not
+// affect the order (amendment 2026-07-27); it only reaches the UI as a mark.
 func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult {
 	var res LookupResult
 	for _, e := range entries {
 		if !e.Period.Contains(onDate) {
-			continue
-		}
-		if !e.Kind.ranksInLookup() {
-			res.Special = append(res.Special, e)
 			continue
 		}
 		res.Ranked = append(res.Ranked, e)

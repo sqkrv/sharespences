@@ -137,3 +137,7 @@ export function monthKey(iso: string): string {
 export function monthNameOf(iso: string): string {
   return MONTHS_NOM[Number(iso.slice(5, 7)) - 1];
 }
+
+// Category icon fallback — a canonical category may carry no emoji yet
+// (custom rows, un-curated additions); the icon column still aligns.
+export const FALLBACK_EMOJI = "🏷️";

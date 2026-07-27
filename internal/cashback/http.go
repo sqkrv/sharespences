@@ -212,7 +212,8 @@ type LookupEntryDTO struct {
 	BankName       string  `json:"bank_name"`
 	ClientLabel    string  `json:"client_label"`
 	HolderLabel    string  `json:"holder_label,omitempty"`
-	Kind           string  `json:"kind"` // regular | super | special — lets the UI mark the ranked super (барабан)
+	RawTitle       string  `json:"raw_title" doc:"the bank's own menu title — names the mechanic on marked super/special rows («Пятница»)"`
+	Kind           string  `json:"kind"` // regular | super | special — all rank; the UI marks барабан/спец (amendment 2026-07-27)
 	Percent        *string `json:"percent,omitempty"`
 	CurrencyKind   string  `json:"currency_kind"`
 	PointsLabel    string  `json:"points_label,omitempty"`
@@ -226,7 +227,7 @@ type LookupEntryDTO struct {
 
 func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 	return LookupEntryDTO{
-		BankClientID: e.ClientID, Kind: string(e.Kind),
+		BankClientID: e.ClientID, Kind: string(e.Kind), RawTitle: e.RawTitle,
 		BankName: e.BankName, ClientLabel: e.ClientLabel, HolderLabel: e.HolderLabel, Percent: decToStr(e.Percent),
 		CurrencyKind: string(e.CurrencyKind), PointsLabel: e.PointsLabel,
 		CapValue: decToStr(e.CapValue), CapPerCategory: decToStr(e.CapPerCategory),
@@ -241,7 +242,6 @@ func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 type AvailableEntryDTO struct {
 	LookupEntryDTO
 	OfferID    int64  `json:"offer_id" doc:"category_offer id — «Отметить выбранной» posts the ordinary selection for it"`
-	RawTitle   string `json:"raw_title"`
 	Verdict    string `json:"verdict" enum:"free,paid,locked,slots_full,unknown"`
 	Activation string `json:"activation" enum:"immediate,next_day,unknown" doc:"next_day (МКБ): a fresh pick won't cover a purchase made right now"`
 }
@@ -298,6 +298,7 @@ type OverviewCategoryDTO struct {
 	CategoryID  int64          `json:"category_id"`
 	Slug        string         `json:"slug"`
 	TitleRu     string         `json:"title_ru"`
+	Emoji       string         `json:"emoji,omitempty" doc:"canonical category icon for the list"`
 	Best        LookupEntryDTO `json:"best"`
 	OthersCount int            `json:"others_count"`
 }
@@ -312,6 +313,7 @@ type OverviewChipDTO struct {
 
 // OverviewBaseDTO is the «Остальное» row: the best base rate across clients.
 type OverviewBaseDTO struct {
+	Emoji       string         `json:"emoji,omitempty" doc:"all-purchases icon — keeps the list's icon column aligned"`
 	Best        LookupEntryDTO `json:"best"`
 	OthersCount int            `json:"others_count"`
 }
@@ -1002,12 +1004,12 @@ func RegisterHTTP(api huma.API, s *Service) {
 		out.Body.Date = onDate.Format("2006-01-02")
 		out.Body.SelectionOpensDay = res.SelectionOpensDay
 		if res.Base != nil {
-			out.Body.Base = &OverviewBaseDTO{Best: lookupEntryDTO(res.Base.Best), OthersCount: res.Base.OthersCount}
+			out.Body.Base = &OverviewBaseDTO{Emoji: res.Base.Emoji, Best: lookupEntryDTO(res.Base.Best), OthersCount: res.Base.OthersCount}
 		}
 		out.Body.Categories = make([]OverviewCategoryDTO, len(res.Categories))
 		for i, g := range res.Categories {
 			out.Body.Categories[i] = OverviewCategoryDTO{
-				CategoryID: g.CategoryID, Slug: g.Slug, TitleRu: g.TitleRu,
+				CategoryID: g.CategoryID, Slug: g.Slug, TitleRu: g.TitleRu, Emoji: g.Emoji,
 				Best: lookupEntryDTO(g.Best), OthersCount: g.OthersCount,
 			}
 		}
@@ -1057,8 +1059,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		Body struct {
 			Category  CanonicalCategoryDTO `json:"category"`
 			Date      string               `json:"date"`
-			Ranked    []LookupEntryDTO     `json:"ranked"`
-			Special   []LookupEntryDTO     `json:"special,omitempty"`
+			Ranked    []LookupEntryDTO     `json:"ranked" doc:"regular + super + special, marked by kind (invariant 6 amendment 2026-07-27)"`
 			Fallback  []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
 			Available []AvailableEntryDTO  `json:"available,omitempty" doc:"S3b: offered-but-unselected menu rows, actionable verdicts first"`
 			Partner   []PartnerOfferDTO    `json:"partner,omitempty"`
@@ -1080,8 +1081,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Body struct {
 				Category  CanonicalCategoryDTO `json:"category"`
 				Date      string               `json:"date"`
-				Ranked    []LookupEntryDTO     `json:"ranked"`
-				Special   []LookupEntryDTO     `json:"special,omitempty"`
+				Ranked    []LookupEntryDTO     `json:"ranked" doc:"regular + super + special, marked by kind (invariant 6 amendment 2026-07-27)"`
 				Fallback  []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
 				Available []AvailableEntryDTO  `json:"available,omitempty" doc:"S3b: offered-but-unselected menu rows, actionable verdicts first"`
 				Partner   []PartnerOfferDTO    `json:"partner,omitempty"`
@@ -1094,17 +1094,14 @@ func RegisterHTTP(api huma.API, s *Service) {
 		for i, e := range res.Ranked {
 			out.Body.Ranked[i] = lookupEntryDTO(e)
 		}
-		for _, e := range res.Special {
-			out.Body.Special = append(out.Body.Special, lookupEntryDTO(e))
-		}
 		for _, e := range res.Fallback {
 			out.Body.Fallback = append(out.Body.Fallback, lookupEntryDTO(e))
 		}
 		for _, a := range res.Available {
 			out.Body.Available = append(out.Body.Available, AvailableEntryDTO{
 				LookupEntryDTO: lookupEntryDTO(a.Entry),
-				OfferID:        a.OfferID, RawTitle: a.RawTitle,
-				Verdict: string(a.Verdict), Activation: string(a.Activation),
+				OfferID:        a.OfferID,
+				Verdict:        string(a.Verdict), Activation: string(a.Activation),
 			})
 		}
 		for _, p := range res.Partner {
@@ -1115,9 +1112,9 @@ func RegisterHTTP(api huma.API, s *Service) {
 				CapValue: decToStr(p.CapValue), Notes: p.Notes,
 			})
 		}
-		// The dead-end message only when there is truly nothing — ranked,
-		// special AND available all empty (spec S3b).
-		if len(out.Body.Ranked) == 0 && len(out.Body.Special) == 0 && len(out.Body.Available) == 0 {
+		// The dead-end message only when there is truly nothing — neither
+		// ranked nor available (spec S3b).
+		if len(out.Body.Ranked) == 0 && len(out.Body.Available) == 0 {
 			out.Body.Message = "нет активных выборов"
 		}
 		return out, nil

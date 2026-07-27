@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type BankCategory } from "../api/client";
 import { useBankCategories, useCategories } from "../hooks";
 import { BankBadge, Badge, Btn, ErrMsg, Field, Input, Select } from "./ui";
-import { normalizeTitle } from "../lib";
+import { FALLBACK_EMOJI, normalizeTitle } from "../lib";
 
 // What a pick means for the entry form: the snapshot title, the canonical
 // mapping and the kind hint. bankCategoryID is absent in fallback mode
@@ -17,8 +17,6 @@ export type PickedCategory = {
   kind?: "regular" | "super" | "special";
   emoji?: string | null;
 };
-
-const FALLBACK_EMOJI = "🏷️";
 
 function pickFromBankCategory(r: BankCategory): PickedCategory {
   return {

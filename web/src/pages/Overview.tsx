@@ -5,7 +5,7 @@ import { api, unwrap, type Schemas } from "../api/client";
 import { useBanks, useClients, usePeriods, usePrograms, useTierMap } from "../hooks";
 import { BankBadge, Btn, Card, Empty, ErrMsg, Field, Input, Pct, SegTabs, Select, Spinner, Badge } from "../components/ui";
 import { MonthPicker } from "../components/MonthPicker";
-import { capNote, midMonthISO, monthKey, monthNameOf, opensStripParts, pad2, todayISO } from "../lib";
+import { capNote, FALLBACK_EMOJI, midMonthISO, monthKey, monthNameOf, opensStripParts, pad2, todayISO } from "../lib";
 
 // [enum value, human label] — the API takes the lowercase enum, the user
 // reads «Мир»/«Visa» (owner 2026-07-15).
@@ -66,13 +66,14 @@ function storedGrouping(): BanksGrouping {
 }
 
 // «Категории» sort (owner 2026-07-24): по проценту keeps the API order
-// (currency → ranked-before-спец → percent desc → title); the others
-// re-sort client-side. Persisted like the grouping toggle.
+// (currency → percent desc → title); the others re-sort client-side.
+// Persisted like the grouping toggle. Default is «по алфавиту» since
+// 2026-07-27 (owner: the list is scanned by category name, not by rate).
 type CatsSort = "percent" | "alpha" | "bank";
 const CATS_SORT_KEY = "overview-cats-sort";
 function storedCatsSort(): CatsSort {
   const v = localStorage.getItem(CATS_SORT_KEY);
-  return v === "alpha" || v === "bank" ? v : "percent";
+  return v === "percent" || v === "bank" ? v : "alpha";
 }
 
 // Держатель + тариф live on the bank client — the cards merely hang off it.
@@ -624,6 +625,7 @@ export default function Overview() {
             ) : (
               <>
                 <div className="flex items-center gap-2.5 py-2.5 text-[9px] font-bold uppercase tracking-[.1em] text-tx4">
+                  <span className="w-[18px]" />
                   <span className="flex-1">Категория</span>
                   <span>Карта</span>
                   <span className="w-10 text-right">%</span>
@@ -635,10 +637,13 @@ export default function Overview() {
                     onClick={() => navigate(`/lookup?cat=${g.slug}`)}
                     className="flex w-full items-center gap-2.5 border-t border-brd/60 py-2.5 text-left"
                   >
+                    {/* Category icon (owner 2026-07-27) — the canonical emoji
+                        seeded from the knowledge taxonomy. */}
+                    <span className="w-[18px] flex-none text-[15px] leading-none">{g.emoji || FALLBACK_EMOJI}</span>
                     <span className="flex-1 text-sm font-semibold">
                       {g.title_ru}
-                      {/* super (барабан) ranks as best card but is a bonus, not a chosen slot;
-                          special-only means no chosen category here — both flagged gold. */}
+                      {/* All kinds rank since 2026-07-27; барабан/спец are granted bonuses,
+                          not chosen slots — flagged gold, спец also means «проверь условие». */}
                       {g.best.kind === "super" && (
                         <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] align-middle text-[9px] font-bold text-gold">барабан</span>
                       )}
@@ -667,6 +672,7 @@ export default function Overview() {
                     onClick={() => navigate("/lookup?cat=all-purchases")}
                     className="flex w-full items-center gap-2.5 border-t border-brd/60 py-2.5 text-left"
                   >
+                    <span className="w-[18px] flex-none text-[15px] leading-none">{data.base.emoji || FALLBACK_EMOJI}</span>
                     <span className="flex-1 text-sm font-semibold text-tx3">Остальное</span>
                     <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-tx3">
                       <BankBadge name={data.base.best.bank_name} size={22} />

@@ -125,6 +125,15 @@ function AddOfferForm({
           {/* Per-offer cap (ВТБ «Кешбэк до N ₽») — static display, no tracking. */}
           <Input inputMode="decimal" className="w-32 flex-none" value={cap} onChange={(e) => setCap(e.target.value)} placeholder="лимит (до ₽)" />
         </div>
+        {/* The compact toggle above invited mis-tagging a барабан as «спец»
+            (owner report 2026-07-27) — spell the mechanics out. */}
+        {kind !== "regular" && (
+          <p className="text-[10.5px] font-medium text-tx4">
+            {kind === "super"
+              ? "барабан = суперкэшбэк на весь период, суммируется с выбранной категорией"
+              : "спец = Пятница / колесо / флеш-акция — с условием (день, сервис)"}
+          </p>
+        )}
         <Btn type="submit" disabled={create.isPending || !picked}>
           Добавить
         </Btn>

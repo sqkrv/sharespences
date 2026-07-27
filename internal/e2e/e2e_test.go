@@ -183,7 +183,6 @@ type lookupJSON struct {
 		CapValue      *string `json:"cap_value"`
 		OfferCapValue *string `json:"offer_cap_value"`
 	} `json:"ranked"`
-	Special  []any `json:"special"`
 	Fallback []struct {
 		BankName string  `json:"bank_name"`
 		Percent  *string `json:"percent"`
@@ -748,7 +747,7 @@ func TestCashbackE2E(t *testing.T) {
 	// --- E2E step 7: the same lookup as another user → empty (scoping) ---
 	var otherLookup lookupJSON
 	other.must("GET", "/api/v1/cashback/lookup?category=supermarkets&date=2026-07-15", nil, &otherLookup, http.StatusOK)
-	if len(otherLookup.Ranked) != 0 || len(otherLookup.Special) != 0 {
+	if len(otherLookup.Ranked) != 0 {
 		t.Fatalf("user B sees %d ranked entries, want 0 (auth scoping)", len(otherLookup.Ranked))
 	}
 	// …and user B cannot read user A's period at all.
