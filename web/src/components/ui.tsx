@@ -99,9 +99,57 @@ export function SegTabs<T extends string>({
   );
 }
 
-// Two-letter bank avatar («АБ», «ОЗ»…), lilac on soft accent — or tinted
-// with the bank's brand color when the API provides one.
+// Bank logos are dropped into src/assets/banks/<slug>.{svg,png} (see the
+// README there) and picked up at build time — no per-file import to edit, and
+// a missing file simply falls back to the two-letter avatar below. Vite
+// hashes and emits them, so the PWA precache covers them offline.
+const LOGO_FILES = import.meta.glob("../assets/banks/*.{svg,png}", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
+
+const BANK_LOGOS: Record<string, string> = Object.fromEntries(
+  Object.entries(LOGO_FILES).map(([path, url]) => [path.split("/").pop()!.replace(/\.(svg|png)$/, ""), url]),
+);
+
+// Seeded bank.name → asset slug. Keep in sync with the seed's bank list
+// (internal/seed/seed.go) and the assets README.
+const BANK_SLUG: Record<string, string> = {
+  "Альфа-Банк": "alfabank",
+  ВТБ: "vtb",
+  "Озон Банк": "ozon",
+  "Яндекс Пэй": "yandex-pay",
+  Газпромбанк: "gazprombank",
+  МКБ: "mkb",
+  Сбербанк: "sber",
+  "Т-Банк": "tbank",
+};
+
+export function bankLogo(name: string): string | undefined {
+  const slug = BANK_SLUG[name];
+  return slug ? BANK_LOGOS[slug] : undefined;
+}
+
+// The bank's own mark, rendered as-is with no plaque behind it (owner
+// 2026-07-27) — logos are supplied in their self-contained app-icon form, so
+// they carry their own background. Banks without a file keep the two-letter
+// avatar («АБ», «ОЗ»…), lilac on soft accent or tinted with the brand color.
 export function BankBadge({ name, size = 33, color }: { name: string; size?: number; color?: string | null }) {
+  const logo = bankLogo(name);
+  if (logo) {
+    return (
+      <img
+        src={logo}
+        alt={name}
+        width={size}
+        height={size}
+        loading="lazy"
+        className="flex-none rounded-[10px] object-contain"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
   const style: React.CSSProperties = { width: size, height: size, fontSize: Math.max(8, Math.round(size / 3)) };
   if (color) {
     style.background = `${color}26`; // ~15% alpha tint

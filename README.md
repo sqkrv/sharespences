@@ -35,4 +35,7 @@ If 5432 is taken locally too, change the host side in the override (e.g.
 
 ## Acknowledgements
 
+Bank logos and other third-party material, with sources and trademark notice:
+[ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
+
 - [MCC codes and descriptions](https://mcc-codes.ru)
