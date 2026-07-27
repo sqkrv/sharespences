@@ -69,6 +69,15 @@ export function currencyBadge(kind?: string, pointsLabel?: string): string {
   return "?";
 }
 
+// Long form of the same fact, for the best-card headline. A tier-less bank
+// client has currency_kind=unknown — say so rather than defaulting to
+// «баллами», which reads as a claim the data does not support.
+export function currencyWord(kind?: string, pointsLabel?: string): string {
+  if (kind === "points") return pointsLabel || "баллами";
+  if (kind === "rub") return "рублями";
+  return "неизвестно чем";
+}
+
 // Static cap reference, e.g. «лимит 1500₽/кат, всего 3000₽» (Озон) or
 // «лимит 7000₽» (Альфа-Смарт). Caps are configured values, not remaining.
 // A per-offer cap (ВТБ «Кешбэк до N ₽» rows) wins over the tier cap.

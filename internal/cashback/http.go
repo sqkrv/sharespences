@@ -1025,7 +1025,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			}
 			dto.Cards = make([]OverviewCardChipDTO, len(c.Cards))
 			for j, cc := range c.Cards {
-				dto.Cards[j] = OverviewCardChipDTO{CardID: cc.CardID, Last4Digits: cc.Last4Digits, PaymentSystem: cc.PaymentSystem}
+				dto.Cards[j] = OverviewCardChipDTO(cc)
 			}
 			if c.PeriodStart != nil {
 				s := c.PeriodStart.Format("2006-01-02")

@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { api, unwrap, ApiError, type LookupEntry, type Schemas } from "../api/client";
 import { useCards, useCategories } from "../hooks";
 import { BankBadge, Btn, Card, ErrMsg, GradientCard, Pct, SegTabs, Spinner } from "../components/ui";
-import { capNote, currencyBadge, FALLBACK_EMOJI, fmtPercent } from "../lib";
+import { capNote, currencyBadge, currencyWord, FALLBACK_EMOJI, fmtPercent } from "../lib";
 
 type AvailableEntry = Schemas["AvailableEntryDTO"];
 
@@ -403,7 +403,7 @@ export default function Lookup() {
                             <div className="flex-none text-right">
                               <p className="text-[44px] leading-[.8] font-extrabold tracking-tighter">{fmtPercent(best.percent)}</p>
                               <p className="mt-1.5 text-[10.5px] font-semibold text-white/85">
-                                {best.currency_kind === "rub" ? "рублями" : best.points_label || "баллами"}
+                                {currencyWord(best.currency_kind, best.points_label)}
                               </p>
                             </div>
                           </div>
