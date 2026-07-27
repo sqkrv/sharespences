@@ -296,7 +296,8 @@ var aliases = []struct{ bank, raw, slug string }{
 	{"Озон Банк", "Ювелирные изделия", "jewelry"},
 	{"Озон Банк", "ЖКХ", "utilities"},
 	{"Озон Банк", "Образование", "education"},
-	{"Озон Банк", "На все покупки", "all-purchases"},
+	{"Озон Банк", "Все покупки", "all-purchases"},
+	{"Озон Банк", "На все покупки", "all-purchases"}, // 2024 loyalty PDF wording; app says «Все покупки»
 	{"Озон Банк", "Стандартный кешбэк 1%", "all-purchases"},
 	{"ВТБ", "Супермаркеты", "supermarkets"},
 	{"ВТБ", "Аптеки", "pharmacies"},
@@ -374,8 +375,12 @@ var aliases = []struct{ bank, raw, slug string }{
 	{"Т-Банк", "Цветы", "flowers"},
 	// Beyond the 2026-04 MCC appendix — owner live app, 2026-07-24.
 	{"Т-Банк", "Все покупки", "all-purchases"},
-	{"Т-Банк", "Топливо в городе", "gas-stations"},
-	{"Яндекс Пэй", "Кафе, рестораны и бары", "restaurants"},
+	{"Т-Банк", "Топливо в Городе", "gas-stations"},
+	{"Т-Банк", "Топливо в городе", "gas-stations"}, // 2026-07-24 memory-entered spelling; app says «в Городе»
+	{"Т-Банк", "Супермаркеты в Городе", "supermarkets"},
+	{"Т-Банк", "Автосервисы в Городе", "auto-services"},
+	{"Яндекс Пэй", "Кафе, бары и рестораны", "restaurants"},
+	{"Яндекс Пэй", "Кафе, рестораны и бары", "restaurants"}, // 2026-07 rules wording; app says «бары и рестораны»
 	{"Яндекс Пэй", "Образование", "education"},
 	{"Яндекс Пэй", "Одежда и обувь", "clothes"},
 	{"Яндекс Пэй", "Развлечения", "entertainment"},
@@ -397,7 +402,8 @@ var aliases = []struct{ bank, raw, slug string }{
 	{"Яндекс Пэй", "Платные дороги и парковки", "toll-roads"},
 	{"Яндекс Пэй", "Товары для детей", "kids"},
 	{"Яндекс Пэй", "АЗС", "gas-stations"},
-	{"Яндекс Пэй", "На всё", "all-purchases"},
+	{"Яндекс Пэй", "Все покупки", "all-purchases"},
+	{"Яндекс Пэй", "На всё", "all-purchases"}, // 2026-07 rules wording; app says «Все покупки»
 }
 
 // Seeded titles that were later renamed/retired: the refresh upsert keys on
@@ -407,7 +413,16 @@ var aliases = []struct{ bank, raw, slug string }{
 // title via the seed CSV.
 var retiredBankCategories = []struct{ bank, title string }{
 	{"Альфа-Банк", "Супермаркеты"}, // → «Продукты» (owner-verified 2026-07-22)
-	{"Т-Банк", "Бензин в городе"},  // never in the live app — «Топливо в городе» is the real row (owner 2026-07-27)
+	{"Т-Банк", "Бензин в городе"},  // never in the live app — «Топливо в Городе» is the real row (owner 2026-07-27)
+	// Corpus sweep 2026-07-27: these titles came from rules PDFs / recollection
+	// and the app renders them differently. Right-hand side is the live wording.
+	{"Т-Банк", "Топливо в городе"},           // → «Топливо в Городе»
+	{"Т-Банк", "Шоппинг в городе"},           // → «Шопинг в Городе»
+	{"Озон Банк", "На все покупки"},          // → «Все покупки»
+	{"Яндекс Пэй", "На всё"},                 // → «Все покупки»
+	{"Яндекс Пэй", "Кафе, рестораны и бары"}, // → «Кафе, бары и рестораны»
+	{"Яндекс Пэй", "Сервис «Яндекс Маркет»"}, // → «Яндекс Маркет»
+	{"Яндекс Пэй", "Подписка Яндекс Плюс"},   // → «Яндекс Плюс»
 }
 
 // Aliases seeded for titles that turned out not to exist: same problem as
@@ -519,7 +534,7 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Озон Банк", title: "Медицинские клиники", slug: "medicine"},
 	{bank: "Озон Банк", title: "Химчистки", slug: "household-services"},
 	{bank: "Озон Банк", title: "Фото и видео", slug: "photo-video"},
-	{bank: "Озон Банк", title: "На все покупки", slug: "all-purchases"},
+	{bank: "Озон Банк", title: "Все покупки", slug: "all-purchases"},
 	// ВТБ (as of 2025-12 «Мультибонус» rules)
 	{bank: "ВТБ", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "ВТБ", title: "Кафе и рестораны", slug: "restaurants"},
@@ -563,6 +578,10 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "ВТБ", title: "Все остальные покупки", slug: "all-purchases"},
 	{bank: "ВТБ", title: "Оплата ЖКУ в ВТБ-Онлайн", emoji: "🧾"},
 	{bank: "ВТБ", title: "Оплата сотовой связи в ВТБ-Онлайн", emoji: "📱"},
+	// Own-service row seen in the picker corpus 2026-07 (ж/д и авиабилеты на
+	// vtb.aviakassa.ru, «дополнительно к кешбэку в сервисе») — canonical-less:
+	// it is a channel, not a spending category.
+	{bank: "ВТБ", title: "ВТБ Путешествия", emoji: "🧳"},
 	// Т-Банк (as of 2026-04 MCC appendix; reference-only bank)
 	{bank: "Т-Банк", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "Т-Банк", title: "Рестораны", slug: "restaurants"},
@@ -601,14 +620,25 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	// Beyond the 2026-04 MCC appendix — owner live app, 2026-07-24 (the
 	// appendix lacks these; full live-menu ingest queued in the knowledge log).
 	{bank: "Т-Банк", title: "Все покупки", slug: "all-purchases"},
-	{bank: "Т-Банк", title: "Топливо в городе", slug: "gas-stations"},
-	// «Шоппинг в городе» is deliberately canonical-less (owner 2026-07-27):
+	// Geo-scoped «… в Городе» family — where Т-Банк's headline rates live
+	// (10–30% vs 5–7% on plain rows). Spelling verified against the corpus
+	// 2026-07-27: capital «Г», and «Шопинг» with one «п».
+	{bank: "Т-Банк", title: "Топливо в Городе", slug: "gas-stations"},
+	{bank: "Т-Банк", title: "Супермаркеты в Городе", slug: "supermarkets"},
+	{bank: "Т-Банк", title: "Автосервисы в Городе", slug: "auto-services"},
+	// «Шопинг в Городе» is deliberately canonical-less (owner 2026-07-27):
 	// it bundles одежда + техника + аксессуары + маркетплейсы, so no single
 	// canonical is honest — an ordinary regular row without a mapping.
-	{bank: "Т-Банк", title: "Шоппинг в городе", emoji: "🛍️"},
+	{bank: "Т-Банк", title: "Шопинг в Городе", emoji: "🛍️"},
+	// «Афиша в Городе» likewise stays canonical-less (owner 2026-07-27):
+	// culture/cinema both only partly fit, and Альфа-Афиша is the precedent.
+	{bank: "Т-Банк", title: "Афиша в Городе", emoji: "🎭"},
+	// Own-service rows — slot-consuming, hence catalog rows (owner 2026-07-27).
+	{bank: "Т-Банк", title: "Т-Страхование", emoji: "🛡️"},
+	{bank: "Т-Банк", title: "Долями", emoji: "💳"},
 	// Яндекс Пэй (as of 2026-07-14 rules)
 	{bank: "Яндекс Пэй", title: "Супермаркеты", slug: "supermarkets"},
-	{bank: "Яндекс Пэй", title: "Кафе, рестораны и бары", slug: "restaurants"},
+	{bank: "Яндекс Пэй", title: "Кафе, бары и рестораны", slug: "restaurants"},
 	{bank: "Яндекс Пэй", title: "АЗС", slug: "gas-stations"},
 	{bank: "Яндекс Пэй", title: "Аптеки", slug: "pharmacies"},
 	{bank: "Яндекс Пэй", title: "Такси", slug: "taxi"},
@@ -629,16 +659,26 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Яндекс Пэй", title: "Товары для детей", slug: "kids"},
 	{bank: "Яндекс Пэй", title: "Ювелирные изделия", slug: "jewelry"},
 	{bank: "Яндекс Пэй", title: "Медицина", slug: "medicine"},
-	{bank: "Яндекс Пэй", title: "На всё", slug: "all-purchases"},
-	{bank: "Яндекс Пэй", title: "Сервис «Яндекс Маркет»", emoji: "🛍️"},
+	{bank: "Яндекс Пэй", title: "Все покупки", slug: "all-purchases"},
+	// Own-service rows. Titles below carry the wording the app renders
+	// («Яндекс Маркет», not «Сервис «Яндекс Маркет»» as the rules PDF has
+	// it) — corpus-verified 2026-07-27 against Russian-locale screenshots.
+	{bank: "Яндекс Пэй", title: "Яндекс Маркет", emoji: "🛍️"},
+	{bank: "Яндекс Пэй", title: "Яндекс Лавка", emoji: "🛒"},
+	{bank: "Яндекс Пэй", title: "Яндекс Заправки", emoji: "⛽"},
+	{bank: "Яндекс Пэй", title: "Яндекс Такси", emoji: "🚕"},
+	{bank: "Яндекс Пэй", title: "Яндекс Плюс", emoji: "➕"},
+	// «Яндекс Музыка» here is концертные билеты, not the subscription —
+	// the app's own subtitle is «Билеты на концерты».
+	{bank: "Яндекс Пэй", title: "Яндекс Музыка", emoji: "🎫"},
+	{bank: "Яндекс Пэй", title: "Кинопоиск", emoji: "🎬"},
+	// Channel rows (rules PDF, not seen in the picker corpus).
 	{bank: "Яндекс Пэй", title: "Сервис «Яндекс Go»", emoji: "🚖"},
 	{bank: "Яндекс Пэй", title: "1% в Сервисах Яндекса", emoji: "🟡"},
 	{bank: "Яндекс Пэй", title: "Оплата через Яндекс Сплит", emoji: "💳"},
 	{bank: "Яндекс Пэй", title: "Оплата через СБП со Счёта в Яндексе", emoji: "💸"},
 	{bank: "Яндекс Пэй", title: "Оплата через SberPay QR", emoji: "🔳"},
 	{bank: "Яндекс Пэй", title: "Оплата токеном по NFC", emoji: "📲"},
-	{bank: "Яндекс Пэй", title: "Яндекс Такси", emoji: "🚕"},
-	{bank: "Яндекс Пэй", title: "Подписка Яндекс Плюс", emoji: "➕"},
 }
 
 // Run loads all seed data.
