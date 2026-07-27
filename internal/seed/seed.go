@@ -408,6 +408,22 @@ var aliases = []struct{ bank, raw, slug string }{
 	{"Яндекс Пэй", "Товары для детей", "kids"},
 	{"Яндекс Пэй", "АЗС", "gas-stations"},
 	{"Яндекс Пэй", "Все покупки", "all-purchases"},
+	// МКБ had no aliases at all — added with its first catalog (2026-07-27).
+	{"МКБ", "на все покупки", "all-purchases"},
+	{"МКБ", "на АЗС", "gas-stations"},
+	{"МКБ", "Такси", "taxi"},
+	{"МКБ", "Городской транспорт", "transport"},
+	{"МКБ", "Каршеринг", "car-rental"},
+	{"МКБ", "Автопутешествия", "toll-roads"},
+	{"МКБ", "Спортивные клубы", "active-leisure"},
+	{"МКБ", "Бытовые услуги", "household-services"},
+	{"МКБ", "Детские товары", "kids"},
+	{"МКБ", "Домашние питомцы", "pets"},
+	{"МКБ", "Салоны красоты и барбершопы", "beauty"},
+	{"МКБ", "Дьюти-фри", "duty-free"},
+	{"МКБ", "Развлечения", "entertainment"},
+	{"МКБ", "Кино и театры", "cinema"},
+	{"МКБ", "Видеоигры", "digital-goods"},
 	{"Яндекс Пэй", "На всё", "all-purchases"}, // 2026-07 rules wording; app says «Все покупки»
 }
 
@@ -540,6 +556,16 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Озон Банк", title: "Химчистки", slug: "household-services"},
 	{bank: "Озон Банк", title: "Фото и видео", slug: "photo-video"},
 	{bank: "Озон Банк", title: "Все покупки", slug: "all-purchases"},
+	// Merchant rows rendered inline in the Озон picker with their logos,
+	// slot-consuming (2026-06/2026-07 screenshots). Акции outside the menu
+	// («Партнёрские акции» history filter) stay partner_offer.
+	{bank: "Озон Банк", title: "Tasty Coffee", emoji: "☕"},
+	{bank: "Озон Банк", title: "START", emoji: "🎬"},
+	{bank: "Озон Банк", title: "Дикси Доставка", emoji: "🛒"},
+	{bank: "Озон Банк", title: "Пятёрочка Доставка", emoji: "🛒"},
+	{bank: "Озон Банк", title: "РИВ ГОШ", emoji: "💄"},
+	{bank: "Озон Банк", title: "Отели на Туту", emoji: "🏨"},
+	{bank: "Озон Банк", title: "Сварщица Екатерина", emoji: "🔧"},
 	// ВТБ (as of 2025-12 «Мультибонус» rules)
 	{bank: "ВТБ", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "ВТБ", title: "Кафе и рестораны", slug: "restaurants"},
@@ -587,6 +613,10 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	// vtb.aviakassa.ru, «дополнительно к кешбэку в сервисе») — canonical-less:
 	// it is a channel, not a spending category.
 	{bank: "ВТБ", title: "ВТБ Путешествия", emoji: "🧳"},
+	// Merchant rows inside the ВТБ picker (2026-01/2026-07 screenshots).
+	{bank: "ВТБ", title: "Яндекс Лавка", emoji: "🥬"},
+	{bank: "ВТБ", title: "М.Косметик", emoji: "💄"},
+	{bank: "ВТБ", title: "Почта России", emoji: "📮"},
 	// Т-Банк (as of 2026-04 MCC appendix; reference-only bank)
 	{bank: "Т-Банк", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "Т-Банк", title: "Рестораны", slug: "restaurants"},
@@ -641,6 +671,10 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	// Own-service rows — slot-consuming, hence catalog rows (owner 2026-07-27).
 	{bank: "Т-Банк", title: "Т-Страхование", emoji: "🛡️"},
 	{bank: "Т-Банк", title: "Долями", emoji: "💳"},
+	// Merchant + subscription-reward rows inside the Т-Банк picker.
+	{bank: "Т-Банк", title: "MODI", emoji: "🛍️"},
+	{bank: "Т-Банк", title: "Подписка Магнит в Т-Банке", emoji: "🧲"},
+	{bank: "Т-Банк", title: "PREMIER в Т-Банке", emoji: "🎬"},
 	// Яндекс Пэй (as of 2026-07-14 rules)
 	{bank: "Яндекс Пэй", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "Яндекс Пэй", title: "Кафе, бары и рестораны", slug: "restaurants"},
@@ -691,6 +725,52 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Яндекс Пэй", title: "Оплата через СБП со Счёта в Яндексе", emoji: "💸"},
 	{bank: "Яндекс Пэй", title: "Оплата через SberPay QR", emoji: "🔳"},
 	{bank: "Яндекс Пэй", title: "Оплата токеном по NFC", emoji: "📲"},
+	// Merchant rows rendered inside the picker. Seeded canonical-less on the
+	// slot test — picking one spends a slot, so it must exist to record a
+	// month (owner 2026-07-27: prefer more rows over fewer). These rotate
+	// monthly; a row absent from the current menu is not wrong, just idle.
+	{bank: "Яндекс Пэй", title: "Свои Плюсы в S7", emoji: "✈️"},
+	{bank: "Яндекс Пэй", title: "РИВ ГОШ", emoji: "💄"},
+	{bank: "Яндекс Пэй", title: "ЛЭТУАЛЬ", emoji: "💄"},
+	{bank: "Яндекс Пэй", title: "Азбука вкуса", emoji: "🥬"},
+	{bank: "Яндекс Пэй", title: "Tripster", emoji: "🧭"},
+	{bank: "Яндекс Пэй", title: "AFINA", emoji: "🏛️"},
+	{bank: "Яндекс Пэй", title: "Фоксфорд", emoji: "🦊"},
+	{bank: "Яндекс Пэй", title: "Амедиатека", emoji: "🎬"},
+	{bank: "Яндекс Пэй", title: "START", emoji: "🎬"},
+	{bank: "Яндекс Пэй", title: "Иви", emoji: "📺"},
+	// ⚠️ Titles below are RECONSTRUCTED from English-locale screenshots —
+	// the corpus has no Russian rendering of these rows yet. That is the
+	// exact move that produced the «Яндекс Забота»/«ОСАГО» miss, so treat
+	// them as provisional and retire on the first Russian sighting that
+	// disagrees. Seeded anyway on the owner's «more rows over fewer» rule;
+	// «Яндекс Еда» is the safest of the three (Альфа's catalog already
+	// carries that exact Russian title).
+	{bank: "Яндекс Пэй", title: "Яндекс Афиша", emoji: "🎭"},         // «Yandex Afisha», 25%, theater tickets
+	{bank: "Яндекс Пэй", title: "Яндекс Еда", emoji: "🍱"},           // «Yandex Eats»
+	{bank: "Яндекс Пэй", title: "Самокаты в Яндекс Go", emoji: "🛴"}, // «Scooters at Yandex Go»
+	// МКБ (first catalog, from the 2025-09 screenshot ingest 2026-07-27).
+	// The bank had a program but no catalog rows at all until now — the
+	// quarter rotates the offered set rather than the rate (flat 5% almost
+	// throughout), so this is a per-quarter snapshot, not a stable menu.
+	// Lower-case «на …» prefixes are the app's own rendering, not a typo.
+	{bank: "МКБ", title: "на все покупки", slug: "all-purchases"},
+	{bank: "МКБ", title: "на АЗС", slug: "gas-stations"},
+	{bank: "МКБ", title: "Такси", slug: "taxi"},
+	{bank: "МКБ", title: "Городской транспорт", slug: "transport"},
+	{bank: "МКБ", title: "Каршеринг", slug: "car-rental"},
+	{bank: "МКБ", title: "Автопутешествия", slug: "toll-roads"},
+	{bank: "МКБ", title: "Спортивные клубы", slug: "active-leisure"},
+	{bank: "МКБ", title: "Бытовые услуги", slug: "household-services"},
+	{bank: "МКБ", title: "Детские товары", slug: "kids"},
+	{bank: "МКБ", title: "Домашние питомцы", slug: "pets"},
+	{bank: "МКБ", title: "Салоны красоты и барбершопы", slug: "beauty"},
+	{bank: "МКБ", title: "Дьюти-фри", slug: "duty-free"},
+	{bank: "МКБ", title: "Развлечения", slug: "entertainment"},
+	{bank: "МКБ", title: "Кино и театры", slug: "cinema"},
+	{bank: "МКБ", title: "Видеоигры", slug: "digital-goods"},
+	{bank: "МКБ", title: "МКБ Travel", emoji: "✈️"},
+	{bank: "МКБ", title: "Бургер Кинг", emoji: "🍔"},
 }
 
 // Run loads all seed data.
