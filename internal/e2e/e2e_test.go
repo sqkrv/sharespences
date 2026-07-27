@@ -15,7 +15,9 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/textproto"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/testcontainers/testcontainers-go"
@@ -85,11 +87,19 @@ func (c *client) must(method, path string, body any, out any, wantStatus int) {
 }
 
 // upload posts a file through the multipart attachments endpoint.
-func (c *client) upload(filename string, content []byte) string {
+// uploadStatus posts one file and returns the response status — the raw form
+// behind upload(), so the MIME allowlist can be tested from both sides.
+// mediaType goes on the part, which is what the allowlist reads;
+// CreateFormFile would hard-code application/octet-stream.
+func (c *client) uploadStatus(filename, mediaType string, content []byte) (int, string) {
 	c.t.Helper()
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
-	fw, err := mw.CreateFormFile("file", filename)
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition",
+		fmt.Sprintf(`form-data; name="file"; filename=%q`, filename))
+	h.Set("Content-Type", mediaType)
+	fw, err := mw.CreatePart(h)
 	if err != nil {
 		c.t.Fatal(err)
 	}
@@ -107,14 +117,20 @@ func (c *client) upload(filename string, content []byte) string {
 		c.t.Fatal(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusCreated {
-		data, _ := io.ReadAll(resp.Body)
-		c.t.Fatalf("upload: status %d: %s", resp.StatusCode, data)
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(body)
+}
+
+func (c *client) upload(filename, mediaType string, content []byte) string {
+	c.t.Helper()
+	status, body := c.uploadStatus(filename, mediaType, content)
+	if status != http.StatusCreated {
+		c.t.Fatalf("upload: status %d: %s", status, body)
 	}
 	var out struct {
 		ID string `json:"id"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(strings.NewReader(body)).Decode(&out); err != nil {
 		c.t.Fatal(err)
 	}
 	return out.ID
@@ -626,7 +642,17 @@ func TestCashbackE2E(t *testing.T) {
 
 	// Screenshots are editable after creation (owner 2026-07-09): upload →
 	// attach to an existing period → visible → detach → gone (row and file).
-	attID := owner.upload("menu.png", []byte("fake-png-bytes"))
+	// Upload guards: the allowlist rejects a non-image part, and the byte cap
+	// rejects an over-sized one before it reaches disk. Both bound this route
+	// specifically — huma's MaxBodyBytes never applies on the multipart path.
+	if status, body := owner.uploadStatus("notes.txt", "text/plain", []byte("nope")); status != http.StatusUnprocessableEntity {
+		t.Fatalf("text/plain upload = %d (%s), want 422", status, body)
+	}
+	if status, _ := owner.uploadStatus("huge.png", "image/png", make([]byte, 11<<20)); status < 400 {
+		t.Fatalf("11 MiB upload = %d, want a 4xx", status)
+	}
+
+	attID := owner.upload("menu.png", "image/png", []byte("fake-png-bytes"))
 	owner.must("POST", fmt.Sprintf("/api/v1/cashback/offer-periods/%d/attachments", alfaPeriod.ID),
 		map[string]any{"attachment_id": attID}, nil, http.StatusNoContent)
 	var periodDetail struct {

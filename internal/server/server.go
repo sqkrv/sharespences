@@ -74,6 +74,7 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
+	r.Use(limitUploadBody)
 
 	humaCfg := huma.DefaultConfig("Sharespences API", "0.1.0")
 	api := humachi.New(r, humaCfg)
@@ -466,14 +467,39 @@ func isPgCode(err error, code string) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == code
 }
 
+// maxUploadBytes caps one attachment upload. The cap has to live on the
+// transport: huma applies Operation.MaxBodyBytes only on the JSON body path,
+// while the multipart branch parses the body itself, and MultipartMaxMemory
+// is a spill-to-disk threshold rather than a limit. Sized for phone
+// screenshots and receipt photos (the picker corpus runs 230–430 KB).
+const maxUploadBytes = 10 << 20 // 10 MiB
+
+const uploadPath = "/api/v1/attachments"
+
+// limitUploadBody bounds the request body on the one route that streams
+// bytes to disk. Over the limit, MaxBytesReader makes the read fail and the
+// multipart parse returns 422 rather than filling the disk.
+func limitUploadBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodPost && req.URL.Path == uploadPath {
+			req.Body = http.MaxBytesReader(w, req.Body, maxUploadBytes)
+		}
+		next.ServeHTTP(w, req)
+	})
+}
+
 func registerAttachments(api huma.API, store *attach.Store) {
 	huma.Register(api, huma.Operation{
 		OperationID: "attachment-upload", Method: http.MethodPost,
-		Path: "/api/v1/attachments", Summary: "Upload a screenshot/evidence file", Tags: []string{"attachments"},
+		Path: uploadPath, Summary: "Upload a screenshot/evidence file", Tags: []string{"attachments"},
 		DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, in *struct {
+		// contentType drives huma's MimeTypeValidator. It trusts the part's
+		// declared Content-Type and only sniffs when the header is absent —
+		// so this is a wrong-file guard, not a security boundary; the byte
+		// cap above is what bounds the damage.
 		RawBody huma.MultipartFormFiles[struct {
-			File huma.FormFile `form:"file" required:"true"`
+			File huma.FormFile `form:"file" contentType:"image/jpeg,image/png,image/webp,image/heic,application/pdf" required:"true"`
 		}]
 	}) (*struct {
 		Body struct {
