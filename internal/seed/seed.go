@@ -375,7 +375,6 @@ var aliases = []struct{ bank, raw, slug string }{
 	// Beyond the 2026-04 MCC appendix — owner live app, 2026-07-24.
 	{"Т-Банк", "Все покупки", "all-purchases"},
 	{"Т-Банк", "Топливо в городе", "gas-stations"},
-	{"Т-Банк", "Бензин в городе", "gas-stations"},
 	{"Яндекс Пэй", "Кафе, рестораны и бары", "restaurants"},
 	{"Яндекс Пэй", "Образование", "education"},
 	{"Яндекс Пэй", "Одежда и обувь", "clothes"},
@@ -408,6 +407,14 @@ var aliases = []struct{ bank, raw, slug string }{
 // title via the seed CSV.
 var retiredBankCategories = []struct{ bank, title string }{
 	{"Альфа-Банк", "Супермаркеты"}, // → «Продукты» (owner-verified 2026-07-22)
+	{"Т-Банк", "Бензин в городе"},  // never in the live app — «Топливо в городе» is the real row (owner 2026-07-27)
+}
+
+// Aliases seeded for titles that turned out not to exist: same problem as
+// retiredBankCategories, one table down (a stale alias would keep resolving a
+// raw title nobody can enter).
+var retiredAliases = []struct{ bank, raw string }{
+	{"Т-Банк", "Бензин в городе"}, // owner 2026-07-27
 }
 
 // Brand colors for UI bank tinting (knowledge: bank pages + index,
@@ -595,7 +602,10 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	// appendix lacks these; full live-menu ingest queued in the knowledge log).
 	{bank: "Т-Банк", title: "Все покупки", slug: "all-purchases"},
 	{bank: "Т-Банк", title: "Топливо в городе", slug: "gas-stations"},
-	{bank: "Т-Банк", title: "Бензин в городе", slug: "gas-stations"},
+	// «Шоппинг в городе» is deliberately canonical-less (owner 2026-07-27):
+	// it bundles одежда + техника + аксессуары + маркетплейсы, so no single
+	// canonical is honest — an ordinary regular row without a mapping.
+	{bank: "Т-Банк", title: "Шоппинг в городе", emoji: "🛍️"},
 	// Яндекс Пэй (as of 2026-07-14 rules)
 	{bank: "Яндекс Пэй", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "Яндекс Пэй", title: "Кафе, рестораны и бары", slug: "restaurants"},
@@ -721,6 +731,17 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 			  and b.name = $2
 			on conflict (bank_id, raw_title) do nothing`, a.slug, a.bank, a.raw); err != nil {
 			return fmt.Errorf("seed alias %s/%s: %w", a.bank, a.raw, err)
+		}
+	}
+
+	for _, r := range retiredAliases {
+		if _, err := pool.Exec(ctx, `
+			delete from bank_category_alias a
+			using bank b
+			where b.id = a.bank_id
+			  and b.name = $1
+			  and a.raw_title = $2`, r.bank, r.raw); err != nil {
+			return fmt.Errorf("seed retire alias %s/%s: %w", r.bank, r.raw, err)
 		}
 	}
 
