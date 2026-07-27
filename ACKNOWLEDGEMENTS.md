@@ -15,18 +15,27 @@ that folder's README) and are bundled into the app.
 
 | Bank | File | Source | Rights holder |
 |---|---|---|---|
-| Альфа-Банк | `alfabank.svg` | _to fill_ | АО «Альфа-Банк» |
-| ВТБ | `vtb.svg` | _to fill_ | Банк ВТБ (ПАО) |
-| Озон Банк | `ozon.svg` | _to fill_ | ООО «Озон Банк» |
-| Яндекс Пэй | `yandex-pay.svg` | _to fill_ | ООО «Яндекс» |
-| Газпромбанк | `gazprombank.svg` | _to fill_ | «Газпромбанк» (АО) |
-| МКБ | `mkb.svg` | _to fill_ | ПАО «Московский кредитный банк» |
-| Сбербанк | `sber.svg` | _to fill_ | ПАО Сбербанк |
-| Т-Банк | `tbank.svg` | _to fill_ | АО «Т-Банк» |
+| Альфа-Банк | `alfabank.svg` | [rblp] `dark/svg/icon/alfabank.svg` | АО «Альфа-Банк» |
+| ВТБ | `vtb.svg` | [rblp] `dark/svg/icon/vtb.svg` | Банк ВТБ (ПАО) |
+| Озон Банк | `ozon.svg` | [rblp] `dark/svg/icon/ozon.svg` | ООО «Озон Банк» |
+| Яндекс Пэй | `yandex-pay.svg` | [Trace Logos](https://trace-logos.ru/en/logos/pay/yandexpay/) | ООО «Яндекс» |
+| Газпромбанк | `gazprombank.svg` | [rblp] `dark/svg/icon/gazprombank.svg` | «Газпромбанк» (АО) |
+| МКБ | `mkb.svg` | [rblp] `dark/svg/icon/mkb.svg` | ПАО «Московский кредитный банк» |
+| Сбербанк | `sber.svg` | [rblp] `dark/svg/icon/sberbank.svg` | ПАО Сбербанк |
+| Т-Банк | `tbank.svg` | [rblp] `dark/svg/icon/tbank.svg` | АО «Т-Банк» |
 
-Fill the Source column with the page the file was downloaded from (a brand /
-press kit page where one exists) as each logo lands; rows whose file is absent
-simply fall back to a two-letter avatar in the app.
+[rblp]: https://github.com/melpnz/rblp
+
+**[rblp]** — «286 Russian Banks Logos», a community pack of Russian bank marks
+in SVG and PNG (dark/light, icon and horizontal variants). It ships **no
+license file** and states that the logos remain the property of their owners,
+so the pack grants no rights of its own: the basis for using these marks here
+is nominative use of the banks' trademarks, as set out above, and the pack is
+credited for the vector artwork. The seven bundled files are byte-identical to their upstream counterparts (verified 2026-07-27). **Trace Logos** likewise states that the logos
+are trademarks of their respective owners.
+
+A bank without a file simply falls back to a two-letter avatar in the app; new
+files get a row here with the page they came from.
 
 If you are a rights holder and want a mark removed or replaced with the
 approved artwork, open an issue — it will be done.
