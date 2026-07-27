@@ -503,12 +503,21 @@ func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult 
 	return res
 }
 
-// homoglyphs maps the lowercase Latin letters that are pixel-identical to
-// Cyrillic ones onto their Cyrillic twins. Real Альфа menu titles mix them
-// into Cyrillic words («Кафе и pестораны», «Цвeты»). Applied to both sides
-// of every comparison, so genuinely-Latin titles still match each other.
+// homoglyphs maps the Latin letters that are pixel-identical to Cyrillic
+// ones onto their Cyrillic twins. Real Альфа menu titles mix them into
+// Cyrillic words («Кафе и pестораны», «Цвeты»). Applied to both sides of
+// every comparison, so genuinely-Latin titles still match each other.
+//
+// The set is the full uppercase-identical alphabet (А В Е К М Н О Р С Т У Х),
+// not just the letters that also look identical in lowercase: NormalizeTitle
+// lower-cases before folding, so an uppercase Latin «Т» reaches this replacer
+// as «t» with its origin already erased. Screenshot extraction returns
+// exactly that — «T-Страхование» with a Latin T (recognizer benchmark,
+// 2026-07-27) — and a title-cased word is where a stray Latin letter is
+// most likely to sit.
 var homoglyphs = strings.NewReplacer(
-	"a", "а", "c", "с", "e", "е", "o", "о", "p", "р", "x", "х", "y", "у",
+	"a", "а", "b", "в", "c", "с", "e", "е", "h", "н", "k", "к",
+	"m", "м", "o", "о", "p", "р", "t", "т", "x", "х", "y", "у",
 )
 
 // NormalizeTitle canonicalizes a bank's raw category title for alias

@@ -702,7 +702,7 @@ func TestNormalizeTitle(t *testing.T) {
 		{"  Продукты  ", "продукты"},
 		{"Кафе  и   Рестораны", "кафе и рестораны"},
 		{"ВСЁ ДЛЯ ДОМА", "все для дома"},
-		{"Fast Food", "fаst fооd"}, // a/o fold to Cyrillic homoglyphs
+		{"Fast Food", "fаsт fооd"}, // a/o/t fold to Cyrillic homoglyphs
 		{"Такси\tи каршеринг", "такси и каршеринг"},
 		// Альфа sends «й»/«ё» NFD-decomposed (base letter + combining mark).
 		{"Чай и кофе", "чай и кофе"},
@@ -713,7 +713,18 @@ func TestNormalizeTitle(t *testing.T) {
 		{"Цвeты", "цветы"},
 		// Genuinely-Latin titles fold too — consistently on both comparison
 		// sides, so they keep matching each other.
-		{"Duty Free", "dutу frее"},
+		{"Duty Free", "duту frее"},
+		// Uppercase-only homoglyphs: the Latin letter is lower-cased before
+		// folding, so the fold set must cover т/к/м/н/в too. Escapes are
+		// explicit because the whole point is a character that renders
+		// identically to its Cyrillic twin. «T-Страхование» with a Latin T
+		// is what the screenshot recognizer actually returned (2026-07-27).
+		{"T-Страхование", "т-страхование"}, // Latin T
+		{"Kаршеринг", "каршеринг"},         // Latin K
+		{"Мосэнерго", "мосэнерго"},         // Cyrillic М — control case
+		{"Mосэнерго", "мосэнерго"},         // Latin M
+		{"Hоутбуки", "ноутбуки"},           // Latin H
+		{"Bсе покупки", "все покупки"},     // Latin B
 	}
 	for _, tt := range tests {
 		if got := NormalizeTitle(tt.in); got != tt.want {
