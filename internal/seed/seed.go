@@ -96,7 +96,12 @@ var programs = []program{
 		midPeriodAdd: "locked_after_first", activation: "immediate",
 		notes: asOf + "; баллы требуют активной подписки Яндекс Плюс; колесо фортуны — record-only",
 		tiers: []tier{
-			{name: "Стандартный", capValue: "10000", capScope: "total", notes: asOf + "; max категорий неизвестен"},
+			// 5 slots: «Выберите 5 из 12 категорий» / «Выберите ещё 4 …» + 1
+			// selected, consistent across 2025-09, 2026-02 and 2026-07 (both
+			// locales) in the picker corpus. The menu size varies (12–14) and
+			// is NOT the slot count — «Select 4 more out of 14» reads as 14
+			// slots if skimmed.
+			{name: "Стандартный", capValue: "10000", capScope: "total", maxCategories: 5, notes: asOf + "; 5 слотов (скриншоты 2025-09 / 2026-02 / 2026-07)"},
 		},
 	},
 	{
@@ -672,6 +677,13 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	// the app's own subtitle is «Билеты на концерты».
 	{bank: "Яндекс Пэй", title: "Яндекс Музыка", emoji: "🎫"},
 	{bank: "Яндекс Пэй", title: "Кинопоиск", emoji: "🎬"},
+	// «ОСАГО» sits under «С картой любого банка» and is scoped to Яндекс
+	// Заботой (its own subtitle). Canonical-less despite `insurance`
+	// existing, for the same reason «Яндекс Заправки» is canonical-less
+	// despite `gas-stations`: the row pays only through Яндекс's service,
+	// so mapping it would make «какой картой платить?» recommend it for an
+	// ОСАГО bought anywhere else.
+	{bank: "Яндекс Пэй", title: "ОСАГО", emoji: "🛡️"},
 	// Channel rows (rules PDF, not seen in the picker corpus).
 	{bank: "Яндекс Пэй", title: "Сервис «Яндекс Go»", emoji: "🚖"},
 	{bank: "Яндекс Пэй", title: "1% в Сервисах Яндекса", emoji: "🟡"},
