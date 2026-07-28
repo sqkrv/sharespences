@@ -448,7 +448,7 @@ func TestComparableOffers(t *testing.T) {
 	candidate := OfferView{
 		OfferID: 1, RawTitle: "Продукты", Percent: pct("5"),
 		Kind: OfferRegular, CurrencyKind: CurrencyRub, ClientID: clientOzon,
-		ClientLabel: "Озон Банк", BankName: "Озон Банк",
+		ClientLabel: "Ozon Банк", BankName: "Ozon Банк",
 	}
 	pool := []OfferView{
 		candidate, // itself — must be excluded
@@ -485,7 +485,7 @@ func TestComparableOffers(t *testing.T) {
 // specials rank too — by percent, keeping their kind so the UI can mark them.
 func TestRankActiveSelections(t *testing.T) {
 	entries := []LookupEntry{
-		{ClientID: clientOzon, BankName: "Озон Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, CapValue: pct("3000"), CapPerCategory: pct("1500"), CapScope: CapBoth},
+		{ClientID: clientOzon, BankName: "Ozon Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, CapValue: pct("3000"), CapPerCategory: pct("1500"), CapScope: CapBoth},
 		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, CapValue: pct("7000"), CapScope: CapTotal},
 		{ClientID: 5, BankName: "ВТБ", Percent: pct("15"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: june2026, CapValue: pct("3000"), CapScope: CapTotal}, // expired
 		{ClientID: 4, BankName: "Яндекс Пэй", Percent: pct("10"), CurrencyKind: CurrencyPoints, Kind: OfferRegular, Period: july2026, PointsLabel: "Баллы Плюс"},
@@ -502,15 +502,32 @@ func TestRankActiveSelections(t *testing.T) {
 	if got.Ranked[0].Kind != OfferSpecial || got.Ranked[0].RawTitle != "Пятница" {
 		t.Errorf("Ranked[0] = %s/%q, want the special «Пятница» ranked first by percent", got.Ranked[0].Kind, got.Ranked[0].RawTitle)
 	}
-	// Rub group first (Альфа-Банк vs Озон tie on 5% → bank-name order), then points.
-	if got.Ranked[1].BankName != "Альфа-Банк" || got.Ranked[2].BankName != "Озон Банк" {
-		t.Errorf("rub group order = [%s, %s], want [Альфа-Банк, Озон Банк] (tie on 5%% → bank name)",
+	// Rub group first (Ozon Банк vs Альфа-Банк tie on 5% → bank-name order),
+	// then points. The Latin «O» of «Ozon Банк» sorts before Cyrillic «А»
+	// (and Russian collation agrees), so the 2026-07-28 rename flipped this
+	// pair — the tie-break only needs to be deterministic, not alphabetical
+	// in one script.
+	if got.Ranked[1].BankName != "Ozon Банк" || got.Ranked[2].BankName != "Альфа-Банк" {
+		t.Errorf("rub group order = [%s, %s], want [Ozon Банк, Альфа-Банк] (tie on 5%% → bank name)",
 			got.Ranked[1].BankName, got.Ranked[2].BankName)
 	}
 	if got.Ranked[3].CurrencyKind != CurrencyPoints {
 		t.Errorf("Ranked[3].CurrencyKind = %s, want points grouped after rub", got.Ranked[3].CurrencyKind)
 	}
-	if got.Ranked[1].CapValue == nil || !got.Ranked[1].CapValue.Equal(decimal.RequireFromString("7000")) {
+	// Look the entry up by bank rather than by rank: this asserts the cap
+	// passes through, and must not silently start checking a different
+	// bank's entry when the ordering shifts (it did — see the tie-break
+	// note above).
+	var alfa *LookupEntry
+	for i := range got.Ranked {
+		// Альфа-Банк appears twice here (the regular and «Пятница») — the
+		// cap belongs to the regular one.
+		if got.Ranked[i].BankName == "Альфа-Банк" && got.Ranked[i].Kind == OfferRegular {
+			alfa = &got.Ranked[i]
+			break
+		}
+	}
+	if alfa == nil || alfa.CapValue == nil || !alfa.CapValue.Equal(decimal.RequireFromString("7000")) {
 		t.Errorf("Альфа-Банк entry must pass through its static 7000₽ cap (E2E step 5)")
 	}
 
@@ -663,7 +680,7 @@ func TestOfferSuper(t *testing.T) {
 // comparisons), so the UI marks them instead of the ranking hiding them.
 func TestOfferSpecialRanks(t *testing.T) {
 	res := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
-		{ClientID: clientOzon, BankName: "Озон Банк", RawTitle: "Такси", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: clientOzon, BankName: "Ozon Банк", RawTitle: "Такси", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
 		{ClientID: clientAlfa, BankName: "Альфа-Банк", RawTitle: "Барабан суперкэшбека", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferSpecial, Period: july2026},
 	})
 	if len(res.Ranked) != 2 {
@@ -677,7 +694,7 @@ func TestOfferSpecialRanks(t *testing.T) {
 	// points special never outranks a rub row.
 	mixed := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
 		{ClientID: 4, BankName: "Яндекс Пэй", Percent: pct("100"), CurrencyKind: CurrencyPoints, Kind: OfferSpecial, Period: july2026},
-		{ClientID: clientOzon, BankName: "Озон Банк", Percent: pct("1"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: clientOzon, BankName: "Ozon Банк", Percent: pct("1"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
 	})
 	if mixed.Ranked[0].CurrencyKind != CurrencyRub {
 		t.Errorf("rub group still leads a points special (invariant 5), got %s first", mixed.Ranked[0].CurrencyKind)

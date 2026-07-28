@@ -336,7 +336,7 @@ func TestCashbackE2E(t *testing.T) {
 		return programJSON{}
 	}
 	alfa := findProgram("Альфа-Банк")
-	ozon := findProgram("Озон Банк")
+	ozon := findProgram("Ozon Банк")
 
 	findTier := func(programID int64, name string) tierJSON {
 		var tiers []tierJSON
@@ -421,7 +421,7 @@ func TestCashbackE2E(t *testing.T) {
 	}
 	owner.must("GET", "/api/v1/cashback/overview?date=2026-07-15", nil, &freshOverview, http.StatusOK)
 	for _, c := range freshOverview.Clients {
-		if (c.BankName == "Альфа-Банк" || c.BankName == "Озон Банк") && c.PeriodID == nil {
+		if (c.BankName == "Альфа-Банк" || c.BankName == "Ozon Банк") && c.PeriodID == nil {
 			t.Fatalf("empty (offer-less) period invisible on overview for %s", c.BankName)
 		}
 	}
@@ -663,8 +663,12 @@ func TestCashbackE2E(t *testing.T) {
 			superRow = &overview.Categories[i]
 		}
 	}
-	if superRow == nil || superRow.Best.BankName != "Альфа-Банк" || superRow.OthersCount != 1 {
-		t.Fatalf("overview supermarkets = %+v, want best Альфа-Банк with 1 other", superRow)
+	// Both offers are 5%, so the winner is decided by the name tie-break —
+	// and Latin «O» sorts before Cyrillic «А» (Russian collation agrees),
+	// so «Ozon Банк» leads since the 2026-07-28 rename. The assertion that
+	// matters is «one best + one other», not which of the tied two shows.
+	if superRow == nil || superRow.Best.BankName != "Ozon Банк" || superRow.OthersCount != 1 {
+		t.Fatalf("overview supermarkets = %+v, want best Ozon Банк with 1 other (5%% tie → bank-name order)", superRow)
 	}
 	if len(overview.Clients) != 3 {
 		t.Fatalf("overview clients = %d, want 3", len(overview.Clients))
@@ -678,7 +682,7 @@ func TestCashbackE2E(t *testing.T) {
 			if c.HolderLabel == nil || *c.HolderLabel != "Мама" {
 				t.Fatalf("overview Альфа-Банк holder = %v, want Мама", c.HolderLabel)
 			}
-		case "Озон Банк":
+		case "Ozon Банк":
 			if c.SlotsUsed != 4 || c.MaxCategories == nil || *c.MaxCategories != 5 {
 				t.Fatalf("overview Озон = %+v, want 4/5 (override)", c)
 			}
@@ -775,7 +779,7 @@ func TestCashbackE2E(t *testing.T) {
 		map[string]any{"label": "Стас", "program_tier_id": ozonStd.ID}, nil, http.StatusOK)
 	owner.must("GET", "/api/v1/cashback/overview?date=2026-07-15", nil, &overview, http.StatusOK)
 	for _, c := range overview.Clients {
-		if c.BankName == "Озон Банк" && (c.HolderLabel == nil || *c.HolderLabel != "Стас") {
+		if c.BankName == "Ozon Банк" && (c.HolderLabel == nil || *c.HolderLabel != "Стас") {
 			t.Fatalf("Озон holder after PUT = %v, want Стас", c.HolderLabel)
 		}
 	}
@@ -813,8 +817,8 @@ func TestCashbackE2E(t *testing.T) {
 			t.Fatalf("Альфа-Банк holder = %q, want Мама (whose plastic to pull out)", e.HolderLabel)
 		}
 	}
-	if !names["Альфа-Банк"] || !names["Озон Банк"] {
-		t.Fatalf("ranked banks = %v, want Альфа-Банк + Озон Банк", names)
+	if !names["Альфа-Банк"] || !names["Ozon Банк"] {
+		t.Fatalf("ranked banks = %v, want Альфа-Банк + Ozon Банк", names)
 	}
 
 	// --- E2E step 6: АЗС → only Альфа-Банк; Такси → «нет активных выборов» ---
@@ -944,7 +948,7 @@ func TestCashbackE2E(t *testing.T) {
 	var ozonCatalog []bankCategoryJSON
 	owner.must("GET", fmt.Sprintf("/api/v1/cashback/banks/%d/categories", ozon.BankID), nil, &ozonCatalog, http.StatusOK)
 	if len(ozonCatalog) == 0 {
-		t.Fatal("Озон Банк catalog is empty — seed missing")
+		t.Fatal("Ozon Банк catalog is empty — seed missing")
 	}
 	if got := owner.do("POST", "/api/v1/cashback/category-offers", map[string]any{
 		"offer_period_id": alfaPeriod.ID, "raw_title": "чужая", "bank_category_id": ozonCatalog[0].ID,
@@ -1045,7 +1049,7 @@ func TestCashbackE2E(t *testing.T) {
 		}
 	}
 	// Альфа's live menu says «Продукты» (owner-verified 2026-07-22).
-	for bank, want := range map[string]string{"Альфа-Банк": "Продукты", "ВТБ": "Супермаркеты", "Озон Банк": "Супермаркеты"} {
+	for bank, want := range map[string]string{"Альфа-Банк": "Продукты", "ВТБ": "Супермаркеты", "Ozon Банк": "Супермаркеты"} {
 		if gotBanks[bank] != want {
 			t.Fatalf("5411 at %s = %q, want %s (all: %v)", bank, gotBanks[bank], want, gotBanks)
 		}

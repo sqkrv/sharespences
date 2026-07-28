@@ -50,9 +50,13 @@ export function Btn({
   );
 }
 
+// min-w-0: a Field is often a grid/flex item, and the default
+// min-width:auto refuses to shrink below its content — an iOS
+// input[type=date] is wider than its box, so the column would overflow
+// the card (see the input rule in index.css).
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="mb-1 block text-[10px] font-medium uppercase tracking-[.06em] text-tx4">{label}</span>
       {children}
     </label>
@@ -131,7 +135,7 @@ const BANK_LOGOS: Record<string, string> = Object.fromEntries(
 const BANK_SLUG: Record<string, string> = {
   "Альфа-Банк": "alfabank",
   ВТБ: "vtb",
-  "Озон Банк": "ozon",
+  "Ozon Банк": "ozon",
   "Яндекс Пэй": "yandex-pay",
   Газпромбанк: "gazprombank",
   МКБ: "mkb",
@@ -178,7 +182,7 @@ export function BankBadge({ name, size = 33, color }: { name: string; size?: num
 const BANK_ABBREV: Record<string, string> = {
   "Альфа-Банк": "АБ",
   ВТБ: "ВТ",
-  "Озон Банк": "ОЗ",
+  "Ozon Банк": "ОЗ",
   "Яндекс Пэй": "ЯП",
   Газпромбанк: "ГП",
   МКБ: "МК",
