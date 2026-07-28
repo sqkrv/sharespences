@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate } from "react-router-dom";
 import { api, unwrap, ApiError } from "./api/client";
+import { clearAllRecognitions } from "./recognition";
 import { Spinner, ErrMsg } from "./components/ui";
 
 export function useMe() {
@@ -34,6 +35,9 @@ export function useLogout() {
     mutationFn: async () => unwrap(await api.POST("/api/v1/auth/logout")),
     onSuccess: async () => {
       qc.clear();
+      // Same rule for recognition drafts: they hold the bank client, the
+      // screenshot ids and the read menu itself.
+      clearAllRecognitions();
       // Offline-read caches hold personal data (держатели, last-4) — they
       // must not survive logout on a shared device (docs/specs/pwa.md).
       if ("caches" in window) {
