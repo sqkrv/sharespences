@@ -1,5 +1,5 @@
--- Split the cashback_offer_kind «special» bucket (owner 2026-07-15, spec
--- invariant 6): the Альфа monthly барабан суперкэшбека is a full-period,
+-- Split the cashback_offer_kind «special» bucket (spec invariant 6): the
+-- Альфа monthly барабан суперкэшбека is a full-period,
 -- STACKING boost — a real «best card for такси» — unlike the time-boxed /
 -- non-stacking bonuses (Пятница, колесо, timed flash, сервис-категории).
 -- The new `super` kind ranks in lookup/overview like a regular, but like

@@ -52,7 +52,7 @@ type RecognitionRowDTO struct {
 	Kind       string  `json:"kind" enum:"regular,super,special"`
 	// BankCategoryID is set when the row matched the bank's catalog —
 	// the commit sends it ALONE, and no alias is written from a model
-	// match (owner decision 2026-07-28: aliases are bank-global; only an
+	// match (2026-07-28: aliases are bank-global; only an
 	// explicit user choice may create one).
 	BankCategoryID *int64  `json:"bank_category_id,omitempty"`
 	CatalogTitle   *string `json:"catalog_title,omitempty"`
@@ -394,7 +394,7 @@ func bankNamesOverlap(a, b string) bool {
 // bank, which made «не смог прочитать» indistinguishable from «это другой
 // банк» — and the model's bank field is measurably unreliable (it returned
 // «Альфа Банк» for both Т-Банк and МКБ screens, and row titles as bank
-// names). The owner hit the false positive on the first real run: «ozon
+// names). The false positive turned up on the first real run: «ozon
 // банк» against a client named «Озон Банк». Silence on an unreadable guess
 // is the deliberate trade — a missed mismatch costs a prefill the user
 // reviews anyway, while a crying-wolf warning trains people to ignore the

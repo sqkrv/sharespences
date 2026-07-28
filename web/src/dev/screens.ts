@@ -1,7 +1,7 @@
 import { matchPath } from "react-router-dom";
 
-// Screen IDs (docs/design/ui-preferences.md §Dev mode). The vocabulary the
-// owner and the agent share: «поправь CB-03» beats describing a screen in
+// Screen IDs (docs/design/ui-preferences.md §Dev mode). A shared vocabulary:
+// «поправь CB-03» beats describing a screen in
 // prose. Prefix = module (CB кешбек, GR группы, HM главная, HS история,
 // SYS системные), so the numbers never collide the way the specs' old S<n>
 // labels did across cashback.md and group-expenses.md.
@@ -43,7 +43,7 @@ export const SCREENS: Screen[] = [
 //   SYS-05 /terms    web/public/terms.html
 
 // `/periods/new` must win over `/periods/:id` — the router matches in order
-// and so do we (SCREENS lists the literal first).
+// and so does this table (SCREENS lists the literal first).
 export function screenFor(pathname: string): Screen | undefined {
   return SCREENS.find((s) => matchPath({ path: s.path, end: true }, pathname));
 }

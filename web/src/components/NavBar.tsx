@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 
 // The design's five-tab bottom navbar. Only «Кешбек» is a built module;
-// the rest route to honest «в разработке» stubs (owner decision 2026-07-09).
+// the rest route to honest «в разработке» stubs (2026-07-09).
 const TABS: { to: string; label: string; icon: React.ReactNode }[] = [
   {
     to: "/home",

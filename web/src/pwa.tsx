@@ -119,7 +119,7 @@ window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();
   setDeferredInstall(e as BeforeInstallPromptEvent);
 });
-// Installed via our button or the browser's own UI — the affordance goes.
+// Installed via the in-app button or the browser's own UI — the affordance goes.
 window.addEventListener("appinstalled", () => setDeferredInstall(null));
 
 function subscribeInstall(cb: () => void) {

@@ -1,4 +1,4 @@
--- MCC module bones (owner decisions 2026-07-20): FLAT current state +
+-- MCC module bones: FLAT current state +
 -- append-only change journal — not temporal intervals, not per-document
 -- snapshots. The legacy `mcc` table (00001) becomes the live dictionary:
 -- right shape, empty, and point_of_sale already references it for the
@@ -26,7 +26,7 @@ create type mcc_change_action as enum
 -- The news-digest precursor. category_title is a self-sufficient snapshot
 -- (00009 raw_title precedent): the journal survives catalog deletion.
 -- mcc_code deliberately has NO FK — the journal may record codes before the
--- dictionary knows them. noted_at = when WE noticed, not the bank's
+-- dictionary knows them. noted_at = when the change was noticed here, not the bank's
 -- (unknowable) change date; provenance lives in source.
 create table mcc_change
 (

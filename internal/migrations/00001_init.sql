@@ -1,5 +1,5 @@
 -- Port of init-database.sql (the v1 Python schema, the project's real spec)
--- into goose. Deliberate omissions (owner decisions 2026-07-03):
+-- into goose. Deliberate omissions:
 --   * legacy `cashback` table — superseded by the cashback module tables
 --     (00003_cashback.sql);
 --   * `passkey` table — WebAuthn auth is parked, not to be extended.

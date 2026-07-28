@@ -45,7 +45,7 @@ function PeriodForm() {
   const qc = useQueryClient();
 
   // The month being viewed on the overview (?month=YYYY-MM), so «Добавить»
-  // backfills THAT month, not today (owner 2026-07-15). Mid-month day-15
+  // backfills THAT month, not today (2026-07-15). Mid-month day-15
   // dodges any timezone edge; monthRange/quarterRange only read year+month.
   const monthParam = params.get("month");
   const baseDate = useMemo(

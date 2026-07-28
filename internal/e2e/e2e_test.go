@@ -375,7 +375,7 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("duplicate unlabeled bank client: status %d, want 409", got)
 	}
 
-	// Мама's plastic at Альфа-Банк, and TWO plastics of the owner's own Озон
+	// Мама's plastic at Альфа-Банк, and TWO plastics of the account owner's own Озон
 	// client — they will share one period/selection set (the re-keying's point).
 	owner.must("POST", "/api/v1/cards", map[string]any{
 		"bank_client_id": alfaClient.ID, "last_4_digits": 1234, "payment_system": "mir",
@@ -412,7 +412,7 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("overlapping period: status %d, want 409", got)
 	}
 
-	// Regression (owner bug report 2026-07-22): a freshly created period has
+	// Regression (bug report 2026-07-22): a freshly created period has
 	// no menu rows yet — the overview must still show it on the client card
 	// (it used to derive periods from the offers join, so an empty period
 	// was invisible while re-creation 409'd on overlap).
@@ -545,7 +545,7 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("Озон 5th selection: %d, want 409 (invariant 1 hard reject)", got)
 	}
 
-	// Owner feedback 2026-07-04: slot counts vary per period — the override
+	// Feedback 2026-07-04: slot counts vary per period — the override
 	// raises the effective limit and the 5th selection then goes through.
 	owner.must("PUT", fmt.Sprintf("/api/v1/cashback/offer-periods/%d/max-categories", ozonPeriod.ID),
 		map[string]any{"value": 5}, nil, http.StatusOK)
@@ -558,7 +558,7 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("helper after override: %d/%v, want 5/5", ozonHelper.SlotsUsed, ozonHelper.MaxCategories)
 	}
 
-	// Owner feedback 2026-07-04: entered rows must be deletable (with their
+	// Feedback 2026-07-04: entered rows must be deletable (with their
 	// selection); the slot frees up.
 	owner.must("DELETE", fmt.Sprintf("/api/v1/cashback/category-offers/%d", ozonClothes.ID), nil, nil, http.StatusNoContent)
 	owner.must("GET", fmt.Sprintf("/api/v1/cashback/helper-context?offer_period_id=%d", ozonPeriod.ID), nil, &ozonHelper, http.StatusOK)
@@ -572,7 +572,7 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("out-of-period selection: %d, want 422", got)
 	}
 
-	// Regression (owner report 2026-07-04, «Какой картой?» came back empty):
+	// Regression (report 2026-07-04, «Какой картой?» came back empty):
 	// a row entered WITHOUT a canonical mapping is invisible to lookup;
 	// editing the row to map it (+ selecting) makes it appear.
 	var lookup lookupJSON
@@ -704,7 +704,7 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("selection_opens_day = %v, want 25", overview.SelectionOpensDay)
 	}
 
-	// Screenshots are editable after creation (owner 2026-07-09): upload →
+	// Screenshots are editable after creation (2026-07-09): upload →
 	// attach to an existing period → visible → detach → gone (row and file).
 	// Upload guards: the allowlist rejects a non-image part, and the byte cap
 	// rejects an over-sized one before it reaches disk. Both bound this route
@@ -736,7 +736,7 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("orphaned attachment content: status %d, want 404", got)
 	}
 
-	// «За все покупки» (owner correction 2026-07-09): an ORDINARY selectable
+	// «За все покупки» (corrected 2026-07-09): an ORDINARY selectable
 	// category — it consumes a slot like any other; its only quirk is that it
 	// pays when no other selected category matches, which the lookup shows as
 	// the fallback section and the overview as «Остальное».
@@ -913,7 +913,7 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("catalog «Кафе и рестораны» = %+v, want mapped regular with inherited 🍽️", cafe)
 	}
 	// A service row has no canonical and its own emoji override — but it is
-	// an ORDINARY regular category (owner correction 2026-07-21: special is
+	// an ORDINARY regular category (corrected 2026-07-21: special is
 	// reserved for granted bonus mechanics, never catalog rows). This is the
 	// whole reason bank_category exists next to bank_category_alias.
 	trevel := findCatalogRow("Альфа-Тревел")
@@ -1051,7 +1051,7 @@ func TestCashbackE2E(t *testing.T) {
 			t.Fatalf("5411 Альфа-Банк emoji = %v, want inherited 🛒", b.Emoji)
 		}
 	}
-	// Альфа's live menu says «Продукты» (owner-verified 2026-07-22).
+	// Альфа's live menu says «Продукты» (verified 2026-07-22).
 	for bank, want := range map[string]string{"Альфа-Банк": "Продукты", "ВТБ": "Супермаркеты", "Ozon Банк": "Супермаркеты"} {
 		if gotBanks[bank] != want {
 			t.Fatalf("5411 at %s = %q, want %s (all: %v)", bank, gotBanks[bank], want, gotBanks)
@@ -1108,8 +1108,8 @@ func TestCashbackE2E(t *testing.T) {
 	// partner_offer keep plain FKs to bank_client, so history physically
 	// blocks the delete. ---
 
-	// A scratch card on the owner's Озон client: invisible to the other
-	// user (404), gone for the owner (204).
+	// A scratch card on the account owner's Озон client: invisible to the other
+	// user (404), gone for its owner (204).
 	var scratchCard cardJSON
 	owner.must("POST", "/api/v1/cards", map[string]any{
 		"bank_client_id": ozonClient.ID, "last_4_digits": 4444, "payment_system": "mir",
@@ -1171,7 +1171,7 @@ func TestCashbackE2E(t *testing.T) {
 		}
 	}
 
-	// --- Per-offer cap + comma decimals (owner feedback 2026-07-24, ВТБ
+	// --- Per-offer cap + comma decimals (2026-07-24, ВТБ
 	// menu): «Театры и кино — кешбэк до 5 000 ₽» while the program cap keeps
 	// burning, and the RU-keyboard «1,5» percent. Static display only;
 	// lookup surfaces the offer cap over the tier cap. ---

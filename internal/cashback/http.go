@@ -250,7 +250,7 @@ func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 }
 
 // AvailableEntryDTO is one S3b «Можно выбрать» row: an offered-but-unselected
-// menu offer with a fact-based verdict (spec S3b, owner 2026-07-16).
+// menu offer with a fact-based verdict (spec S3b, 2026-07-16).
 type AvailableEntryDTO struct {
 	LookupEntryDTO
 	OfferID    int64  `json:"offer_id" doc:"category_offer id — «Отметить выбранной» posts the ordinary selection for it"`

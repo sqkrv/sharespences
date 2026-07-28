@@ -1,5 +1,5 @@
-// Package auth is the minimal password auth decided for cashback v1
-// (owner decision 2026-07-03): email/password with argon2id hashes and
+// Package auth is the minimal password auth for cashback v1: email/password
+// with argon2id hashes and
 // DB-backed scs sessions. Magic links and token transport for mobile/bot
 // clients wait for the auth spec; WebAuthn stays parked.
 package auth

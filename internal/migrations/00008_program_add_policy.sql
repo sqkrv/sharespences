@@ -1,5 +1,5 @@
--- Program-level facts the S3b «Можно выбрать» flow needs (spec S3b, owner
--- 2026-07-16): whether a category can be ADDED mid-period, and when a fresh
+-- Program-level facts the S3b «Можно выбрать» flow needs (spec S3b):
+-- whether a category can be ADDED mid-period, and when a fresh
 -- pick starts paying. Neither is derivable from selection_mode — Альфа is
 -- atomic yet allows mid-month adds while a slot is free, while ВТБ/Озон
 -- (also atomic) lock after the one-shot confirmation; МКБ charges for a

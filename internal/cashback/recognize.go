@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	// maxRecognitionImages bounds one job (owner decision 2026-07-28).
+	// maxRecognitionImages bounds one job (2026-07-28).
 	// Альфа routinely needs 3–4 screenshots per period; 10 is headroom.
 	maxRecognitionImages = 10
 	// recognitionTTL keeps a FINISHED job around for the review screen.
@@ -29,7 +29,7 @@ const (
 )
 
 var (
-	// ErrRecognitionBusy — one running job per user (owner decision):
+	// ErrRecognitionBusy — one running job per user (decision):
 	// the backend is a single GPU and jobs run minutes.
 	ErrRecognitionBusy = errors.New("распознавание уже идёт — дождись окончания")
 	// ErrRecognitionImages — the 1–10 screenshot bound.

@@ -1,4 +1,4 @@
--- Bank-client re-keying (owner decision 2026-07-11): КБ selections apply to
+-- Bank-client re-keying: КБ selections apply to
 -- the BANK CLIENT (person × bank), not the plastic — all of a client's cards
 -- share the selection, and program tiers are client-level subscriptions
 -- (docs/knowledge/concepts/cashback-mechanics.md). bank_client absorbs
@@ -116,7 +116,7 @@ alter table offer_period
 alter table offer_period
     drop column card_id; -- drops unique(card_id, period_start) + its FK too
 
--- bank_card slims to the plastic itself (full normalization, owner choice):
+-- bank_card slims to the plastic itself (full normalization):
 -- bank/user derive via bank_client; держатель and tier live on the client.
 alter table bank_card
     drop column holder_label,

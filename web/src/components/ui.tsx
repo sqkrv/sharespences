@@ -66,7 +66,7 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 // The browser's own constraint bubbles («Please fill out this field») follow
 // the BROWSER locale, not the interface — an English-locale browser answers a
 // Russian UI in English, which is the thing internal/i18n exists to prevent on
-// the server side (owner 2026-07-28: anything a user can read is Russian).
+// the server side (2026-07-28: anything a user can read is Russian).
 // setCustomValidity replaces the bubble text, and an element carries only one
 // message, so it has to be recomputed from whichever constraint just failed.
 type Constrained = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
@@ -220,8 +220,8 @@ export function bankLogo(name: string): string | undefined {
   return slug ? BANK_LOGOS[slug] : undefined;
 }
 
-// The bank's own mark, rendered as-is with no plaque behind it (owner
-// 2026-07-27) — logos are supplied in their self-contained app-icon form, so
+// The bank's own mark, rendered as-is with no plaque behind it (2026-07-27)
+// — logos are supplied in their self-contained app-icon form, so
 // they carry their own background. Banks without a file keep the two-letter
 // avatar («АБ», «ОЗ»…), lilac on soft accent or tinted with the brand color.
 export function BankBadge({ name, size = 33, color }: { name: string; size?: number; color?: string | null }) {
@@ -314,7 +314,7 @@ export function GradientCard({ children, className = "", ...rest }: React.HTMLAt
 // What reaches here in English is the transport layer — a dropped connection
 // surfaces as the browser's own «Failed to fetch»/«Load failed» TypeError —
 // and genuine JS bugs, which get a neutral line while the original goes to
-// the console for debugging (owner 2026-07-28: errors follow the UI language).
+// the console for debugging (2026-07-28: errors follow the UI language).
 export function errorText(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof TypeError) return "Нет связи с сервером — проверь интернет";

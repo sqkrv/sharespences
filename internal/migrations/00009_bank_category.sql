@@ -1,8 +1,8 @@
--- First-class per-bank category catalog for the SPA's picker (owner
--- decisions 2026-07-16). bank_category_alias stays the free-text matching
+-- First-class per-bank category catalog for the SPA's picker.
+-- bank_category_alias stays the free-text matching
 -- mechanism; this table is what the picker LISTS — including special/
 -- service rows, which the alias table can't hold (its canonical FK is NOT
--- NULL, but service rows get no canonical per the 2026-07-14 owner rule).
+-- NULL, but service rows get no canonical per the taxonomy rule).
 -- Seeded from docs/knowledge/concepts/categories-taxonomy.md «Bank
 -- catalogs»; user-created rows carry is_custom = true.
 

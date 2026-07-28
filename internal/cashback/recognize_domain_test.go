@@ -17,12 +17,12 @@ func TestParseExtractedNumber(t *testing.T) {
 	}{
 		{"7", "7", true},
 		{"1.5", "1.5", true},
-		{"1,5", "1.5", true},   // RU keyboard / model comma decimal
-		{"1%", "1", true},      // the model ignores «digits only» (run 2)
+		{"1,5", "1.5", true}, // RU keyboard / model comma decimal
+		{"1%", "1", true},    // the model ignores «digits only» (run 2)
 		{"1.5%", "1.5", true},
-		{"2 000 ₽", "2000", true},       // ASCII space
-		{"2 000", "2000", true},    // NBSP
-		{"5 000 ₽", "5000", true},  // narrow NBSP
+		{"2 000 ₽", "2000", true}, // ASCII space
+		{"2 000", "2000", true},   // NBSP
+		{"5 000 ₽", "5000", true}, // narrow NBSP
 		{"до 5000", "5000", true},
 		{"7.", "7", true},
 		{"", "", false},
@@ -150,7 +150,7 @@ func TestBuildDraftChecksStateHint(t *testing.T) {
 	}
 }
 
-// row_kind ≠ category never prefills (invariant 2, owner decision 2 —
+// row_kind ≠ category never prefills (invariant 2, decision 2 —
 // slot modifiers are ignored, not harvested), but is not silently lost.
 func TestBuildDraftDropsNonCategoryRows(t *testing.T) {
 	img := menuImage(
@@ -224,7 +224,7 @@ func TestBuildDraftCatalogMatching(t *testing.T) {
 	img := menuImage(
 		vision.Row{Percent: "7", Title: "Tакси", State: "unchecked", CatalogMatch: "Такси"}, // model matched
 		vision.Row{Percent: "5", Title: "альфа-пятница", State: "unchecked"},                // Go-side title match
-		row("3", "Продукты"),  // alias hit
+		row("3", "Продукты"),        // alias hit
 		row("2", "Новая категория"), // genuinely new
 	)
 	draft := BuildDraft([]RecognizedImage{img}, catalog, aliases, "", nil)
@@ -301,7 +301,7 @@ func TestBuildDraftSummaryHint(t *testing.T) {
 
 // The warning fires on positive evidence only: the guess has to look like
 // a DIFFERENT known bank. Anything unreadable is silence by design — the
-// model's bank field is measurably unreliable, and the owner hit a false
+// model's bank field is measurably unreliable, and a false
 // positive on the first real run («ozon банк» vs a client «Озон Банк»).
 func TestBuildDraftBankMismatch(t *testing.T) {
 	seeded := []string{"Альфа-Банк", "ВТБ", "Ozon Банк", "Яндекс Пэй", "Газпромбанк", "МКБ", "Сбербанк", "Т-Банк"}

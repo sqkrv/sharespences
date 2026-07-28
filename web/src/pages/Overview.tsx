@@ -8,7 +8,7 @@ import { MonthPicker } from "../components/MonthPicker";
 import { capNote, FALLBACK_EMOJI, midMonthISO, monthKey, monthNameOf, opensStripParts, pad2, todayISO } from "../lib";
 
 // [enum value, human label] — the API takes the lowercase enum, the user
-// reads «Мир»/«Visa» (owner 2026-07-15).
+// reads «Мир»/«Visa» (2026-07-15).
 const PAYMENT_SYSTEMS = [
   ["mir", "Мир"],
   ["visa", "Visa"],
@@ -37,7 +37,7 @@ function last4(n: number): string {
 }
 
 // Bank clients grouped by держатель: unlabeled (your own) first, then people
-// alphabetically — the family-fleet view (owner 2026-07-09).
+// alphabetically — the family-fleet view (2026-07-09).
 function groupByHolder<T extends { holder_label?: string | null }>(clients: T[]): [string, T[]][] {
   const groups = new Map<string, T[]>();
   for (const c of clients) {
@@ -50,7 +50,7 @@ function groupByHolder<T extends { holder_label?: string | null }>(clients: T[])
 }
 
 // The bank-first cut: one section per bank, its clients (держатели) inside
-// (owner 2026-07-23).
+// (2026-07-23).
 function groupByBank<T extends { bank_id: number; bank_name: string }>(clients: T[]): [number, T[]][] {
   const groups = new Map<number, T[]>();
   for (const c of clients) groups.set(c.bank_id, [...(groups.get(c.bank_id) ?? []), c]);
@@ -65,10 +65,10 @@ function storedGrouping(): BanksGrouping {
   return localStorage.getItem(GROUP_KEY) === "holder" ? "holder" : "bank";
 }
 
-// «Категории» sort (owner 2026-07-24): по проценту keeps the API order
+// «Категории» sort (2026-07-24): по проценту keeps the API order
 // (currency → percent desc → title); the others re-sort client-side.
 // Persisted like the grouping toggle. Default is «по алфавиту» since
-// 2026-07-27 (owner: the list is scanned by category name, not by rate).
+// 2026-07-27 (the list is scanned by category name, not by rate).
 type CatsSort = "percent" | "alpha" | "bank";
 const CATS_SORT_KEY = "overview-cats-sort";
 function storedCatsSort(): CatsSort {
@@ -203,7 +203,7 @@ function ClientEditForm({ client, onDone }: { client: OverviewClient; onDone: ()
 }
 
 // Adding a bank = creating the person × bank relationship (bank_client);
-// cards are optional and come after, under the bank (owner 2026-07-23).
+// cards are optional and come after, under the bank (2026-07-23).
 function AddBankForm({ initialBankID, onDone }: { initialBankID?: number; onDone: () => void }) {
   const banks = useBanks();
   const programs = usePrograms();
@@ -291,7 +291,7 @@ function AddBankForm({ initialBankID, onDone }: { initialBankID?: number; onDone
 }
 
 // The plastic itself — strictly under an already-added bank (bank client);
-// the bank comes first (owner 2026-07-23).
+// the bank comes first (2026-07-23).
 function AddCardForm({
   initialBankID,
   onDone,
@@ -578,7 +578,7 @@ export default function Overview() {
     <>
       <div className="flex items-baseline justify-between">
         <h1 className="text-[25px] font-extrabold tracking-tight">Кешбек</h1>
-        {/* The month chip is a period picker: browse past periods (owner 2026-07-09);
+        {/* The month chip is a period picker: browse past periods (2026-07-09);
             all data-backed months are offered, back to the imported history. */}
         <MonthPicker value={monthDate} available={months} onChange={setMonthDate} />
       </div>
@@ -639,7 +639,7 @@ export default function Overview() {
                     onClick={() => navigate(`/lookup?cat=${g.slug}`)}
                     className="flex w-full items-center gap-2.5 border-t border-brd/60 py-2.5 text-left"
                   >
-                    {/* Category icon (owner 2026-07-27) — the canonical emoji
+                    {/* Category icon (2026-07-27) — the canonical emoji
                         seeded from the knowledge taxonomy. */}
                     <span className="w-[18px] flex-none text-[15px] leading-none">{g.emoji || FALLBACK_EMOJI}</span>
                     <span className="flex-1 text-sm font-semibold">
@@ -733,7 +733,7 @@ export default function Overview() {
           {clients.length === 0 && <Empty>Пока нет банков — начните с «+ Добавить банк».</Empty>}
 
           {grouping === "holder"
-            ? /* Family fleet: bank clients grouped by держатель (owner 2026-07-09);
+            ? /* Family fleet: bank clients grouped by держатель (2026-07-09);
                  one row per client — its plastics share the selection. */
               groupByHolder(clients).map(([holder, group]) => (
                 <div key={holder || "_own"} className="space-y-2.5">

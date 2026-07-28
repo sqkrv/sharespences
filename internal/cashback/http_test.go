@@ -3,7 +3,7 @@ package cashback
 import "testing"
 
 // RU keyboards produce «1,5»; the API must treat the comma as a decimal
-// separator (owner bug report 2026-07-24, ВТБ 1.5% «Все остальные покупки»).
+// separator (bug report 2026-07-24, ВТБ 1.5% «Все остальные покупки»).
 func TestStrToDecComma(t *testing.T) {
 	for _, tc := range []struct {
 		in   string

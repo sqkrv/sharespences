@@ -481,7 +481,7 @@ func TestComparableOffers(t *testing.T) {
 // TestRankActiveSelections covers S3: lookup «какой картой платить?».
 // E2E step 5 shape: supermarkets on July 15 → Альфа-Банк and Озон ranked
 // together (same currency), points entries grouped separately, inactive
-// periods filtered. Since the invariant-6 amendment (owner 2026-07-27)
+// periods filtered. Since the invariant-6 amendment (2026-07-27)
 // specials rank too — by percent, keeping their kind so the UI can mark them.
 func TestRankActiveSelections(t *testing.T) {
 	entries := []LookupEntry{
@@ -545,7 +545,7 @@ func TestRankActiveSelections(t *testing.T) {
 	}
 }
 
-// TestAssessAvailability covers S3b verdicts (owner 2026-07-16): honest
+// TestAssessAvailability covers S3b verdicts (2026-07-16): honest
 // «можно ли выбрать прямо сейчас» per offered-but-unselected menu row.
 func TestAssessAvailability(t *testing.T) {
 	tests := []struct {
@@ -631,7 +631,7 @@ func TestRankAvailable(t *testing.T) {
 	}
 }
 
-// TestOfferSuper covers the super kind (owner 2026-07-15, spec invariant 6):
+// TestOfferSuper covers the super kind (2026-07-15, spec invariant 6):
 // the Альфа monthly барабан ranks like a regular (unlike special), but is
 // granted, not chosen — no slot, no collision, not a comparison candidate.
 func TestOfferSuper(t *testing.T) {
@@ -673,7 +673,7 @@ func TestOfferSuper(t *testing.T) {
 	}
 }
 
-// TestOfferSpecialRanks is the regression guard for the owner's 2026-07-27
+// TestOfferSpecialRanks is the regression guard for the 2026-07-27
 // report: Озон такси 5% (regular, selected) was answered as «лучшая карта»
 // while an Альфа 7% special sat below under «вне рейтинга». Specials now
 // rank by percent — but stay granted, not chosen (no slot, no collision, no

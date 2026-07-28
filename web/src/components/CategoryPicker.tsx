@@ -156,7 +156,7 @@ export function CategoryPicker({
                     const selected = value?.bankCategoryID === r.id;
                     // Canonical-less catalog rows (Альфа-Тревел, канальные…)
                     // are deliberate — ordinary categories without a
-                    // cross-bank identity, no warning (owner 2026-07-21).
+                    // cross-bank identity, no warning (2026-07-21).
                     return (
                       <button
                         key={r.id}
@@ -280,7 +280,7 @@ function AddCustomForm({
       }
       // Catalog rows are always kind=regular — canonical-less ones are
       // ordinary categories without a cross-bank identity, not «спец»
-      // (owner 2026-07-21; special is for granted bonus mechanics).
+      // (2026-07-21; special is for granted bonus mechanics).
       return unwrap(
         await api.POST("/api/v1/cashback/bank-categories", {
           body: {

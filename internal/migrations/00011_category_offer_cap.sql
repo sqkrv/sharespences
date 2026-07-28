@@ -1,4 +1,4 @@
--- Owner feedback 2026-07-24 (ВТБ menu): specific categories can carry their
+-- Observed in the ВТБ menu: specific categories can carry their
 -- own КБ cap for the period («Театры и кино — кешбэк до 5 000 ₽») while the
 -- program-wide cap keeps burning. Static display only in v1 — no spend
 -- tracking (per the spec's OUT list); shown offer-cap-first over the tier cap.

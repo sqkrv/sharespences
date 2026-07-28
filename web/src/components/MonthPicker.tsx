@@ -3,8 +3,8 @@ import { MONTHS_SHORT, fmtMonthYear, midMonthISO, monthKey, pad2, todayISO } fro
 
 // The overview header's period picker: a chip («июль 2026 ▾») opening a
 // year-navigable month grid. ANY month up to next month is selectable — you
-// must be able to open a month with no data yet to backfill it (owner
-// 2026-07-15). A dot marks months that already have offer periods; only
+// must be able to open a month with no data yet to backfill it (2026-07-15).
+// A dot marks months that already have offer periods; only
 // future months beyond next month are disabled.
 export function MonthPicker({
   value,

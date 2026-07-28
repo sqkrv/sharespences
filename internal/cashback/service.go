@@ -49,7 +49,7 @@ type Service struct {
 	recognitions recognitionStore
 }
 
-// clientLabel names a bank client for display: «Альфа-Банк» for the owner's
+// clientLabel names a bank client for display: «Альфа-Банк» for the account owner's
 // own relationship, «Альфа-Банк · Мама» for a держатель.
 func clientLabel(bankName string, label *string) string {
 	if label == nil || *label == "" {
@@ -193,7 +193,7 @@ func (s *Service) CreateOfferPeriod(ctx context.Context, userID uuid.UUID, clien
 }
 
 // AttachScreenshot links an uploaded attachment to an existing period
-// (owner 2026-07-09: screenshots must be editable after creation, not only
+// (2026-07-09: screenshots must be editable after creation, not only
 // at «Новый период»).
 func (s *Service) AttachScreenshot(ctx context.Context, userID uuid.UUID, periodID int64, attachmentID uuid.UUID) error {
 	if _, err := s.Q.GetOfferPeriodForUser(ctx, db.GetOfferPeriodForUserParams{ID: periodID, UserID: userID}); err != nil {
@@ -344,7 +344,7 @@ func (s *Service) CreateCategoryOffer(ctx context.Context, userID uuid.UUID, off
 }
 
 // effectiveMax resolves invariant 1's limit: the period-level override wins
-// over the tier default (owner feedback 2026-07-04: slot counts vary between
+// over the tier default (2026-07-04: slot counts vary between
 // periods); nil = no limit known, no slot check.
 func (s *Service) effectiveMax(ctx context.Context, override *int32, tierID *int64) (*int32, error) {
 	if override != nil {
@@ -397,8 +397,8 @@ func (s *Service) CreateSelection(ctx context.Context, userID uuid.UUID, categor
 	return sel, nil
 }
 
-// UpdateCategoryOffer replaces the mutable fields of a menu row (owner
-// feedback 2026-07-04: entered rows must be correctable — a row mapped to a
+// UpdateCategoryOffer replaces the mutable fields of a menu row (feedback
+// 2026-07-04: entered rows must be correctable — a row mapped to a
 // canonical category after the fact starts appearing in lookups). A newly
 // set canonical mapping is remembered as a bank alias, like on create.
 func (s *Service) UpdateCategoryOffer(ctx context.Context, userID uuid.UUID, offerID int64, rawTitle string, canonicalID *int64, percent *decimal.Decimal, kind OfferKind, notes *string, bankCategoryID *int64, capValue *decimal.Decimal) (db.CategoryOffer, error) {
@@ -607,7 +607,7 @@ type OverviewCategoryGroup struct {
 	CategoryID  int64
 	Slug        string
 	TitleRu     string
-	Emoji       string // canonical category icon for the list (owner 2026-07-27)
+	Emoji       string // canonical category icon for the list (2026-07-27)
 	Best        LookupEntry
 	OthersCount int
 }
@@ -683,7 +683,7 @@ type OverviewResult struct {
 
 // fallbackEntries picks the selected rows that answer «а если категория не
 // выбрана нигде?»: ordinary regular rows mapped to canonical all-purchases
-// («За все покупки» — a category like any other, owner 2026-07-09; it pays
+// («За все покупки» — a category like any other, 2026-07-09; it pays
 // only when no other selected category matches, which is why it doubles as
 // the «Остальное» display). exceptCat skips rows already listed as the
 // looked-up category itself.
@@ -718,7 +718,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 	// Periods come from the period list, NOT from the offers join — a
 	// freshly created period has no menu rows yet and would otherwise be
 	// invisible here while still blocking re-creation with a 409 overlap
-	// (owner bug report 2026-07-22).
+	// (bug report 2026-07-22).
 	periods, err := s.Q.ListOfferPeriodsForUser(ctx, userID)
 	if err != nil {
 		return OverviewResult{}, err
@@ -773,7 +773,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		if len(ranked.Ranked) == 0 {
 			continue // nothing active
 		}
-		// All three kinds rank (invariant 6 amendment, owner 2026-07-27): the
+		// All three kinds rank (invariant 6 amendment, 2026-07-27): the
 		// best card may be a барабан or a спец — the frontend marks it.
 		res.Categories = append(res.Categories, OverviewCategoryGroup{
 			CategoryID:  catID,

@@ -8,7 +8,7 @@ package seed
 // hand-edit here. Provenance + mapping report: knowledge
 // concepts/mcc-categories.md.
 //
-// Semantics (owner decisions 2026-07-20):
+// Semantics:
 //   - dictionary: unconditional upsert (knowledge-derived refresh, like
 //     emoji/brand colors);
 //   - membership: refresh-via-diff, scoped to the catalog rows named in

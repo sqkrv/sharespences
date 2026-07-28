@@ -37,17 +37,17 @@ const (
 //     candidate (the Альфа monthly барабан суперкэшбека: +1 category, whole
 //     period, stacks with the monthly pick). Ranks like a regular, но — like
 //     special — is granted, not chosen: no slot, no collision warning
-//     (owner 2026-07-15).
+//     (2026-07-15).
 //   - special — a time-boxed / non-stacking / channel bonus (Альфа-Пятница,
 //     Яндекс колесо, timed flash): granted, not chosen — no slot, no
 //     collision, never a comparison candidate, never offered in S3b. It DOES
-//     rank in lookup/overview since the invariant-6 amendment (owner
-//     2026-07-27: a 7% special must not hide below a 5% regular); the UI
+//     rank in lookup/overview since the invariant-6 amendment (2026-07-27:
+//     a 7% special must not hide below a 5% regular); the UI
 //     marks it «спец» with the offer's raw title and a «проверь условие»
 //     caveat, because its condition (пятница, только в сервисе) is not
 //     modelled.
 //
-// «За все покупки» is an ORDINARY regular row (owner 2026-07-09): it takes a
+// «За все покупки» is an ORDINARY regular row (2026-07-09): it takes a
 // slot and collides like any category; it merely pays only when no other
 // selected category matches — a display concern (the «Остальное» fallback),
 // not a kind.
@@ -323,8 +323,8 @@ type LookupEntry struct {
 	PointsLabel    string           // 'Баллы Плюс', 'баллы МКБ'; empty for rubles
 }
 
-// MidPeriodAddPolicy mirrors cashback_program.mid_period_add (owner
-// 2026-07-16): whether a category can be ADDED mid-period. Deliberately not
+// MidPeriodAddPolicy mirrors cashback_program.mid_period_add (2026-07-16):
+// whether a category can be ADDED mid-period. Deliberately not
 // derived from SelectionMode — Альфа is atomic yet allows adds while a slot
 // is free; ВТБ/Озон (also atomic) lock after the one-shot confirmation.
 type MidPeriodAddPolicy string
@@ -347,7 +347,7 @@ const (
 )
 
 // AvailabilityVerdict is S3b's honest answer per offered-but-unselected row —
-// a fact-based state, never a guess (spec S3b, owner 2026-07-16).
+// a fact-based state, never a guess (spec S3b, 2026-07-16).
 type AvailabilityVerdict string
 
 const (
@@ -455,7 +455,7 @@ func RankAvailable(entries []AvailableEntry) []AvailableEntry {
 }
 
 // LookupResult is the S3 answer: the ranked selections. All three kinds rank
-// since the invariant-6 amendment (owner 2026-07-27) — kind rides along on
+// since the invariant-6 amendment (2026-07-27) — kind rides along on
 // each entry so the UI can mark барабан/спец rows.
 type LookupResult struct {
 	Ranked []LookupEntry

@@ -1,4 +1,4 @@
--- Owner correction 2026-07-28: the bank's own brand is «Ozon Банк» (Latin
+-- The bank's own brand is «Ozon Банк» (Latin
 -- wordmark + Cyrillic «Банк»), not the fully-Russian «Озон Банк» the seed
 -- shipped. This has to be a migration, not just a seed edit: `bank.name`
 -- carries no unique constraint and seedBank inserts `where not exists

@@ -126,7 +126,7 @@ function AddOfferForm({
           <Input inputMode="decimal" className="w-32 flex-none" value={cap} onChange={(e) => setCap(e.target.value)} placeholder="лимит (до ₽)" />
         </div>
         {/* The compact toggle above invited mis-tagging a барабан as «спец»
-            (owner report 2026-07-27) — spell the mechanics out. */}
+            (report 2026-07-27) — spell the mechanics out. */}
         {kind !== "regular" && (
           <p className="text-[10.5px] font-medium text-tx4">
             {kind === "super"
@@ -143,7 +143,7 @@ function AddOfferForm({
   );
 }
 
-// Inline editor for an existing row (owner feedback 2026-07-04: entered
+// Inline editor for an existing row (2026-07-04: entered
 // rows must be correctable — fixing the canonical mapping here is what
 // makes the row appear in «Какой картой?»). Deletion lives here too.
 function EditOfferForm({
@@ -285,7 +285,7 @@ function EditOfferForm({
   );
 }
 
-// Screenshot evidence, editable after creation (owner 2026-07-09): add via
+// Screenshot evidence, editable after creation (2026-07-09): add via
 // the dashed tile, remove via ✕ — a detached orphan file is cleaned up
 // server-side.
 function ScreenshotStrip({ periodID, attachmentIDs }: { periodID: number; attachmentIDs: string[] }) {
@@ -348,7 +348,7 @@ function ScreenshotStrip({ periodID, attachmentIDs }: { periodID: number; attach
   );
 }
 
-// Editable slot count (owner feedback 2026-07-04: the offered number of
+// Editable slot count (2026-07-04: the offered number of
 // categories is not constant — override per period, null = tier default).
 function SlotsEditor({
   periodID,
@@ -577,7 +577,7 @@ export default function Period() {
           const isBonus = offer.kind !== "regular";
           // Canonical-less is only a data gap when the row wasn't picked
           // from the catalog: catalog rows without a canonical (Альфа-Тревел,
-          // канальные…) are deliberately so (owner 2026-07-21).
+          // канальные…) are deliberately so (2026-07-21).
           const unmapped = !isBonus && offer.canonical_category_id == null && offer.bank_category_id == null;
           const blocked = !selected && !isBonus && slotsFull;
           const canonTitle = (categories.data ?? []).find((c) => c.id === offer.canonical_category_id)?.title_ru;

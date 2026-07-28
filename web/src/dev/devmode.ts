@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 // Dev mode per docs/design/ui-preferences.md: a persisted toggle under
 // «Сервисы», OFF by default, and deliberately alive in the PRODUCTION build —
-// the owner's feedback comes from the installed PWA, so a dev-server-only
+// feedback comes from the installed PWA, so a dev-server-only
 // flag would be off exactly where the reports are written.
 //
 // Storage mirrors theme.ts (localStorage + a class on <html>), but the flag

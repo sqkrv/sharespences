@@ -250,7 +250,7 @@ export default function Lookup() {
   const [showAll, setShowAll] = useState(false);
 
   // Categories with active selections come first — those are the answers
-  // the owner actually taps mid-month (design 06 shows the common ones).
+  // the ones actually tapped mid-month (design 06 shows the common ones).
   const overview = useQuery({
     queryKey: ["overview"],
     queryFn: async () => unwrap(await api.GET("/api/v1/cashback/overview")),

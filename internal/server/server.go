@@ -83,8 +83,8 @@ func OpenAPI(cfg Config) ([]byte, error) {
 }
 
 func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
-	// The API answers in the interface language (Russian only for now,
-	// owner 2026-07-28) — this switches huma's own validation vocabulary and
+	// The API answers in the interface language (Russian only for now) —
+	// this switches huma's own validation vocabulary and
 	// error titles; module messages are written in Russian at their source.
 	i18n.Install()
 

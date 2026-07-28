@@ -1,5 +1,5 @@
--- Minimal password auth (owner decision 2026-07-03: email/password now,
--- magic links when the auth spec is written; WebAuthn stays parked).
+-- Minimal password auth: email/password now, magic links when the auth
+-- spec is written; WebAuthn stays parked.
 -- `sessions` is the alexedwards/scs pgxstore schema.
 -- attachment.user_id: attachments are user-owned rows, scope them like
 -- everything else (spec: user_id scoping on all user-owned rows).

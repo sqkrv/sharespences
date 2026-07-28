@@ -1,5 +1,5 @@
 // Package seed loads reference data derived from the knowledge base
-// (docs/knowledge in the private meta-repo): the owner's six banks with
+// (docs/knowledge in the private meta-repo): the six banks with
 // their КБ programs and tiers, ~55 canonical categories (with UI emoji),
 // the known bank-title aliases, the per-bank picker catalogs
 // (bank_category), and bank brand colors (five banks + catalogs/emoji/
@@ -45,7 +45,7 @@ type program struct {
 	opensDay      int // 0 = unknown
 	// midPeriodAdd: can a category be ADDED mid-period? (allowed |
 	// locked_after_first | paid | unknown). NOT derivable from
-	// selectionMode — Альфа is atomic yet allows adds (owner 2026-07-16).
+	// selectionMode — Альфа is atomic yet allows adds (2026-07-16).
 	midPeriodAdd string
 	// activation: when a fresh pick starts paying (immediate | next_day |
 	// unknown). МКБ activates next day — «выбери перед покупкой» advice
@@ -59,7 +59,7 @@ var programs = []program{
 	{
 		bank: "Альфа-Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub", opensDay: 25,
-		midPeriodAdd: "allowed", activation: "immediate", // owner 2026-07-16: add while a slot is free
+		midPeriodAdd: "allowed", activation: "immediate", // 2026-07-16: add while a slot is free
 		notes: asOf,
 		tiers: []tier{
 			{name: "Стандартный", capValue: "5000", capScope: "total", maxCategories: 3, basePercent: "5", notes: asOf},
@@ -130,7 +130,7 @@ var programs = []program{
 // Reference-only banks (wiki): no programs seeded.
 var extraBanks = []string{"Сбербанк", "Т-Банк"}
 
-// Emoji are UI icons for the picker, owner-curated in the taxonomy page
+// Emoji are UI icons for the picker, curated in the taxonomy page
 // (2026-07-16, timeless).
 var canonicalCategories = [][3]string{
 	{"supermarkets", "Супермаркеты", "🛒"},
@@ -378,9 +378,9 @@ var aliases = []struct{ bank, raw, slug string }{
 	{"Т-Банк", "Одежда и обувь", "clothes"},
 	{"Т-Банк", "Подарки и творчество", "hobby"},
 	{"Т-Банк", "Цветы", "flowers"},
-	// Beyond the 2026-04 MCC appendix — owner live app, 2026-07-24.
+	// Beyond the 2026-04 MCC appendix — live app, 2026-07-24.
 	{"Т-Банк", "Все покупки", "all-purchases"},
-	// The «… в Городе» family maps to NO canonical (owner 2026-07-28) — see
+	// The «… в Городе» family maps to NO canonical (2026-07-28) — see
 	// the catalog block below; aliasing them would make the lookup promise
 	// the rate at any АЗС / supermarket.
 	{"Яндекс Пэй", "Кафе, бары и рестораны", "restaurants"},
@@ -432,8 +432,8 @@ var aliases = []struct{ bank, raw, slug string }{
 // snapshot (FK nulls out), MCC memberships cascade and re-land on the new
 // title via the seed CSV.
 var retiredBankCategories = []struct{ bank, title string }{
-	{"Альфа-Банк", "Супермаркеты"}, // → «Продукты» (owner-verified 2026-07-22)
-	{"Т-Банк", "Бензин в городе"},  // never in the live app — «Топливо в Городе» is the real row (owner 2026-07-27)
+	{"Альфа-Банк", "Супермаркеты"}, // → «Продукты» (verified 2026-07-22)
+	{"Т-Банк", "Бензин в городе"},  // never in the live app — «Топливо в Городе» is the real row (2026-07-27)
 	// Corpus sweep 2026-07-27: these titles came from rules PDFs / recollection
 	// and the app renders them differently. Right-hand side is the live wording.
 	{"Т-Банк", "Топливо в городе"},           // → «Топливо в Городе»
@@ -449,8 +449,8 @@ var retiredBankCategories = []struct{ bank, title string }{
 // retiredBankCategories, one table down (a stale alias would keep resolving a
 // raw title nobody can enter).
 var retiredAliases = []struct{ bank, raw string }{
-	{"Т-Банк", "Бензин в городе"}, // owner 2026-07-27
-	// The «… в Городе» family lost its canonical mappings (owner 2026-07-28);
+	{"Т-Банк", "Бензин в городе"}, // 2026-07-27
+	// The «… в Городе» family lost its canonical mappings (2026-07-28);
 	// the aliases have to go too, or a raw title typed into a period would
 	// still resolve to АЗС / Супермаркеты / Автоуслуги.
 	{"Т-Банк", "Топливо в Городе"},
@@ -475,11 +475,11 @@ var bankColors = map[string]string{
 // Per-bank picker catalogs: the CURRENTLY selectable menu rows, from the
 // taxonomy page's «Bank catalogs» section (⚠️-flagged rows there pending
 // live-app re-verification). slug "" = canonical-less service/channel row —
-// still ordinary kind=regular (owner correction 2026-07-21: special is for
+// still ordinary kind=regular (corrected 2026-07-21: special is for
 // granted bonus mechanics like Пятница/колесо, never catalog rows); emoji
 // "" = inherit the canonical's.
 var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
-	// Альфа-Банк (as of 2026-01 PDF; menus 2025-01/02; «Продукты» owner-verified live 2026-07-22)
+	// Альфа-Банк (as of 2026-01 PDF; menus 2025-01/02; «Продукты» verified live 2026-07-22)
 	{bank: "Альфа-Банк", title: "Продукты", slug: "supermarkets"},
 	{bank: "Альфа-Банк", title: "Кафе и рестораны", slug: "restaurants"},
 	{bank: "Альфа-Банк", title: "Фастфуд", slug: "fastfood"},
@@ -658,13 +658,13 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Т-Банк", title: "Детские товары", slug: "kids"},
 	{bank: "Т-Банк", title: "Маркетплейсы", slug: "marketplaces"},
 	{bank: "Т-Банк", title: "Подарки и творчество", slug: "hobby"},
-	// Beyond the 2026-04 MCC appendix — owner live app, 2026-07-24 (the
+	// Beyond the 2026-04 MCC appendix — live app, 2026-07-24 (the
 	// appendix lacks these; full live-menu ingest queued in the knowledge log).
 	{bank: "Т-Банк", title: "Все покупки", slug: "all-purchases"},
 	// Geo-scoped «… в Городе» family — where Т-Банк's headline rates live
 	// (10–30% vs 5–7% on plain rows). Spelling verified against the corpus
 	// 2026-07-27: capital «Г», and «Шопинг» with one «п».
-	// None of them carries a canonical (owner 2026-07-28): «в Городе» pays
+	// None of them carries a canonical (2026-07-28): «в Городе» pays
 	// at partner merchants in the user's city, not across the whole MCC
 	// category, so mapping «Топливо в Городе» onto АЗС would make the lookup
 	// promise 10% at any filling station. Canonical-less means the rows stay
@@ -675,12 +675,12 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Т-Банк", title: "Супермаркеты в Городе", emoji: "🛒"},
 	{bank: "Т-Банк", title: "Автосервисы в Городе", emoji: "🛠️"},
 	// «Шопинг в Городе» was the first of the family ruled canonical-less
-	// (owner 2026-07-27): it also bundles одежда + техника + аксессуары +
+	// (2026-07-27): it also bundles одежда + техника + аксессуары +
 	// маркетплейсы, so no single canonical was honest even before the
 	// geo-scope argument.
 	{bank: "Т-Банк", title: "Шопинг в Городе", emoji: "🛍️"},
 	{bank: "Т-Банк", title: "Афиша в Городе", emoji: "🎭"},
-	// Own-service rows — slot-consuming, hence catalog rows (owner 2026-07-27).
+	// Own-service rows — slot-consuming, hence catalog rows (2026-07-27).
 	{bank: "Т-Банк", title: "Т-Страхование", emoji: "🛡️"},
 	{bank: "Т-Банк", title: "Долями", emoji: "💳"},
 	// Merchant + subscription-reward rows inside the Т-Банк picker.
@@ -739,7 +739,7 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Яндекс Пэй", title: "Оплата токеном по NFC", emoji: "📲"},
 	// Merchant rows rendered inside the picker. Seeded canonical-less on the
 	// slot test — picking one spends a slot, so it must exist to record a
-	// month (owner 2026-07-27: prefer more rows over fewer). These rotate
+	// month (2026-07-27: prefer more rows over fewer). These rotate
 	// monthly; a row absent from the current menu is not wrong, just idle.
 	{bank: "Яндекс Пэй", title: "Свои Плюсы в S7", emoji: "✈️"},
 	{bank: "Яндекс Пэй", title: "РИВ ГОШ", emoji: "💄"},
@@ -755,7 +755,7 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	// the corpus has no Russian rendering of these rows yet. That is the
 	// exact move that produced the «Яндекс Забота»/«ОСАГО» miss, so treat
 	// them as provisional and retire on the first Russian sighting that
-	// disagrees. Seeded anyway on the owner's «more rows over fewer» rule;
+	// disagrees. Seeded anyway on the «more rows over fewer» rule;
 	// «Яндекс Еда» is the safest of the three (Альфа's catalog already
 	// carries that exact Russian title).
 	{bank: "Яндекс Пэй", title: "Яндекс Афиша", emoji: "🎭"},         // «Yandex Afisha», 25%, theater tickets

@@ -1,8 +1,8 @@
 // Package i18n makes the API speak the interface language. The app is
-// Russian-only today (owner 2026-07-28), so there is no negotiation and no
-// catalog: Install() rewrites the two places whose text is NOT ours — huma's
-// built-in validation messages and its error-model titles — and every message
-// the modules produce themselves is simply written in Russian at its source.
+// Russian-only, so there is no negotiation and no catalog: Install() rewrites
+// the two places whose text originates inside huma — its built-in validation
+// messages and its error-model titles — while every message the modules
+// produce is written in Russian at its source.
 //
 // Both hooks are process-global huma variables, which is why they live in one
 // explicit Install() called during assembly rather than in scattered init()s.
@@ -37,8 +37,8 @@ var statusTitles = map[int]string{
 	http.StatusServiceUnavailable:    "Сервис недоступен",
 }
 
-// humaDetails are the message strings huma itself passes to NewError (ours
-// are already Russian at the call site). Keyed by huma's literal.
+// humaDetails are the message strings huma itself passes to NewError; module
+// messages are already Russian at the call site. Keyed by huma's literal.
 var humaDetails = map[string]string{
 	"validation failed":          "проверка данных не прошла",
 	"bad request":                "некорректный запрос",
@@ -127,15 +127,15 @@ func StatusTitle(status int) string {
 func Install() {
 	installValidationMessages()
 
-	// huma builds every error — ours via huma.Error4xx…(), its own via the
-	// request validator — through this constructor, so translating the title
-	// and its own detail strings here covers both. The body/details logic
-	// mirrors huma's default implementation.
+	// Every error passes through this constructor — module errors via
+	// huma.Error4xx…(), huma's own via the request validator — so translating
+	// the title and huma's detail strings here covers both. The body/details
+	// logic mirrors huma's default implementation.
 	huma.NewError = func(status int, msg string, errs ...error) huma.StatusError {
 		if ru, ok := humaDetails[msg]; ok {
 			msg = ru
 		}
-		// A 5xx says nothing beyond «что-то сломалось на нашей стороне».
+		// A 5xx response carries no detail beyond the failure itself.
 		// huma's default puts the raw error into Errors[], and for a failure
 		// coming out of the database layer that is a connection string, host,
 		// port, role name and SQLSTATE — shipped verbatim to whoever made the
