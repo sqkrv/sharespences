@@ -16,6 +16,39 @@ export function BrandMark() {
   );
 }
 
+// Login/Register are the only screens without the bottom NavBar, so they are
+// the only ones a footer can sit under without fighting it — and the only ones
+// a stranger sees before deciding to register. Everywhere else the same links
+// live in the «О приложении» card on SYS-03.
+//
+// Plain <a>, never <Link>: /privacy and /terms are static documents served
+// outside the SPA (web/public/*.html), so a client-side navigation would find
+// no route and render nothing. target=_blank because a form is always on
+// screen here — reading the policy in place would discard what was typed.
+// (The same links in SYS-03's «О приложении» card navigate in place: no form
+// is at risk there, and staying in the tab keeps an installed PWA in the app.)
+export function LegalFooter() {
+  return (
+    <footer className="mt-6 text-center text-[11.5px] leading-relaxed font-medium text-tx4">
+      <p>
+        Разработал{" "}
+        <a className="font-semibold text-tx3" href="https://t.me/sharespences" target="_blank" rel="noreferrer">
+          @sharespences
+        </a>
+      </p>
+      <p className="mt-1">
+        <a className="font-semibold text-tx3" href="/privacy" target="_blank" rel="noreferrer">
+          Политика конфиденциальности
+        </a>
+        <span className="px-1.5">·</span>
+        <a className="font-semibold text-tx3" href="/terms" target="_blank" rel="noreferrer">
+          Пользовательское соглашение
+        </a>
+      </p>
+    </footer>
+  );
+}
+
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -59,6 +92,7 @@ export default function Login() {
           </p>
         </form>
       </Card>
+      <LegalFooter />
       {/* Login/Register render outside the Shell, so they mount the chip themselves. */}
       <DevChip />
     </div>

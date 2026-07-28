@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
-import { Btn, Card, Field, Input, ErrMsg } from "../components/ui";
-import { BrandMark } from "./Login";
+import { Btn, Card, Field, Input, ErrMsg, validityProps } from "../components/ui";
+import { BrandMark, LegalFooter } from "./Login";
 import DevChip from "../dev/DevChip";
 
 export default function Register() {
@@ -45,6 +45,35 @@ export default function Register() {
           <Field label="Пароль (мин. 8 символов)">
             <Input type="password" required minLength={8} value={form.password} onChange={set("password")} autoComplete="new-password" />
           </Field>
+          {/*
+            Consent is collected as an affirmative act, unticked by default:
+            the primary legal basis is п. 5 ч. 1 ст. 6 ФЗ-152 (processing needed
+            to perform the Соглашение), and ст. 9's consent sits on top of it.
+            `required` lets the browser block the submit — no state, no wiring.
+          */}
+          <label className="flex items-start gap-2.5 pt-1 text-[12px] leading-snug font-medium text-tx3">
+            {/*
+              Not the shared <Input> — that one carries the text-field styling.
+              It only borrows the validity handlers, so the browser's own
+              «Please check this box…» is replaced by Russian here too.
+            */}
+            <input
+              type="checkbox"
+              required
+              {...validityProps<HTMLInputElement>()}
+              className="mt-0.5 h-4 w-4 flex-none accent-[var(--t-acc)]"
+            />
+            <span>
+              Принимаю{" "}
+              <a className="font-semibold text-accl" href="/terms" target="_blank" rel="noreferrer">
+                Пользовательское соглашение
+              </a>{" "}
+              и согласие на обработку персональных данных на условиях{" "}
+              <a className="font-semibold text-accl" href="/privacy" target="_blank" rel="noreferrer">
+                Политики
+              </a>
+            </span>
+          </label>
           <Btn type="submit" className="w-full" disabled={register.isPending}>
             Создать аккаунт
           </Btn>
@@ -57,6 +86,7 @@ export default function Register() {
           </p>
         </form>
       </Card>
+      <LegalFooter />
       <DevChip />
     </div>
   );

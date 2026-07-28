@@ -33,6 +33,14 @@ export const SCREENS: Screen[] = [
 //   W-01 components/MonthPicker.tsx
 //   W-02 components/CategoryPicker.tsx
 //   W-03 components/NavBar.tsx
+//
+// Static pages live outside the SPA entirely — plain HTML in web/public/,
+// served by internal/web/web.go at their extensionless URLs. React never
+// mounts on them, so they cannot carry a `data-sid` or render the chip and
+// they are deliberately absent from SCREENS above; the IDs exist only so the
+// vocabulary covers every screen a user can reach.
+//   SYS-04 /privacy  web/public/privacy.html
+//   SYS-05 /terms    web/public/terms.html
 
 // `/periods/new` must win over `/periods/:id` — the router matches in order
 // and so do we (SCREENS lists the literal first).

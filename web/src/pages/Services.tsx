@@ -4,8 +4,19 @@ import { useInstallPrompt } from "../pwa";
 import { Btn, Card } from "../components/ui";
 import { BUILD, isStale, useDevMode, useServerBuild } from "../dev/devmode";
 
-// «Сервисы» hosts what the design's shell has no other place for:
-// profile, the three-state theme control, install, docs, logout, dev mode.
+// BUILD is the compile-time ISO stamp (web/vite.config.ts). «О приложении»
+// shows it as a plain date outside dev mode, so a bug report from someone who
+// is not the owner can name the build — ADR-0006's «which build hit this?».
+// The CalVer tag replaces this line once the version is plumbed through the
+// binary (that lands with the Go→main merge, which the first tag waits on).
+const built = new Date(BUILD);
+const buildLabel = Number.isNaN(built.getTime())
+  ? null
+  : built.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+
+// «Сервисы» hosts what the design's shell has no other place for: profile, the
+// three-state theme control, install, docs, logout, dev mode, and the app's own
+// identity card (author, legal documents, build).
 export default function Services() {
   const me = useMe();
   const logout = useLogout();
@@ -106,6 +117,31 @@ export default function Services() {
         <a href="/docs" className="mt-3 block text-sm font-semibold text-accl">
           OpenAPI-документация →
         </a>
+      </Card>
+
+      <Card className="p-4" data-sid="SYS-03.e">
+        <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">О приложении</p>
+        <p className="mt-2 text-sm font-medium text-tx3">
+          Sharespences — учёт банковского кешбека: какие категории выбраны и какой картой выгоднее платить.
+        </p>
+        <p className="mt-2 text-sm font-medium text-tx3">
+          Разработал{" "}
+          <a className="font-semibold text-accl" href="https://t.me/sharespences" target="_blank" rel="noreferrer">
+            @sharespences
+          </a>{" "}
+          — туда же можно написать об ошибке или попросить удалить аккаунт.
+        </p>
+        {/*
+          Same-tab, unlike the auth screens' LegalFooter: no form is at risk
+          here, and an in-place navigation keeps an installed PWA in the app.
+        */}
+        <a href="/privacy" className="mt-3 block text-sm font-semibold text-accl">
+          Политика обработки персональных данных →
+        </a>
+        <a href="/terms" className="mt-2 block text-sm font-semibold text-accl">
+          Пользовательское соглашение →
+        </a>
+        {buildLabel && <p className="mt-3 text-[11px] font-medium text-tx4">Сборка от {buildLabel}</p>}
       </Card>
     </>
   );

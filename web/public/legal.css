@@ -1,0 +1,282 @@
+/*
+ * Stylesheet for the legal pages (privacy.html, terms.html).
+ *
+ * Those pages live in web/public/ and are plain HTML served outside the SPA:
+ * ФЗ-152 ст. 18.1 ч.2 requires the policy to be readable without registration,
+ * and a client-rendered route answers a no-JS fetch — РКН's checkers, crawlers,
+ * a broken bundle — with an empty <div id="root">. Vite copies public/ verbatim,
+ * so there is no Tailwind and no build step here; this file is hand-written CSS.
+ *
+ * The palette mirrors web/src/index.css. Dark is the default exactly as in the
+ * app (docs/design/ui-preferences.md): «system» resolves to light ONLY on an
+ * explicit OS light preference. A stored override (localStorage "theme") is
+ * applied by the inline script in each page as progressive enhancement — with
+ * JS off the media query alone still lands on the right theme.
+ *
+ * Golos Text is bundled into the SPA under content-hashed filenames, so a
+ * static file cannot reference it; these pages use the system stack instead.
+ */
+
+:root {
+  --bg: #0f0b1c;
+  --srf: #181227;
+  --inset: #221a3a;
+  --brd: #271f42;
+  --tx: #ece9f6;
+  --tx2: #b7b1ce;
+  --tx3: #8d86a8;
+  --tx4: #6f688c;
+  --accl: #bcb4ff;
+  --glow: radial-gradient(120% 78% at 50% -12%, #241c3e 0%, #0f0b1c 58%);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f2f0f8;
+    --srf: #ffffff;
+    --inset: #ece8f6;
+    --brd: #e3def0;
+    --tx: #191330;
+    --tx2: #4a4468;
+    --tx3: #6f6890;
+    --tx4: #9a93b8;
+    --accl: #6f4fe0;
+    --glow: radial-gradient(120% 78% at 50% -12%, #ece7fa 0%, #f2f0f8 58%);
+    color-scheme: light;
+  }
+}
+
+/* Explicit override from the app's theme toggle. Higher specificity than the
+   media-query rule above, so it wins in both directions regardless of order. */
+:root.dark {
+  --bg: #0f0b1c;
+  --srf: #181227;
+  --inset: #221a3a;
+  --brd: #271f42;
+  --tx: #ece9f6;
+  --tx2: #b7b1ce;
+  --tx3: #8d86a8;
+  --tx4: #6f688c;
+  --accl: #bcb4ff;
+  --glow: radial-gradient(120% 78% at 50% -12%, #241c3e 0%, #0f0b1c 58%);
+  color-scheme: dark;
+}
+
+:root.light {
+  --bg: #f2f0f8;
+  --srf: #ffffff;
+  --inset: #ece8f6;
+  --brd: #e3def0;
+  --tx: #191330;
+  --tx2: #4a4468;
+  --tx3: #6f6890;
+  --tx4: #9a93b8;
+  --accl: #6f4fe0;
+  --glow: radial-gradient(120% 78% at 50% -12%, #ece7fa 0%, #f2f0f8 58%);
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 1.5rem 1rem calc(3rem + env(safe-area-inset-bottom));
+  background: var(--bg) var(--glow) no-repeat;
+  background-size: 100% 100vh;
+  color: var(--tx2);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  letter-spacing: -0.01em;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+.doc {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+/* Brand mark — the app's «S» tile and wordmark, so the page reads as part of
+   Sharespences rather than a stray document. */
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.62rem;
+  margin-bottom: 1.75rem;
+  text-decoration: none;
+}
+
+.brand__tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(140deg, #8b6fff, #5b3fe0);
+  box-shadow: 0 6px 18px -6px rgba(139, 111, 255, 0.8);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.brand__name {
+  color: var(--tx3);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0 0 1rem;
+  color: var(--tx);
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  margin: 2.4rem 0 0.85rem;
+  color: var(--tx);
+  font-size: 1.12rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+p,
+li {
+  margin: 0 0 0.85rem;
+}
+
+ul {
+  margin: 0 0 0.85rem;
+  padding-left: 1.15rem;
+}
+
+li {
+  margin-bottom: 0.4rem;
+}
+
+strong {
+  color: var(--tx);
+  font-weight: 600;
+}
+
+a {
+  color: var(--accl);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+a:hover,
+a:focus-visible {
+  text-decoration: underline;
+}
+
+/* Document metadata block: operator, contact, revision date. */
+.meta {
+  margin-bottom: 2rem;
+  padding: 0.95rem 1.1rem;
+  border: 1px solid var(--brd);
+  border-radius: 16px;
+  background: var(--srf);
+  font-size: 0.92rem;
+}
+
+.meta dl {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: 0.3rem 0.9rem;
+  margin: 0;
+}
+
+.meta dt {
+  color: var(--tx4);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  align-self: baseline;
+  padding-top: 0.18rem;
+}
+
+.meta dd {
+  margin: 0;
+  color: var(--tx);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* Wide content scrolls inside its own box — the page body never does. */
+.tablewrap {
+  overflow-x: auto;
+  margin: 0 0 1.1rem;
+  border: 1px solid var(--brd);
+  border-radius: 14px;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92rem;
+}
+
+th,
+td {
+  padding: 0.55rem 0.85rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: var(--inset);
+  color: var(--tx);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+tbody tr + tr td {
+  border-top: 1px solid var(--brd);
+}
+
+code {
+  padding: 0.08em 0.36em;
+  border-radius: 5px;
+  background: var(--inset);
+  color: var(--tx);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.87em;
+}
+
+hr {
+  height: 1px;
+  margin: 2.2rem 0;
+  border: 0;
+  background: var(--brd);
+}
+
+.docfoot {
+  margin-top: 3rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--brd);
+  color: var(--tx4);
+  font-size: 0.88rem;
+}
+
+.docfoot a {
+  font-weight: 600;
+}
+
+.docfoot__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+  margin-bottom: 0.7rem;
+}

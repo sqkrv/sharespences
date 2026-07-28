@@ -53,9 +53,49 @@ export default defineConfig({
         // (~190K for all subsets/weights — cheap). .woff legacy fallbacks
         // stay out of the precache.
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest,woff2}"],
+        // The legal pages must NOT be precached. Workbox registers
+        // precacheAndRoute before the NavigationRoute and its PrecacheRoute
+        // defaults to cleanURLs:true, so a precached privacy.html answers
+        // /privacy cache-first — ahead of the denylist below, which would
+        // never be consulted, and past the `no-cache` the Go handler sends.
+        // Combined with registerType "prompt" (the refreshed copy waits for a
+        // toast these plain-HTML pages cannot render), a user could read and
+        // consent to a superseded policy while online. They are served
+        // NetworkFirst instead: current when there is a network, still
+        // readable offline.
+        globIgnores: ["privacy.html", "terms.html", "legal.css"],
         // Navigations to the API/docs must never be answered with index.html.
-        navigateFallbackDenylist: [/^\/api\//, /^\/docs/, /^\/openapi\.json/, /^\/schemas/],
+        // /privacy and /terms are static documents served outside the SPA
+        // (web/public/*.html, resolved without the extension by
+        // internal/web/web.go) — without them here the navigation fallback
+        // answers with the app shell and the legal pages become unreachable
+        // in the installed PWA, exactly where they must stay readable.
+        navigateFallbackDenylist: [
+          /^\/api\//,
+          /^\/docs/,
+          /^\/openapi\.json/,
+          /^\/schemas/,
+          /^\/privacy$/,
+          /^\/terms$/,
+        ],
         runtimeCaching: [
+          {
+            // The legal pages (globIgnores above keeps them out of the
+            // precache). NetworkFirst so a published revision is what the user
+            // reads whenever there is a network — the one property a policy
+            // page must have — while an offline visit still resolves. The
+            // navigateFallbackDenylist entries are what let this route see the
+            // navigation at all: NavigationRoute is registered first and would
+            // otherwise answer /privacy with the app shell.
+            urlPattern: ({ url, sameOrigin }) =>
+              sameOrigin && /^\/(privacy|terms)(\.html)?$|^\/legal\.css$/.test(url.pathname),
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "legal",
+              networkTimeoutSeconds: 5,
+              expiration: { maxEntries: 8, maxAgeSeconds: 365 * 24 * 3600 },
+            },
+          },
           {
             // Read endpoints only: runtime caching matches GET by default, so
             // POST login/register/logout never enter the cache. Attachments
