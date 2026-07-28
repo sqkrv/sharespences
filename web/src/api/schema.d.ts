@@ -1411,12 +1411,26 @@ export interface components {
             readonly $schema?: string;
             /**
              * Format: int64
-             * @description screenshots processed so far
+             * @description ladder rung, 1-based; >1 means the model failed to return JSON and the request is being escalated
+             */
+            attempt?: number;
+            /**
+             * Format: int64
+             * @description screenshots FINISHED so far — the in-flight one is not counted
              */
             done: number;
             draft?: components["schemas"]["RecognitionDraftDTO"];
             error?: string;
             id: string;
+            /** Format: int64 */
+            image?: number;
+            /**
+             * @description rows = the menu itself, slots = the follow-up header/footer read
+             * @enum {string}
+             */
+            pass?: "rows" | "slots";
+            /** @description this screenshot is being retried at reduced resolution after an out-of-memory answer */
+            reduced?: boolean;
             /** @enum {string} */
             status: "running" | "done" | "failed";
             /** Format: int64 */

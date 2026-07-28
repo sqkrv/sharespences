@@ -160,6 +160,15 @@ input[type="date"] {
   border-radius: 4px;
 }
 
+/* The in-flight segment of ProgressRing: one screenshot's worth of arc
+   sweeping around the ring — liveness, not progress (a single model call
+   gives no sub-progress to report). */
+@keyframes ringsweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes locpulse {
   0% {
     transform: translate(-50%, -50%) scale(1);

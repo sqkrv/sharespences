@@ -136,6 +136,73 @@ func TestRunRecognitionDedupSkipAndDraft(t *testing.T) {
 	}
 }
 
+// phaseBackend records the job's own DTO at the moment the backend is
+// called — that is the only way to prove the phase is visible to a poll
+// WHILE an image is in flight, which is the whole point of the field.
+type phaseBackend struct {
+	svc   *Service
+	jobID uuid.UUID
+	user  uuid.UUID
+	seen  []RecognitionJobDTO
+}
+
+func (b *phaseBackend) Name() string { return "phase" }
+func (b *phaseBackend) Complete(_ context.Context, req vision.Request) (vision.Response, error) {
+	dto, _ := b.svc.recognitions.get(b.user, b.jobID)
+	b.seen = append(b.seen, dto)
+	if strings.Contains(req.Prompt, "How many categories") {
+		return vision.Response{Content: `{"source_text":"Выберите 4 категории","slot_count":4}`}, nil
+	}
+	return vision.Response{Content: `{"screen_type":"menu","bank":"Ozon Банк","rows":[{"percent":"5","title":"Такси","state":"unchecked"}]}`}, nil
+}
+
+func TestRunRecognitionReportsPhase(t *testing.T) {
+	user := uuid.New()
+	// Distinct bytes per attachment, or the sha256 dedup skips the second
+	// screenshot and there is no second image to report on.
+	first, second := uuid.New(), uuid.New()
+	files := map[uuid.UUID][]byte{first: pngBytes(t, 300, 200), second: pngBytes(t, 301, 200)}
+	svc := &Service{ReadAttachmentFile: func(id uuid.UUID) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(files[id])), nil
+	}}
+	job, err := svc.recognitions.start(user, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &phaseBackend{svc: svc, jobID: job.id, user: user}
+	svc.Vision = b
+	svc.runRecognition(job.id, []uuid.UUID{first, second}, nil, nil, nil, "Ozon Банк", nil)
+
+	if len(b.seen) != 4 { // two images × (rows + slots)
+		t.Fatalf("backend called %d times, want 4", len(b.seen))
+	}
+	want := []struct {
+		image int
+		pass  string
+		done  int
+	}{
+		{1, vision.PassRows, 0},
+		{1, vision.PassSlots, 0},
+		{2, vision.PassRows, 1},
+		{2, vision.PassSlots, 1},
+	}
+	for i, w := range want {
+		got := b.seen[i]
+		if got.Image != w.image || got.Pass != w.pass || got.Attempt != 1 || got.Done != w.done || got.Total != 2 {
+			t.Errorf("during call %d: image=%d pass=%q attempt=%d done=%d/%d, want image=%d pass=%q attempt=1 done=%d/2",
+				i+1, got.Image, got.Pass, got.Attempt, got.Done, got.Total, w.image, w.pass, w.done)
+		}
+		if got.Status != "running" {
+			t.Errorf("during call %d: status = %q, want running", i+1, got.Status)
+		}
+	}
+	// A finished job reports nothing in flight.
+	final, _ := svc.recognitions.get(user, job.id)
+	if final.Status != "done" || final.Image != 0 || final.Pass != "" || final.Done != final.Total {
+		t.Fatalf("finished job = %+v, want done, 2/2, no phase", final)
+	}
+}
+
 type failingBackend struct{}
 
 func (failingBackend) Name() string { return "failing" }

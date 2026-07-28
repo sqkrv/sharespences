@@ -169,6 +169,31 @@ export function useRecognition(id: string): Recognition | null {
   return useRecognitions().find((r) => r.id === id) ?? null;
 }
 
+export type JobPhase = {
+  done?: number;
+  total?: number;
+  image?: number;
+  pass?: string;
+  attempt?: number;
+  reduced?: boolean;
+};
+
+// What the server is doing right now, in one line. Kept honest: a rung
+// past the first means the model failed to answer in the expected shape
+// and the request is being escalated — that is the reason a long wait got
+// longer, and hiding it would make the job look stuck for no reason.
+export function phaseCaption(job: JobPhase | undefined): string {
+  if (!job?.image) return "готовим скриншоты…";
+  const total = job.total ?? 0;
+  const which = total > 1 ? `скрин ${job.image} из ${total} · ` : "";
+  const what = job.pass === "slots" ? "считаем, сколько категорий можно выбрать" : "читаем меню";
+  const extra = [
+    (job.attempt ?? 1) > 1 ? `попытка ${job.attempt} из 3` : "",
+    job.reduced ? "картинка уменьшена" : "",
+  ].filter(Boolean);
+  return which + what + (extra.length ? ` · ${extra.join(" · ")}` : "");
+}
+
 export function draftRows(d: RecognitionDraft): ReviewRow[] {
   return (d.rows ?? []).map((r, i) => ({
     key: i,

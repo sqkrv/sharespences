@@ -259,6 +259,52 @@ func TestRecognizerWorstCaseCallCount(t *testing.T) {
 	}
 }
 
+// The progress report is what keeps a multi-minute image from looking
+// hung, so its sequence is part of the contract: one report per backend
+// call, naming the pass, the ladder rung, and whether the image was
+// re-prepared smaller after an OOM.
+func TestReadReportsProgress(t *testing.T) {
+	b := &scriptedBackend{t: t, script: []func(Request) (Response, error){
+		junk(),       // rows, rung 1
+		oom(),        // rows, rung 2 → shrink, ladder restarts
+		ok(menuJSON), // rows, rung 1 at reduced resolution
+		junk(),       // slots, rung 1 (still reduced)
+		ok(slotJSON), // slots, rung 2
+	}}
+	var got []Progress
+	rec := NewRecognizer(b)
+	rec.OnProgress = func(p Progress) { got = append(got, p) }
+
+	if _, err := rec.Read(context.Background(), encodePNG(t, 1290, 2796), nil); err != nil {
+		t.Fatal(err)
+	}
+	want := []Progress{
+		{Pass: PassRows, Attempt: 1, Reduced: false},
+		{Pass: PassRows, Attempt: 2, Reduced: false},
+		{Pass: PassRows, Attempt: 1, Reduced: true},
+		{Pass: PassSlots, Attempt: 1, Reduced: true},
+		{Pass: PassSlots, Attempt: 2, Reduced: true},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d reports, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("report %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+	if len(got) != len(b.calls) {
+		t.Fatalf("%d reports for %d backend calls — must be one per call", len(got), len(b.calls))
+	}
+}
+
+func TestReadWithoutProgressCallback(t *testing.T) {
+	b := &scriptedBackend{t: t, script: []func(Request) (Response, error){ok(menuJSON), ok(slotJSON)}}
+	if _, err := NewRecognizer(b).Read(context.Background(), encodePNG(t, 800, 600), nil); err != nil {
+		t.Fatalf("a nil OnProgress must be fine: %v", err)
+	}
+}
+
 func TestReadContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -1,5 +1,6 @@
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { clearJob, useActiveRecognition, useRecognitionPoll } from "../recognition";
+import { clearJob, phaseCaption, useActiveRecognition, useRecognitionPoll } from "../recognition";
+import ProgressRing from "./ProgressRing";
 
 // The answer to «I uploaded screenshots and left the screen — how do I know
 // it's done?». The job id lives in ?job=…, which disappears on the first
@@ -29,11 +30,7 @@ export default function RecognitionChip() {
     : failed
       ? "border-warn/40 text-warn"
       : "border-brd2 text-tx2";
-  const label = ready
-    ? "распознано — проверь и сохрани"
-    : failed
-      ? "распознать не удалось"
-      : `распознаём скриншоты · ${done} из ${total}`;
+  const label = ready ? "распознано — проверь и сохрани" : failed ? "распознать не удалось" : phaseCaption(poll.data);
 
   return (
     // pointer-events-none on the full-width strip, auto on the pill — the
@@ -45,8 +42,12 @@ export default function RecognitionChip() {
           onClick={() => navigate(`/periods/new?job=${job.id}`)}
           className="flex items-center gap-2 text-[12px] font-bold"
         >
-          {!ready && !failed && <span className="h-1.5 w-1.5 flex-none animate-pulse rounded-full bg-acc" />}
-          <span>{label}</span>
+          {!ready && !failed ? (
+            <ProgressRing done={done} total={total} active size={26} label="" />
+          ) : (
+            <span className="text-[13px] leading-none">{ready ? "✓" : "⚠"}</span>
+          )}
+          <span className="truncate">{label}</span>
         </button>
         {/* Only a settled job may be dismissed — cancelling a running one
             here would leave it running on the server anyway. */}

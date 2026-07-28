@@ -8,6 +8,7 @@ import { CategoryPicker, type PickedCategory } from "../components/CategoryPicke
 import {
   clearJob,
   loadJob,
+  phaseCaption,
   saveJob,
   startJob,
   useRecognition,
@@ -15,6 +16,7 @@ import {
   type JobState,
   type ReviewRow,
 } from "../recognition";
+import ProgressRing from "../components/ProgressRing";
 import { monthRange, quarterRange } from "../lib";
 
 // S1 step 1, design screen 07 header: «Новый период» — pick the bank client
@@ -268,12 +270,11 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
               </Btn>
             </>
           ) : (
-            <div className="flex items-center gap-3">
-              <Spinner />
+            <div className="flex items-start gap-3">
+              <ProgressRing done={poll.data?.done ?? 0} total={poll.data?.total ?? state.attachmentIDs.length} active />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">
-                  Распознаём скриншоты{poll.data ? ` · ${poll.data.done} из ${poll.data.total}` : "…"}
-                </p>
+                <p className="text-sm font-semibold">Распознаём скриншоты</p>
+                <p className="mt-0.5 text-[12px] font-semibold text-acc">{phaseCaption(poll.data)}</p>
                 <p className="mt-0.5 text-[12px] font-medium text-tx3">
                   Локальная модель читает меню ≈2–3 минуты на скриншот. Можно уйти с экрана — плашка внизу покажет, когда будет
                   готово. Если закрыть приложение совсем, результат ждёт на сервере 30 минут.
@@ -343,6 +344,13 @@ function RecognizeReview({
       canonicalTitle: bc?.canonical_title_ru ?? canon?.title_ru ?? null,
     };
   };
+
+  // Distinct slot counts across the screenshots: one value means they
+  // agree (the server already prefilled it), more means a real conflict.
+  const slotDisagreement = useMemo(
+    () => [...new Set((state.meta?.slotCandidates ?? []).map((c) => c.value))],
+    [state.meta],
+  );
 
   // A selection dated today would fall outside a backfilled period —
   // mirror the Period screen's «задним числом» switch automatically.
@@ -462,17 +470,23 @@ function RecognizeReview({
               onChange={(e) => persist({ ...state, slots: e.target.value === "" ? null : Number(e.target.value) })}
             />
           </Field>
-          {meta != null && meta.slotCandidates.length > 1 && (
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-tx3">
+          {/* Only when the screenshots actually DISAGREE — several shots of
+              one menu normally report the same number, and calling that
+              «расходятся» was crying wolf. */}
+          {slotDisagreement.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-warn">
               <span>Скриншоты расходятся:</span>
-              {meta.slotCandidates.map((c, i) => (
+              {slotDisagreement.map((v) => (
                 <button
-                  key={i}
+                  key={v}
                   type="button"
-                  onClick={() => persist({ ...state, slots: c.value })}
-                  className={`rounded-full border px-2 py-0.5 ${state.slots === c.value ? "border-acc font-bold text-acc" : "border-brd2 text-tx3"}`}
+                  onClick={() => persist({ ...state, slots: v })}
+                  className={`rounded-full border px-2 py-0.5 ${state.slots === v ? "border-acc font-bold text-acc" : "border-warn/50"}`}
                 >
-                  {c.value} (скрин {c.source_image})
+                  {v} ({(meta?.slotCandidates ?? [])
+                    .filter((c) => c.value === v)
+                    .map((c) => `скрин ${c.source_image}`)
+                    .join(", ")})
                 </button>
               ))}
             </div>

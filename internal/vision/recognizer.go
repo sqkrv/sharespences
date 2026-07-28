@@ -43,10 +43,40 @@ var backendSem = make(chan struct{}, 1)
 // prepared image, with the harness's escalation ladder per pass.
 type Recognizer struct {
 	backend Backend
+	// OnProgress, if set, is called just before each backend call with
+	// what the recognizer is about to do. It exists because a single
+	// image takes minutes on the reference model: without it a per-image
+	// counter sits frozen and the job looks hung. Reporting state is not
+	// deciding anything — the package invariant holds.
+	//
+	// Called from the goroutine driving Read; implementations must not
+	// block (the job store's mutex is fine).
+	OnProgress func(Progress)
+}
+
+// Pass names the two-pass read (spec §3 and §6).
+const (
+	PassRows  = "rows"
+	PassSlots = "slots"
+)
+
+// Progress is one «about to call the model» report.
+type Progress struct {
+	Pass    string // PassRows | PassSlots
+	Attempt int    // ladder rung, 1-based
+	// Reduced is true once this image was re-prepared at RetryLongEdge
+	// after the OOM signature — it explains a restarted ladder.
+	Reduced bool
 }
 
 func NewRecognizer(b Backend) *Recognizer {
 	return &Recognizer{backend: b}
+}
+
+func (r *Recognizer) report(p Progress) {
+	if r.OnProgress != nil {
+		r.OnProgress(p)
+	}
 }
 
 // Reading is one image's extraction. Slots is nil for wheel_result
@@ -70,7 +100,7 @@ func (r *Recognizer) Read(ctx context.Context, rawImage []byte, catalog []string
 	st := &readState{raw: rawImage, img: img}
 
 	var screen Screen
-	if err := r.askJSON(ctx, st, RowPrompt(catalog), RowSchema, &screen); err != nil {
+	if err := r.askJSON(ctx, st, PassRows, RowPrompt(catalog), RowSchema, &screen); err != nil {
 		return Reading{Attempts: st.calls}, err
 	}
 	reading := Reading{Screen: screen, Attempts: st.calls}
@@ -80,7 +110,7 @@ func (r *Recognizer) Read(ctx context.Context, rawImage []byte, catalog []string
 	// not lose the rows.
 	if screen.ScreenType != "wheel_result" {
 		var slots Slots
-		err := r.askJSON(ctx, st, SlotPrompt, SlotSchema, &slots)
+		err := r.askJSON(ctx, st, PassSlots, SlotPrompt, SlotSchema, &slots)
 		reading.Attempts = st.calls
 		switch {
 		case err == nil && slots.SlotCount > 0:
@@ -106,7 +136,7 @@ type readState struct {
 // OOM signature the image is re-prepared at RetryLongEdge and the ladder
 // restarts once; any other backend error aborts the pass (harness
 // parity — HTTP errors never walked the ladder).
-func (r *Recognizer) askJSON(ctx context.Context, st *readState, prompt string, schema json.RawMessage, target any) error {
+func (r *Recognizer) askJSON(ctx context.Context, st *readState, pass, prompt string, schema json.RawMessage, target any) error {
 	rungs := [LadderRungs]Request{
 		{Prompt: prompt, Schema: schema, NumCtx: defaultNumCtx},
 		{Prompt: prompt, Schema: schema, Think: true, NumPredict: 8192, NumCtx: 16384},
@@ -116,6 +146,7 @@ func (r *Recognizer) askJSON(ctx context.Context, st *readState, prompt string, 
 	for rung := 0; rung < len(rungs); rung++ {
 		req := rungs[rung]
 		req.ImageJPEG = st.img
+		r.report(Progress{Pass: pass, Attempt: rung + 1, Reduced: st.shrunk})
 		resp, err := r.complete(ctx, req)
 		st.calls++
 		if err != nil {

@@ -38,12 +38,19 @@ var (
 
 // RecognitionJobDTO is the poll response. Draft appears only on done.
 type RecognitionJobDTO struct {
-	ID     uuid.UUID            `json:"id"`
-	Status string               `json:"status" enum:"running,done,failed"`
-	Done   int                  `json:"done" doc:"screenshots processed so far"`
-	Total  int                  `json:"total"`
-	Error  string               `json:"error,omitempty"`
-	Draft  *RecognitionDraftDTO `json:"draft,omitempty"`
+	ID     uuid.UUID `json:"id"`
+	Status string    `json:"status" enum:"running,done,failed"`
+	Done   int       `json:"done" doc:"screenshots FINISHED so far — the in-flight one is not counted"`
+	Total  int       `json:"total"`
+	// Image is the 1-based screenshot being read right now (0 before the
+	// first one starts). Done/Total alone leave a single-screenshot job
+	// frozen at 0/1 for minutes; these fields are what shows it is alive.
+	Image   int                  `json:"image,omitempty"`
+	Pass    string               `json:"pass,omitempty" enum:"rows,slots" doc:"rows = the menu itself, slots = the follow-up header/footer read"`
+	Attempt int                  `json:"attempt,omitempty" doc:"ladder rung, 1-based; >1 means the model failed to return JSON and the request is being escalated"`
+	Reduced bool                 `json:"reduced,omitempty" doc:"this screenshot is being retried at reduced resolution after an out-of-memory answer"`
+	Error   string               `json:"error,omitempty"`
+	Draft   *RecognitionDraftDTO `json:"draft,omitempty"`
 }
 
 type recognitionJob struct {
@@ -52,6 +59,10 @@ type recognitionJob struct {
 	status    string
 	done      int
 	total     int
+	image     int
+	pass      string
+	attempt   int
+	reduced   bool
 	err       string
 	draft     *RecognitionDraftDTO
 	updatedAt time.Time
@@ -110,7 +121,11 @@ func (s *recognitionStore) get(userID, id uuid.UUID) (RecognitionJobDTO, bool) {
 	if !ok || j.userID != userID { // scoping never reveals which
 		return RecognitionJobDTO{}, false
 	}
-	return RecognitionJobDTO{ID: j.id, Status: j.status, Done: j.done, Total: j.total, Error: j.err, Draft: j.draft}, true
+	return RecognitionJobDTO{
+		ID: j.id, Status: j.status, Done: j.done, Total: j.total,
+		Image: j.image, Pass: j.pass, Attempt: j.attempt, Reduced: j.reduced,
+		Error: j.err, Draft: j.draft,
+	}, true
 }
 
 func (s *recognitionStore) progress(id uuid.UUID, done int) {
@@ -121,11 +136,22 @@ func (s *recognitionStore) progress(id uuid.UUID, done int) {
 	}
 }
 
+// phase records what the recognizer is doing right now (image is 1-based).
+func (s *recognitionStore) phase(id uuid.UUID, image int, p vision.Progress) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if j, ok := s.jobs[id]; ok {
+		j.image, j.pass, j.attempt, j.reduced = image, p.Pass, p.Attempt, p.Reduced
+		j.updatedAt = s.clock()
+	}
+}
+
 func (s *recognitionStore) finish(id uuid.UUID, draft *RecognitionDraftDTO) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if j, ok := s.jobs[id]; ok {
 		j.status, j.draft, j.done, j.updatedAt = "done", draft, j.total, s.clock()
+		j.image, j.pass, j.attempt, j.reduced = 0, "", 0, false // nothing is in flight any more
 	}
 }
 
@@ -215,6 +241,12 @@ func (s *Service) runRecognition(jobID uuid.UUID, attachmentIDs []uuid.UUID, tit
 	defer cancel()
 	rec := vision.NewRecognizer(s.Vision)
 
+	// One screenshot takes minutes on the reference model, so a per-image
+	// counter alone reads as «hung» (and a single-screenshot job never
+	// moves at all). Mirror the recognizer's own phase into the job.
+	current := 0
+	rec.OnProgress = func(p vision.Progress) { s.recognitions.phase(jobID, current, p) }
+
 	// Dedup is sha256 of the raw upload bytes: it catches the real
 	// in-job case (the same file picked twice). The corpus «twins» are
 	// re-exports with different bytes — those cost one redundant
@@ -222,6 +254,7 @@ func (s *Service) runRecognition(jobID uuid.UUID, attachmentIDs []uuid.UUID, tit
 	seen := map[[sha256.Size]byte]int{}
 	images := make([]RecognizedImage, 0, len(attachmentIDs))
 	for i, attID := range attachmentIDs {
+		current = i + 1
 		ri := RecognizedImage{AttachmentID: attID}
 		raw, err := s.readAttachment(attID)
 		switch {
