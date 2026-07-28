@@ -12,6 +12,7 @@
 package i18n
 
 import (
+	"log"
 	"net/http"
 	"strings"
 
@@ -131,6 +132,34 @@ func Install() {
 	// and its own detail strings here covers both. The body/details logic
 	// mirrors huma's default implementation.
 	huma.NewError = func(status int, msg string, errs ...error) huma.StatusError {
+		if ru, ok := humaDetails[msg]; ok {
+			msg = ru
+		}
+		// A 5xx says nothing beyond «что-то сломалось на нашей стороне».
+		// huma's default puts the raw error into Errors[], and for a failure
+		// coming out of the database layer that is a connection string, host,
+		// port, role name and SQLSTATE — shipped verbatim to whoever made the
+		// request. The operator needs it; the user must not have it.
+		//
+		// This is the right place for the rule because it is the ONE
+		// constructor every huma error passes through: NewErrorWithContext
+		// delegates here, and huma's own body/parameter failures arrive via
+		// WriteErr. Logging here as well as stripping means no 5xx detail can
+		// be discarded without being written down somewhere. The cost is that
+		// there is no request context at this point — the error text itself
+		// has to identify the subsystem, which in practice it does.
+		if status >= 500 {
+			for _, e := range errs {
+				if e != nil {
+					log.Printf("http %d: %v", status, e)
+				}
+			}
+			return &huma.ErrorModel{
+				Status: status,
+				Title:  StatusTitle(status),
+				Detail: msg,
+			}
+		}
 		details := make([]*huma.ErrorDetail, len(errs))
 		for i := range errs {
 			if converted, ok := errs[i].(huma.ErrorDetailer); ok {
@@ -143,9 +172,6 @@ func Install() {
 				continue
 			}
 			details[i] = &huma.ErrorDetail{Message: translateDetail(errs[i].Error())}
-		}
-		if ru, ok := humaDetails[msg]; ok {
-			msg = ru
 		}
 		return &huma.ErrorModel{
 			Status: status,

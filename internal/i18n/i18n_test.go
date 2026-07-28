@@ -1,9 +1,13 @@
 package i18n
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
+	"strings"
 	"testing"
 	"unicode"
 
@@ -150,5 +154,74 @@ func TestModuleErrorsKeepRussianTitle(t *testing.T) {
 		if !isRussian(model.Detail) {
 			t.Errorf("detail %q is not localized", model.Detail)
 		}
+	}
+}
+
+// A 5xx must not carry the raw error to the client. huma's default puts it in
+// Errors[], which for a database failure is a connection string, host, port,
+// role name and SQLSTATE — this is the regression that shipped to production
+// and was found by reading a live 500 body.
+func TestServerErrorsHideTheirCause(t *testing.T) {
+	Install()
+
+	secret := errors.New(`failed to connect to \"user=sharespences database=sharespences\": ` +
+		`127.0.0.1:5432: FATAL: role \"sharespences\" does not exist (SQLSTATE 28000)`)
+
+	for _, status := range []int{http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable} {
+		model, ok := huma.NewError(status, "unexpected error occurred", secret).(*huma.ErrorModel)
+		if !ok {
+			t.Fatalf("%d: not an *huma.ErrorModel", status)
+		}
+		if len(model.Errors) != 0 {
+			t.Errorf("%d: errors = %+v, want none — the cause must not reach the client", status, model.Errors)
+		}
+		body, err := json.Marshal(model)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The whole serialized response, not just Errors[]: a future change
+		// that folds the cause into Detail would be the same leak.
+		for _, leak := range []string{"SQLSTATE", "sharespences", "5432", "FATAL"} {
+			if strings.Contains(string(body), leak) {
+				t.Errorf("%d: response body leaks %q: %s", status, leak, body)
+			}
+		}
+		if !isRussian(model.Detail) {
+			t.Errorf("%d: detail %q is not localized", status, model.Detail)
+		}
+	}
+}
+
+// Stripping must not mean losing: the operator still needs the cause, so the
+// same constructor writes it to the log. Without this the fix would trade a
+// disclosure bug for an undebuggable one.
+func TestServerErrorsAreLogged(t *testing.T) {
+	Install()
+
+	var logged bytes.Buffer
+	prevOut, prevFlags := log.Writer(), log.Flags()
+	log.SetOutput(&logged)
+	log.SetFlags(0)
+	t.Cleanup(func() { log.SetOutput(prevOut); log.SetFlags(prevFlags) })
+
+	_ = huma.NewError(http.StatusInternalServerError, "unexpected error occurred", errors.New("boom: SQLSTATE 28000"))
+
+	if got := logged.String(); !strings.Contains(got, "boom: SQLSTATE 28000") {
+		t.Errorf("log = %q, want the raw cause recorded server-side", got)
+	}
+}
+
+// 4xx details are the opposite case: «не заполнено обязательное поле email»
+// is written for the user and must survive.
+func TestClientErrorsKeepTheirDetails(t *testing.T) {
+	Install()
+
+	model, ok := huma.NewError(http.StatusUnprocessableEntity, "validation failed",
+		&huma.ErrorDetail{Message: "expected required property email to be present"}).(*huma.ErrorModel)
+	if !ok {
+		t.Fatal("not an *huma.ErrorModel")
+	}
+	if len(model.Errors) != 1 {
+		t.Fatalf("errors = %+v, want the validation detail kept", model.Errors)
 	}
 }
