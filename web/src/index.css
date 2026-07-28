@@ -93,6 +93,21 @@ body {
 }
 
 /*
+ * iOS renders input[type=date] as a native control whose intrinsic width
+ * exceeds the field; with the default min-width:auto a grid column cannot
+ * shrink below it, so the «Начало»/«Конец» pair spilled past the card's
+ * right edge (owner report 2026-07-28, review screen and the plain period
+ * form alike — the markup is shared). The appearance reset is what lets
+ * width:100% actually win in WebKit. Field carries the matching min-w-0.
+ */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/*
  * Dev mode (web/src/dev/): the .devmode class on <html> IS the region-label
  * mechanism — a labelled block costs one `data-sid` attribute and no React,
  * no wrapper, no re-render. Colors are deliberately neutral: mint/lilac/gold

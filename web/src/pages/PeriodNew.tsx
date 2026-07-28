@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ApiError, api, unwrap, uploadAttachment, type RecognitionDraft } from "../api/client";
-import { useClients, useTierMap } from "../hooks";
+import { ApiError, api, unwrap, uploadAttachment } from "../api/client";
+import { useBankCategories, useCategories, useClients, useTierMap } from "../hooks";
 import { Badge, Btn, Card, ErrMsg, errorText, Field, Input, Select, Spinner } from "../components/ui";
 import { CategoryPicker, type PickedCategory } from "../components/CategoryPicker";
+import {
+  clearJob,
+  loadJob,
+  saveJob,
+  startJob,
+  useRecognition,
+  useRecognitionPoll,
+  type JobState,
+  type ReviewRow,
+} from "../recognition";
 import { monthRange, quarterRange } from "../lib";
 
 // S1 step 1, design screen 07 header: «Новый период» — pick the bank client
@@ -14,75 +24,9 @@ import { monthRange, quarterRange } from "../lib";
 //
 // Recognize mode (spec cashback-recognizer.md, CB-02): the same screen is
 // also the recognizer flow — form → recognizing → review. The job id lives
-// in ?job=…; everything the user edits on review persists to
-// sessionStorage keyed by that id, so a refresh loses nothing and a
-// refresh mid-commit resumes instead of stranding a half-filled period.
-
-type ReviewRow = {
-  key: number;
-  title: string;
-  percent: string;
-  cap: string;
-  kind: "regular" | "super" | "special";
-  picked: boolean;
-  bankCategoryID: number | null;
-  canonicalID: number | null;
-  mappedTitle: string | null;
-  needsReview: boolean;
-  notes: string[];
-  conflictPercents: string[];
-  conflictCaps: string[];
-};
-
-type JobMeta = {
-  notes: string[];
-  periodTexts: string[];
-  slotCandidates: { value: number; source_image: number }[];
-  images: { screenType: string; skipped: boolean; note: string }[];
-};
-
-type JobState = {
-  clientID: string;
-  start: string;
-  end: string;
-  attachmentIDs: string[];
-  rows?: ReviewRow[];
-  slots?: number | null;
-  meta?: JobMeta;
-  createdID?: number;
-  slotsDone?: boolean;
-  offersDone?: Record<number, number>; // row key → created offer id
-  selectedDone?: number[]; // row keys whose selection is written
-};
-
-const jobKey = (id: string) => `recognize-${id}`;
-function loadJob(id: string): JobState | null {
-  try {
-    const raw = sessionStorage.getItem(jobKey(id));
-    return raw ? (JSON.parse(raw) as JobState) : null;
-  } catch {
-    return null;
-  }
-}
-const saveJob = (id: string, s: JobState) => sessionStorage.setItem(jobKey(id), JSON.stringify(s));
-
-function draftRows(d: RecognitionDraft): ReviewRow[] {
-  return (d.rows ?? []).map((r, i) => ({
-    key: i,
-    title: r.raw_title,
-    percent: r.percent ?? "",
-    cap: r.cap_value ?? "",
-    kind: (r.kind as ReviewRow["kind"]) || "regular",
-    picked: r.checked,
-    bankCategoryID: r.bank_category_id ?? null,
-    canonicalID: r.canonical_category_id ?? null,
-    mappedTitle: r.catalog_title ?? null,
-    needsReview: r.needs_review,
-    notes: r.review_notes ?? [],
-    conflictPercents: r.conflict_percents ?? [],
-    conflictCaps: r.conflict_caps ?? [],
-  }));
-}
+// in ?job=…, and the draft itself in the localStorage store (../recognition)
+// so it survives leaving the screen, closing the app, and a refresh
+// mid-commit; the shell chip is what brings you back.
 
 export default function PeriodNew() {
   const [params] = useSearchParams();
@@ -164,7 +108,7 @@ function PeriodForm() {
       return { job, attachmentIDs };
     },
     onSuccess: ({ job, attachmentIDs }) => {
-      saveJob(job.id, { clientID, start, end, attachmentIDs });
+      startJob(job.id, { clientID, start, end, attachmentIDs });
       const next = new URLSearchParams(params);
       next.set("job", job.id);
       setParams(next);
@@ -256,45 +200,23 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const clients = useClients();
-  const [state, setState] = useState<JobState | null>(() => loadJob(jobID));
-  const persist = (s: JobState) => {
-    saveJob(jobID, s);
-    setState(s);
-  };
+  // The store is the single source of truth — the shell chip reads the
+  // same entry, so what you edit here and what it reports never diverge.
+  const job = useRecognition(jobID);
+  const state = job?.state ?? null;
+  const persist = (s: JobState) => saveJob(jobID, s);
+  const poll = useRecognitionPoll(job);
 
-  // Poll only until the draft is captured into sessionStorage — after
-  // that the review survives the job's server-side TTL and restarts.
-  const poll = useQuery({
-    queryKey: ["recognition", jobID],
-    queryFn: async () => unwrap(await api.GET("/api/v1/cashback/recognitions/{id}", { params: { path: { id: jobID } } })),
-    enabled: state != null && state.rows == null,
-    refetchInterval: (q) => (q.state.data?.status === "running" ? 2000 : false),
-    staleTime: 0,
-    retry: false,
-  });
-
-  // Seed the editable review from the finished draft, exactly once.
-  useEffect(() => {
-    if (!state || state.rows != null || poll.data?.status !== "done" || !poll.data.draft) return;
-    const d = poll.data.draft;
-    persist({
-      ...state,
-      rows: draftRows(d),
-      slots: d.slot_count ?? null,
-      meta: {
-        notes: d.notes ?? [],
-        periodTexts: d.period_texts ?? [],
-        slotCandidates: (d.slot_candidates ?? []).map((c) => ({ value: c.value, source_image: c.source_image })),
-        images: (d.images ?? []).map((im) => ({ screenType: im.screen_type ?? "", skipped: im.skipped ?? false, note: im.note ?? "" })),
-      },
-    });
-  }, [poll.data, state]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const leave = () => {
-    sessionStorage.removeItem(jobKey(jobID));
+  // Leaving KEEPS the draft — the chip is what brings you back. Discarding
+  // is a separate, explicit act.
+  const backToForm = () => {
     const next = new URLSearchParams(params);
     next.delete("job");
     setParams(next, { replace: true });
+  };
+  const discard = () => {
+    clearJob(jobID);
+    backToForm();
   };
 
   const header = (
@@ -314,8 +236,10 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
         {header}
         <Card className="p-4" data-sid="CB-02.b">
           <p className="text-sm font-semibold">Черновик не найден</p>
-          <p className="mt-1 text-[12px] font-medium text-tx3">Задание истекло или страница открыта в новой сессии. Начни заново — скриншоты придётся выбрать ещё раз.</p>
-          <Btn variant="soft" className="mt-3 w-full" onClick={leave}>
+          <p className="mt-1 text-[12px] font-medium text-tx3">
+            Задание отменено или ему больше суток. Начни заново — скриншоты придётся выбрать ещё раз.
+          </p>
+          <Btn variant="soft" className="mt-3 w-full" onClick={backToForm}>
             К форме периода
           </Btn>
         </Card>
@@ -339,7 +263,7 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
                   : (poll.data?.error ?? errorText(poll.error))}
               </p>
               <p className="mt-1 text-[12px] font-medium text-tx3">Период всегда можно заполнить вручную — скриншоты уже загружены.</p>
-              <Btn variant="soft" className="mt-3 w-full" onClick={leave}>
+              <Btn variant="soft" className="mt-3 w-full" onClick={discard}>
                 Заполнить вручную
               </Btn>
             </>
@@ -350,7 +274,13 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
                 <p className="text-sm font-semibold">
                   Распознаём скриншоты{poll.data ? ` · ${poll.data.done} из ${poll.data.total}` : "…"}
                 </p>
-                <p className="mt-0.5 text-[12px] font-medium text-tx3">Локальная модель читает меню ≈2–3 минуты на скриншот. Можно уйти с экрана — задание идёт на сервере.</p>
+                <p className="mt-0.5 text-[12px] font-medium text-tx3">
+                  Локальная модель читает меню ≈2–3 минуты на скриншот. Можно уйти с экрана — плашка внизу покажет, когда будет
+                  готово. Если закрыть приложение совсем, результат ждёт на сервере 30 минут.
+                </p>
+                <button type="button" className="mt-1.5 text-[11.5px] font-semibold text-tx4 underline" onClick={discard}>
+                  Отменить и заполнить вручную
+                </button>
               </div>
             </div>
           )}
@@ -364,10 +294,10 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
       jobID={jobID}
       state={state}
       persist={persist}
-      leave={leave}
+      discard={discard}
       client={(clients.data ?? []).find((c) => String(c.id) === state.clientID)}
       onCommitted={(periodID) => {
-        sessionStorage.removeItem(jobKey(jobID));
+        clearJob(jobID);
         qc.invalidateQueries({ queryKey: ["overview"] });
         qc.invalidateQueries({ queryKey: ["periods"] });
         navigate(`/periods/${periodID}`);
@@ -380,14 +310,14 @@ function RecognizeReview({
   jobID,
   state,
   persist,
-  leave,
+  discard,
   client,
   onCommitted,
 }: {
   jobID: string;
   state: JobState;
   persist: (s: JobState) => void;
-  leave: () => void;
+  discard: () => void;
   client?: { bank_id: number; bank_name?: string; label?: string | null };
   onCommitted: (periodID: number) => void;
 }) {
@@ -395,6 +325,24 @@ function RecognizeReview({
   const meta = state.meta;
   const setRows = (next: ReviewRow[]) => persist({ ...state, rows: next });
   const patchRow = (key: number, patch: Partial<ReviewRow>) => setRows(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
+  // The draft carries ids, not presentation — resolve the emoji and the
+  // canonical title from the catalog at render time, the same way the
+  // period screen does. Resolving here (rather than storing it on the row)
+  // is what keeps the icon correct after a manual re-pick too, since the
+  // picker's onChange only ever writes ids back.
+  const bankCats = useBankCategories(client?.bank_id);
+  const canonicals = useCategories();
+  const mappingOf = (row: ReviewRow) => {
+    // The API already resolves a catalog row's emoji (own, else canonical).
+    const bc = row.bankCategoryID != null ? (bankCats.data ?? []).find((r) => r.id === row.bankCategoryID) : undefined;
+    const canonID = bc?.canonical_category_id ?? row.canonicalID;
+    const canon = canonID != null ? (canonicals.data ?? []).find((c) => c.id === canonID) : undefined;
+    return {
+      emoji: bc?.emoji ?? canon?.emoji ?? null,
+      canonicalTitle: bc?.canonical_title_ru ?? canon?.title_ru ?? null,
+    };
+  };
 
   // A selection dated today would fall outside a backfilled period —
   // mirror the Period screen's «задним числом» switch automatically.
@@ -404,8 +352,8 @@ function RecognizeReview({
   }, [state.start, state.end]);
 
   // Commit replays the four existing endpoints (the recognizer has no
-  // write path of its own). Every step records itself in sessionStorage,
-  // so a failure or refresh mid-commit RESUMES instead of duplicating.
+  // write path of its own). Every step records itself in the store, so a
+  // failure or refresh mid-commit RESUMES instead of duplicating.
   const commit = useMutation({
     mutationFn: async () => {
       let s = loadJob(jobID) ?? state;
@@ -480,11 +428,12 @@ function RecognizeReview({
   return (
     <>
       <div className="flex items-center gap-2.5">
-        <button type="button" onClick={leave} className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-brd bg-srf">
+        {/* Leaving keeps the draft — the shell chip brings you back. */}
+        <Link to="/" className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-brd bg-srf">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-tx2">
             <path d="M14.5 5 8 12l6.5 7" />
           </svg>
-        </button>
+        </Link>
         <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">Проверь распознанное</h1>
         {client && <Badge tone="indigo">{client.bank_name}</Badge>}
       </div>
@@ -624,7 +573,13 @@ function RecognizeReview({
                     bankName={client.bank_name ?? ""}
                     value={
                       row.bankCategoryID != null || row.canonicalID != null
-                        ? { bankCategoryID: row.bankCategoryID ?? undefined, title: row.mappedTitle ?? row.title, canonicalID: row.canonicalID }
+                        ? {
+                            bankCategoryID: row.bankCategoryID ?? undefined,
+                            title: row.mappedTitle ?? row.title,
+                            canonicalID: row.canonicalID,
+                            kind: row.kind,
+                            ...mappingOf(row),
+                          }
                         : null
                     }
                     onChange={(v: PickedCategory) =>
@@ -698,12 +653,26 @@ function RecognizeReview({
         <p className="mt-1.5 text-center text-[10.5px] font-medium text-tx4">
           {state.attachmentIDs.length > 0 ? `Скриншоты (${state.attachmentIDs.length}) приложатся к периоду. ` : ""}
           {backfill ? "Отметки запишутся задним числом. " : ""}
-          Ничего не сохранится, пока не нажмёшь.
+          Ничего не сохранится, пока не нажмёшь. Черновик ждёт, даже если закрыть приложение.
         </p>
         {partial && commit.error != null && (
           <p className="mt-1 text-center text-[11px] font-medium text-warn">Часть уже записана — повторная попытка продолжит с места остановки.</p>
         )}
         <ErrMsg error={commit.error} />
+        {/* Explicit discard: the only thing that throws the draft away —
+            «назад» and closing the app both keep it. Blocked once a period
+            exists, since abandoning then would strand a half-filled one. */}
+        {!partial && (
+          <button
+            type="button"
+            className="mt-3 w-full text-center text-[11.5px] font-semibold text-tx4 underline"
+            onClick={() => {
+              if (window.confirm("Удалить распознанный черновик? Скриншоты останутся загруженными.")) discard();
+            }}
+          >
+            Удалить черновик
+          </button>
+        )}
       </Card>
     </>
   );
