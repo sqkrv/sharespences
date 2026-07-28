@@ -1,11 +1,21 @@
 # Local run/dev stack: `docker compose up --build` → migrated + seeded app on
 # http://localhost:8080 (docs at /docs). Throwaway dev credentials only —
 # this file is not a production deployment.
+# ⚠️ Env lives HERE in the anchor, never under a service: `<<:` merge keys
+# are shallow, so an `environment:` on `app:` would replace this whole map
+# (dropping DATABASE_URL) instead of adding to it.
 x-backend: &backend
   build: .
   image: sharespences
   environment:
     DATABASE_URL: postgres://sharespences:sharespences@db:5432/sharespences
+    # Screenshot recognizer (README «Screenshot recognizer») — off unless
+    # VISION_BACKEND is set in the environment / .env. host.docker.internal
+    # reaches an Ollama on the Docker host (extra_hosts below).
+    VISION_BACKEND: ${VISION_BACKEND:-}
+    VISION_MODEL: ${VISION_MODEL:-}
+    OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
 
 services:
   db:
@@ -49,6 +59,10 @@ services:
     # healthcheck below and the internal network are unaffected.
     ports:
       - "${APP_PORT:-8080}:8080"
+    # Lets the container reach an Ollama running on the Docker host
+    # (no-op on Docker Desktop, needed on Linux).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - attachments:/data/attachments
     depends_on:

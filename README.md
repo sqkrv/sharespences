@@ -33,6 +33,30 @@ go run ./cmd/sharespences serve   # web/: npm run dev proxies to :8080
 If 5432 is taken locally too, change the host side in the override (e.g.
 `"127.0.0.1:5433:5432"`) and the `DATABASE_URL` port to match.
 
+## Screenshot recognizer (optional)
+
+The cashback period form can prefill itself from bank-app screenshots.
+The feature is **off by default** — without configuration the endpoints
+answer 503 and manual entry works as before. It needs a vision model
+behind one of two backends:
+
+| Variable            | Meaning                                              | Default                       |
+|---------------------|------------------------------------------------------|-------------------------------|
+| `VISION_BACKEND`    | `ollama` \| `anthropic`; empty = feature off         | *(empty)*                     |
+| `VISION_MODEL`      | model name                                           | `qwen3-vl:4b` / `claude-opus-5` |
+| `OLLAMA_HOST`       | Ollama base URL (ollama backend)                     | `http://localhost:11434`      |
+| `ANTHROPIC_API_KEY` | API key (anthropic backend)                          | —                             |
+
+Local-first setup: install [Ollama](https://ollama.com), `ollama pull
+qwen3-vl:4b` (fits a 6 GB GPU), then `VISION_BACKEND=ollama`. Under
+compose the variables pass through from the environment or `.env`; the
+app container reaches an Ollama on the Docker host via the pre-mapped
+`host.docker.internal` (`OLLAMA_HOST=http://host.docker.internal:11434`).
+Expect roughly 2–3 minutes per screenshot on a small GPU — recognition
+runs as a background job with a progress poll. On Pascal-era NVIDIA
+cards set `OLLAMA_FLASH_ATTENTION=1` in the Ollama service environment,
+or every request dies with a CUDA out-of-memory error.
+
 ## Acknowledgements
 
 Bank logos and other third-party material, with sources and trademark notice:
