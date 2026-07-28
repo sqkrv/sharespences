@@ -59,10 +59,15 @@ export default defineConfig({
           {
             // Read endpoints only: runtime caching matches GET by default, so
             // POST login/register/logout never enter the cache. Attachments
-            // are heavy and personal — excluded. ignoreVary because scs adds
+            // are heavy and personal — excluded. The recognition poll is
+            // excluded too: a job status answered by yesterday's cache would
+            // spin the review screen forever. ignoreVary because scs adds
             // Vary: Cookie (see docs/specs/pwa.md trap list).
             urlPattern: ({ url, sameOrigin }) =>
-              sameOrigin && url.pathname.startsWith("/api/v1/") && !url.pathname.startsWith("/api/v1/attachments/"),
+              sameOrigin &&
+              url.pathname.startsWith("/api/v1/") &&
+              !url.pathname.startsWith("/api/v1/attachments/") &&
+              !url.pathname.startsWith("/api/v1/cashback/recognitions"),
             handler: "NetworkFirst",
             options: {
               cacheName: "api-v1",

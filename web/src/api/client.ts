@@ -14,6 +14,8 @@ export type HelperRow = Schemas["HelperRowDTO"];
 export type LookupEntry = Schemas["LookupEntryDTO"];
 export type PartnerOffer = Schemas["PartnerOfferDTO"];
 export type OfferPeriodItem = Schemas["OfferPeriodListItem"];
+export type RecognitionJob = Schemas["RecognitionJobDTO"];
+export type RecognitionDraft = Schemas["RecognitionDraftDTO"];
 
 // huma error body (ErrorModel)
 type ErrorBody = { title?: string; detail?: string; errors?: { message?: string; location?: string }[] };
