@@ -108,7 +108,7 @@ func TestRunRecognitionDedupSkipAndDraft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc.runRecognition(job.id, ids, nil, nil, nil, "Альфа-Банк")
+	svc.runRecognition(job.id, ids, nil, nil, nil, "Альфа-Банк", nil)
 
 	dto, ok := svc.recognitions.get(job.userID, job.id)
 	if !ok || dto.Status != "done" || dto.Draft == nil {
@@ -155,7 +155,7 @@ func TestRunRecognitionFailsJobOnBackendError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc.runRecognition(job.id, []uuid.UUID{id}, nil, nil, nil, "")
+	svc.runRecognition(job.id, []uuid.UUID{id}, nil, nil, nil, "", nil)
 	dto, _ := svc.recognitions.get(job.userID, job.id)
 	if dto.Status != "failed" || dto.Error == "" {
 		t.Fatalf("job = %+v, want failed with message", dto)

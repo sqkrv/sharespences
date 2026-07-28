@@ -63,7 +63,7 @@ func TestBuildDraftMergesScrollOverlap(t *testing.T) {
 	draft := BuildDraft([]RecognizedImage{
 		menuImage(row("5", "Супермаркеты"), row("7", "Такси")),
 		menuImage(row("7", "Tакси"), row("3", "Аптеки")), // Latin «T»
-	}, nil, nil, "Альфа-Банк")
+	}, nil, nil, "Альфа-Банк", nil)
 	if len(draft.Rows) != 3 {
 		t.Fatalf("rows = %d (%+v), want 3", len(draft.Rows), draft.Rows)
 	}
@@ -81,7 +81,7 @@ func TestBuildDraftSurfacesPercentConflict(t *testing.T) {
 	draft := BuildDraft([]RecognizedImage{
 		menuImage(row("5", "Такси")),
 		menuImage(row("7", "Такси")),
-	}, nil, nil, "")
+	}, nil, nil, "", nil)
 	r := draft.Rows[0]
 	if r.Percent != nil || !r.NeedsReview {
 		t.Fatalf("row = %+v, want nil percent + needs_review", r)
@@ -93,7 +93,7 @@ func TestBuildDraftSurfacesPercentConflict(t *testing.T) {
 
 // «120%» prefills AND flags — never silently dropped (plan phase 2 step 1).
 func TestBuildDraftFlagsOutOfRangePercent(t *testing.T) {
-	draft := BuildDraft([]RecognizedImage{menuImage(row("120", "Ошибка"))}, nil, nil, "")
+	draft := BuildDraft([]RecognizedImage{menuImage(row("120", "Ошибка"))}, nil, nil, "", nil)
 	r := draft.Rows[0]
 	if r.Percent == nil || *r.Percent != "120" || !r.NeedsReview {
 		t.Fatalf("row = %+v, want percent 120 prefetched with needs_review", r)
@@ -101,7 +101,7 @@ func TestBuildDraftFlagsOutOfRangePercent(t *testing.T) {
 }
 
 func TestBuildDraftKeepsUnparseableRaw(t *testing.T) {
-	draft := BuildDraft([]RecognizedImage{menuImage(row("пять", "Кафе"))}, nil, nil, "")
+	draft := BuildDraft([]RecognizedImage{menuImage(row("пять", "Кафе"))}, nil, nil, "", nil)
 	r := draft.Rows[0]
 	if r.Percent != nil || r.RawPercent != "пять" || !r.NeedsReview {
 		t.Fatalf("row = %+v, want nil percent, raw kept, needs_review", r)
@@ -110,7 +110,7 @@ func TestBuildDraftKeepsUnparseableRaw(t *testing.T) {
 
 func TestBuildDraftNormalizesCosmetics(t *testing.T) {
 	img := menuImage(vision.Row{Percent: "1,5%", Title: "Все покупки", Cap: "2 000 ₽", State: "unchecked"})
-	draft := BuildDraft([]RecognizedImage{img}, nil, nil, "")
+	draft := BuildDraft([]RecognizedImage{img}, nil, nil, "", nil)
 	r := draft.Rows[0]
 	if r.Percent == nil || *r.Percent != "1.5" || r.CapValue == nil || *r.CapValue != "2000" {
 		t.Fatalf("row = %+v, want 1.5 / 2000", r)
@@ -132,7 +132,7 @@ func TestBuildDraftWheelLatestWins(t *testing.T) {
 			Rows:       []vision.Row{{Percent: percent, Title: title, State: "unknown"}},
 		}, nil)}
 	}
-	draft := BuildDraft([]RecognizedImage{wheel("5", "Такси"), wheel("7", "Рестораны")}, nil, nil, "")
+	draft := BuildDraft([]RecognizedImage{wheel("5", "Такси"), wheel("7", "Рестораны")}, nil, nil, "", nil)
 	if len(draft.Rows) != 1 {
 		t.Fatalf("rows = %+v, want exactly one super row", draft.Rows)
 	}
@@ -144,7 +144,7 @@ func TestBuildDraftWheelLatestWins(t *testing.T) {
 
 func TestBuildDraftChecksStateHint(t *testing.T) {
 	img := menuImage(vision.Row{Percent: "5", Title: "Аптеки", State: "checked"}, row("3", "Кафе"))
-	draft := BuildDraft([]RecognizedImage{img}, nil, nil, "")
+	draft := BuildDraft([]RecognizedImage{img}, nil, nil, "", nil)
 	if !draft.Rows[0].Checked || draft.Rows[1].Checked {
 		t.Fatalf("rows = %+v, want only Аптеки pre-ticked", draft.Rows)
 	}
@@ -157,7 +157,7 @@ func TestBuildDraftDropsNonCategoryRows(t *testing.T) {
 		vision.Row{Percent: "1", Title: "4 категории кешбэка вместо 3", State: "unchecked", RowKind: "slot_modifier"},
 		row("5", "Супермаркеты"),
 	)
-	draft := BuildDraft([]RecognizedImage{img}, nil, nil, "")
+	draft := BuildDraft([]RecognizedImage{img}, nil, nil, "", nil)
 	if len(draft.Rows) != 1 || draft.Rows[0].RawTitle != "Супермаркеты" {
 		t.Fatalf("rows = %+v, want the slot modifier dropped", draft.Rows)
 	}
@@ -205,7 +205,7 @@ func TestBuildDraftSlotDisagreementSurfaces(t *testing.T) {
 			&vision.Slots{SourceText: "Выберите категории", SlotCount: count},
 		)}
 	}
-	draft := BuildDraft([]RecognizedImage{imgAt(4), imgAt(5)}, nil, nil, "")
+	draft := BuildDraft([]RecognizedImage{imgAt(4), imgAt(5)}, nil, nil, "", nil)
 	if draft.SlotCount != nil {
 		t.Fatalf("slot = %v, want nil on disagreement", *draft.SlotCount)
 	}
@@ -227,7 +227,7 @@ func TestBuildDraftCatalogMatching(t *testing.T) {
 		row("3", "Продукты"),  // alias hit
 		row("2", "Новая категория"), // genuinely new
 	)
-	draft := BuildDraft([]RecognizedImage{img}, catalog, aliases, "")
+	draft := BuildDraft([]RecognizedImage{img}, catalog, aliases, "", nil)
 
 	taxi := draft.Rows[0]
 	if taxi.BankCategoryID == nil || *taxi.BankCategoryID != 1 || taxi.CatalogTitle == nil || *taxi.CatalogTitle != "Такси" {
@@ -260,7 +260,7 @@ func TestBuildDraftCatalogMatching(t *testing.T) {
 // hallucination — dropped, then ordinary matching proceeds.
 func TestBuildDraftBogusCatalogMatchIgnored(t *testing.T) {
 	img := menuImage(vision.Row{Percent: "5", Title: "Кафе", State: "unchecked", CatalogMatch: "Несуществующая"})
-	draft := BuildDraft([]RecognizedImage{img}, []CatalogRow{{ID: 9, Title: "Кафе"}}, nil, "")
+	draft := BuildDraft([]RecognizedImage{img}, []CatalogRow{{ID: 9, Title: "Кафе"}}, nil, "", nil)
 	r := draft.Rows[0]
 	if r.BankCategoryID == nil || *r.BankCategoryID != 9 || r.CatalogTitle == nil || *r.CatalogTitle != "Кафе" {
 		t.Fatalf("row = %+v, want the direct title match to win over the bogus catalog_match", r)
@@ -272,7 +272,7 @@ func TestBuildDraftCompletenessWarning(t *testing.T) {
 	headless := RecognizedImage{AttachmentID: uuid.New(), Reading: reading(vision.Screen{
 		ScreenType: "menu", Rows: []vision.Row{row("5", "Такси")}, HasHeader: &no, HasFooterButton: &no,
 	}, nil)}
-	draft := BuildDraft([]RecognizedImage{headless}, nil, nil, "")
+	draft := BuildDraft([]RecognizedImage{headless}, nil, nil, "", nil)
 	if !hasNote(draft.Notes, "часть меню не попала") {
 		t.Fatalf("notes = %v, want the completeness warning", draft.Notes)
 	}
@@ -280,7 +280,7 @@ func TestBuildDraftCompletenessWarning(t *testing.T) {
 	withHeader := RecognizedImage{AttachmentID: uuid.New(), Reading: reading(vision.Screen{
 		ScreenType: "menu", Rows: []vision.Row{row("5", "Такси")}, HasHeader: &yes,
 	}, nil)}
-	draft = BuildDraft([]RecognizedImage{headless, withHeader}, nil, nil, "")
+	draft = BuildDraft([]RecognizedImage{headless, withHeader}, nil, nil, "", nil)
 	if hasNote(draft.Notes, "часть меню не попала") {
 		t.Fatalf("notes = %v, header present — no warning", draft.Notes)
 	}
@@ -290,7 +290,7 @@ func TestBuildDraftSummaryHint(t *testing.T) {
 	img := RecognizedImage{AttachmentID: uuid.New(), Reading: reading(vision.Screen{
 		ScreenType: "summary", Rows: []vision.Row{{Percent: "5", Title: "Такси", State: "checked"}},
 	}, nil)}
-	draft := BuildDraft([]RecognizedImage{img}, nil, nil, "")
+	draft := BuildDraft([]RecognizedImage{img}, nil, nil, "", nil)
 	if len(draft.Rows) != 1 {
 		t.Fatalf("rows = %+v — a summary still prefills its rows (never rejected)", draft.Rows)
 	}
@@ -299,15 +299,64 @@ func TestBuildDraftSummaryHint(t *testing.T) {
 	}
 }
 
-func TestBuildDraftBankMismatchWarns(t *testing.T) {
+// The warning fires on positive evidence only: the guess has to look like
+// a DIFFERENT known bank. Anything unreadable is silence by design — the
+// model's bank field is measurably unreliable, and the owner hit a false
+// positive on the first real run («ozon банк» vs a client «Озон Банк»).
+func TestBuildDraftBankMismatch(t *testing.T) {
+	seeded := []string{"Альфа-Банк", "ВТБ", "Ozon Банк", "Яндекс Пэй", "Газпромбанк", "МКБ", "Сбербанк", "Т-Банк"}
+	others := func(chosen string) []string {
+		var out []string
+		for _, b := range seeded {
+			if b != chosen {
+				out = append(out, b)
+			}
+		}
+		return out
+	}
+	draftFor := func(guess, chosen string) RecognitionDraftDTO {
+		img := RecognizedImage{AttachmentID: uuid.New(), Reading: reading(vision.Screen{
+			ScreenType: "menu", Bank: guess, Rows: []vision.Row{row("5", "Такси")},
+		}, nil)}
+		return BuildDraft([]RecognizedImage{img}, nil, nil, chosen, others(chosen))
+	}
+
+	quiet := []struct{ guess, chosen, why string }{
+		{"ozon банк", "Ozon Банк", "the reported false positive — Latin/Cyrillic mix of the same name"},
+		{"Ozon Bank", "Ozon Банк", "fully-Latin reading of the same bank"},
+		{"Альфа Банк", "Альфа-Банк", "hyphen only"},
+		{"T-BANK", "Т-Банк", "Latin transliteration — unreadable, must stay silent, not warn"},
+		{"SELECT PLUSES", "Альфа-Банк", "a header mistaken for a bank name (measured in run 3)"},
+		{"", "Альфа-Банк", "no guess at all"},
+		{"ВТБ Путешествия", "ВТБ", "a row title containing the right bank"},
+	}
+	for _, c := range quiet {
+		if d := draftFor(c.guess, c.chosen); hasNote(d.Notes, "другого банка") {
+			t.Errorf("guess %q vs %q warned (%s): %v", c.guess, c.chosen, c.why, d.Notes)
+		}
+	}
+
+	loud := []struct{ guess, chosen, want string }{
+		{"Альфа Банк", "Т-Банк", "Альфа-Банк"},
+		{"Ozon Банк", "Альфа-Банк", "Ozon Банк"},
+		{"Газпромбанк", "МКБ", "Газпромбанк"},
+	}
+	for _, c := range loud {
+		d := draftFor(c.guess, c.chosen)
+		if !hasNote(d.Notes, "другого банка") {
+			t.Errorf("guess %q vs %q should warn: %v", c.guess, c.chosen, d.Notes)
+		}
+		if !hasNote(d.Notes, c.want) {
+			t.Errorf("guess %q vs %q should name %q: %v", c.guess, c.chosen, c.want, d.Notes)
+		}
+	}
+
+	// Without a bank list there is nothing to be positive about.
 	img := RecognizedImage{AttachmentID: uuid.New(), Reading: reading(vision.Screen{
 		ScreenType: "menu", Bank: "Альфа Банк", Rows: []vision.Row{row("5", "Такси")},
 	}, nil)}
-	if draft := BuildDraft([]RecognizedImage{img}, nil, nil, "Альфа-Банк"); hasNote(draft.Notes, "другой банк") {
-		t.Fatalf("notes = %v — «Альфа Банк» matches «Альфа-Банк»", draft.Notes)
-	}
-	if draft := BuildDraft([]RecognizedImage{img}, nil, nil, "Т-Банк"); !hasNote(draft.Notes, "другой банк") {
-		t.Fatal("want a mismatch warning for Т-Банк vs «Альфа Банк»")
+	if d := BuildDraft([]RecognizedImage{img}, nil, nil, "Т-Банк", nil); hasNote(d.Notes, "другого банка") {
+		t.Errorf("no bank list must mean no warning: %v", d.Notes)
 	}
 }
 
@@ -316,7 +365,7 @@ func TestBuildDraftNotRelevantAndSkipped(t *testing.T) {
 	irrelevant := RecognizedImage{AttachmentID: uuid.New(), Reading: reading(vision.Screen{
 		ScreenType: "not_relevant", Rows: []vision.Row{row("5", "Мусор")},
 	}, nil)}
-	draft := BuildDraft([]RecognizedImage{skipped, irrelevant, menuImage(row("5", "Такси"))}, nil, nil, "")
+	draft := BuildDraft([]RecognizedImage{skipped, irrelevant, menuImage(row("5", "Такси"))}, nil, nil, "", nil)
 	if len(draft.Rows) != 1 {
 		t.Fatalf("rows = %+v, want only the menu row", draft.Rows)
 	}

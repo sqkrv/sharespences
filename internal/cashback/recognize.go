@@ -180,7 +180,19 @@ func (s *Service) StartRecognition(ctx context.Context, userID uuid.UUID, bankCl
 	if err != nil {
 		return RecognitionJobDTO{}, err
 	}
-	go s.runRecognition(job.id, attachmentIDs, titles, catalog, aliases, client.BankName)
+	// The other banks' names let the draft warn only when the screenshots
+	// positively look like a DIFFERENT bank — an unreadable guess stays
+	// silent (see mismatchedBank). Read here, in the request context.
+	var otherBanks []string
+	if banks, err := s.Q.ListBanks(ctx); err == nil {
+		for _, b := range banks {
+			if b.ID != client.BankID {
+				otherBanks = append(otherBanks, b.Name)
+			}
+		}
+	}
+
+	go s.runRecognition(job.id, attachmentIDs, titles, catalog, aliases, client.BankName, otherBanks)
 	return RecognitionJobDTO{ID: job.id, Status: job.status, Total: job.total}, nil
 }
 
@@ -198,7 +210,7 @@ func (s *Service) GetRecognition(userID, id uuid.UUID) (RecognitionJobDTO, error
 // the ladder (images × vision.MaxImageBudget) — never a hand-picked
 // number. Any vision failure past per-image skips fails the whole job:
 // a half-read batch would prefill a misleading menu.
-func (s *Service) runRecognition(jobID uuid.UUID, attachmentIDs []uuid.UUID, titles []string, catalog []CatalogRow, aliases []Alias, bankName string) {
+func (s *Service) runRecognition(jobID uuid.UUID, attachmentIDs []uuid.UUID, titles []string, catalog []CatalogRow, aliases []Alias, bankName string, otherBanks []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(len(attachmentIDs))*vision.MaxImageBudget())
 	defer cancel()
 	rec := vision.NewRecognizer(s.Vision)
@@ -236,7 +248,7 @@ func (s *Service) runRecognition(jobID uuid.UUID, attachmentIDs []uuid.UUID, tit
 		images = append(images, ri)
 		s.recognitions.progress(jobID, i+1)
 	}
-	draft := BuildDraft(images, catalog, aliases, bankName)
+	draft := BuildDraft(images, catalog, aliases, bankName, otherBanks)
 	s.recognitions.finish(jobID, &draft)
 }
 

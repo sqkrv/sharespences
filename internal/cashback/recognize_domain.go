@@ -10,9 +10,12 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/sqkrv/sharespences/internal/vision"
 )
@@ -145,7 +148,10 @@ type draftRow struct {
 // same normalized title across images collapses (scroll overlap), value
 // disagreements surface as conflicts, барабан results collapse to one
 // pre-ticked kind=super row with the latest screenshot winning.
-func BuildDraft(images []RecognizedImage, catalog []CatalogRow, aliases []Alias, bankName string) RecognitionDraftDTO {
+// otherBanks are the other known bank names, used only to decide whether
+// the screenshots positively belong to a DIFFERENT bank (see
+// mismatchedBank); pass nil to disable that warning entirely.
+func BuildDraft(images []RecognizedImage, catalog []CatalogRow, aliases []Alias, bankName string, otherBanks []string) RecognitionDraftDTO {
 	draft := RecognitionDraftDTO{Images: make([]RecognitionImageDTO, 0, len(images))}
 
 	type key struct {
@@ -291,8 +297,8 @@ func BuildDraft(images []RecognizedImage, catalog []CatalogRow, aliases []Alias,
 	if sawMenuOrSummary && !sawHeaderOrFooter {
 		draft.Notes = append(draft.Notes, "возможно, часть меню не попала: ни заголовок, ни нижняя кнопка не видны")
 	}
-	if len(draft.BankGuesses) > 0 && !anyBankMatches(draft.BankGuesses, bankName) {
-		draft.Notes = append(draft.Notes, fmt.Sprintf("на скриншотах читается другой банк (%s) — проверь, тот ли клиент выбран", strings.Join(draft.BankGuesses, ", ")))
+	if other := mismatchedBank(draft.BankGuesses, bankName, otherBanks); other != "" {
+		draft.Notes = append(draft.Notes, fmt.Sprintf("похоже, это скриншоты другого банка (%s) — проверь, тот ли клиент выбран", other))
 	}
 	return draft
 }
@@ -356,27 +362,64 @@ func resolveSlots(images []RecognizedImage) (*int, []SlotCandidateDTO) {
 	return nil, candidates
 }
 
-// anyBankMatches loosely compares model bank guesses with the chosen
-// client's bank («Альфа Банк» ≈ «Альфа-Банк»). Only gates a warning —
-// the user's choice is authoritative either way (spec decision 4).
-func anyBankMatches(guesses []string, bankName string) bool {
-	canon := func(s string) string {
-		return strings.NewReplacer("-", "", " ", "").Replace(NormalizeTitle(s))
+// canonBank normalizes a bank name for comparison: NFC, lower-case,
+// letters and digits only. It deliberately does NOT use NormalizeTitle —
+// that folds Latin homoglyphs into Cyrillic, which is right for category
+// titles («Tакси») and wrong for bank names, where whole Latin words are
+// legitimate: the fold turns «bank» into «ваnк», so «T-BANK» did not match
+// «Т-Банк» and «ozon банк» did not match «Ozon Банк».
+func canonBank(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(norm.NFC.String(s)) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
 	}
-	want := canon(bankName)
-	if want == "" {
-		return true
+	return b.String()
+}
+
+// bankNamesOverlap is containment with a length floor, so a two-letter
+// fragment cannot match half the bank list.
+func bankNamesOverlap(a, b string) bool {
+	if utf8.RuneCountInString(a) < 3 || utf8.RuneCountInString(b) < 3 {
+		return false
+	}
+	return strings.Contains(a, b) || strings.Contains(b, a)
+}
+
+// mismatchedBank reports which OTHER known bank the screenshots appear to
+// belong to, or "" for no warning. It fires only on positive evidence.
+//
+// The first version warned whenever a guess failed to match the chosen
+// bank, which made «не смог прочитать» indistinguishable from «это другой
+// банк» — and the model's bank field is measurably unreliable (it returned
+// «Альфа Банк» for both Т-Банк and МКБ screens, and row titles as bank
+// names). The owner hit the false positive on the first real run: «ozon
+// банк» against a client named «Озон Банк». Silence on an unreadable guess
+// is the deliberate trade — a missed mismatch costs a prefill the user
+// reviews anyway, while a crying-wolf warning trains people to ignore the
+// one that matters. The user picks the bank client; this only cross-checks
+// (spec decision 4).
+func mismatchedBank(guesses []string, bankName string, otherBanks []string) string {
+	want := canonBank(bankName)
+	for _, g := range guesses {
+		if bankNamesOverlap(canonBank(g), want) {
+			return "" // a guess confirms the chosen bank — nothing to warn about
+		}
 	}
 	for _, g := range guesses {
-		got := canon(g)
-		if got == "" {
-			continue
-		}
-		if strings.Contains(got, want) || strings.Contains(want, got) {
-			return true
+		got := canonBank(g)
+		for _, other := range otherBanks {
+			o := canonBank(other)
+			if o == want {
+				continue
+			}
+			if bankNamesOverlap(got, o) {
+				return other
+			}
 		}
 	}
-	return false
+	return ""
 }
 
 func firstNonEmptyStr(a, b string) string {
