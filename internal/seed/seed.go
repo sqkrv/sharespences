@@ -380,10 +380,9 @@ var aliases = []struct{ bank, raw, slug string }{
 	{"Т-Банк", "Цветы", "flowers"},
 	// Beyond the 2026-04 MCC appendix — owner live app, 2026-07-24.
 	{"Т-Банк", "Все покупки", "all-purchases"},
-	{"Т-Банк", "Топливо в Городе", "gas-stations"},
-	{"Т-Банк", "Топливо в городе", "gas-stations"}, // 2026-07-24 memory-entered spelling; app says «в Городе»
-	{"Т-Банк", "Супермаркеты в Городе", "supermarkets"},
-	{"Т-Банк", "Автосервисы в Городе", "auto-services"},
+	// The «… в Городе» family maps to NO canonical (owner 2026-07-28) — see
+	// the catalog block below; aliasing them would make the lookup promise
+	// the rate at any АЗС / supermarket.
 	{"Яндекс Пэй", "Кафе, бары и рестораны", "restaurants"},
 	{"Яндекс Пэй", "Кафе, рестораны и бары", "restaurants"}, // 2026-07 rules wording; app says «бары и рестораны»
 	{"Яндекс Пэй", "Образование", "education"},
@@ -451,6 +450,13 @@ var retiredBankCategories = []struct{ bank, title string }{
 // raw title nobody can enter).
 var retiredAliases = []struct{ bank, raw string }{
 	{"Т-Банк", "Бензин в городе"}, // owner 2026-07-27
+	// The «… в Городе» family lost its canonical mappings (owner 2026-07-28);
+	// the aliases have to go too, or a raw title typed into a period would
+	// still resolve to АЗС / Супермаркеты / Автоуслуги.
+	{"Т-Банк", "Топливо в Городе"},
+	{"Т-Банк", "Топливо в городе"},
+	{"Т-Банк", "Супермаркеты в Городе"},
+	{"Т-Банк", "Автосервисы в Городе"},
 }
 
 // Brand colors for UI bank tinting (knowledge: bank pages + index,
@@ -658,15 +664,21 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	// Geo-scoped «… в Городе» family — where Т-Банк's headline rates live
 	// (10–30% vs 5–7% on plain rows). Spelling verified against the corpus
 	// 2026-07-27: capital «Г», and «Шопинг» with one «п».
-	{bank: "Т-Банк", title: "Топливо в Городе", slug: "gas-stations"},
-	{bank: "Т-Банк", title: "Супермаркеты в Городе", slug: "supermarkets"},
-	{bank: "Т-Банк", title: "Автосервисы в Городе", slug: "auto-services"},
-	// «Шопинг в Городе» is deliberately canonical-less (owner 2026-07-27):
-	// it bundles одежда + техника + аксессуары + маркетплейсы, so no single
-	// canonical is honest — an ordinary regular row without a mapping.
+	// None of them carries a canonical (owner 2026-07-28): «в Городе» pays
+	// at partner merchants in the user's city, not across the whole MCC
+	// category, so mapping «Топливо в Городе» onto АЗС would make the lookup
+	// promise 10% at any filling station. Canonical-less means the rows stay
+	// selectable and visible in their period, but never answer «какой картой
+	// платить?» for АЗС / Супермаркеты / Автоуслуги. They carry their own
+	// emoji — with no canonical there is nothing to inherit one from.
+	{bank: "Т-Банк", title: "Топливо в Городе", emoji: "⛽"},
+	{bank: "Т-Банк", title: "Супермаркеты в Городе", emoji: "🛒"},
+	{bank: "Т-Банк", title: "Автосервисы в Городе", emoji: "🛠️"},
+	// «Шопинг в Городе» was the first of the family ruled canonical-less
+	// (owner 2026-07-27): it also bundles одежда + техника + аксессуары +
+	// маркетплейсы, so no single canonical was honest even before the
+	// geo-scope argument.
 	{bank: "Т-Банк", title: "Шопинг в Городе", emoji: "🛍️"},
-	// «Афиша в Городе» likewise stays canonical-less (owner 2026-07-27):
-	// culture/cinema both only partly fit, and Альфа-Афиша is the precedent.
 	{bank: "Т-Банк", title: "Афиша в Городе", emoji: "🎭"},
 	// Own-service rows — slot-consuming, hence catalog rows (owner 2026-07-27).
 	{bank: "Т-Банк", title: "Т-Страхование", emoji: "🛡️"},
