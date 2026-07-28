@@ -10,6 +10,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -18,7 +21,9 @@ import (
 	"net/textproto"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -27,6 +32,7 @@ import (
 	"github.com/sqkrv/sharespences/internal/migrations"
 	"github.com/sqkrv/sharespences/internal/seed"
 	"github.com/sqkrv/sharespences/internal/server"
+	"github.com/sqkrv/sharespences/internal/vision"
 )
 
 type client struct {
@@ -134,6 +140,57 @@ func (c *client) upload(filename, mediaType string, content []byte) string {
 		c.t.Fatal(err)
 	}
 	return out.ID
+}
+
+// pngShot builds a fake screenshot; distinct dimensions let fakeVision
+// tell the uploads apart after the recognizer re-encodes them.
+func pngShot(t *testing.T, w, h int) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, w, h))); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// fakeVision doubles the model at the Backend seam (recognizer plan
+// contract C1) — the real ladder, prompts, JSON extractor and merge all
+// run; only the completion is scripted. The menu image's first row call
+// returns prose so the ladder must climb a rung, and the answer then
+// arrives in the thinking channel so the extractor must dig it out. No
+// vision.Stub ships in production code — this fake lives here.
+type fakeVision struct {
+	mu       sync.Mutex
+	menuRows int
+}
+
+func (f *fakeVision) Name() string { return "e2e-fake" }
+
+func (f *fakeVision) Complete(_ context.Context, req vision.Request) (vision.Response, error) {
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(req.ImageJPEG))
+	if err != nil {
+		return vision.Response{}, fmt.Errorf("backend got a non-JPEG image: %w", err)
+	}
+	if strings.Contains(req.Prompt, "How many categories") { // the slot pass
+		return vision.Response{Content: `{"source_text":"Выберите ещё 3 категории","slot_count":3}`}, nil
+	}
+	if !strings.Contains(req.Prompt, "Кафе и рестораны") {
+		return vision.Response{}, fmt.Errorf("row prompt lacks the bank's catalog vocabulary")
+	}
+	if cfg.Width == 310 { // the барабан upload
+		return vision.Response{Content: `{"screen_type":"wheel_result","bank":"Альфа-Банк","rows":[{"percent":"10","title":"Такси","state":"unknown"}]}`}, nil
+	}
+	f.mu.Lock()
+	f.menuRows++
+	n := f.menuRows
+	f.mu.Unlock()
+	if n == 1 {
+		return vision.Response{Content: "Дай подумать о категориях…", DoneReason: "stop"}, nil
+	}
+	const menu = `{"screen_type":"menu","bank":"Альфа Банк","period_text":"на октябрь","has_header":true,` +
+		`"rows":[{"percent":"7","title":"Кафе и рестораны","state":"checked","catalog_match":"Кафе и рестораны"},` +
+		`{"percent":"1,5","title":"Тестовая категория Икс","cap":"2 000 ₽","state":"unchecked"}]}`
+	return vision.Response{Thinking: "Читаю строки… " + menu}, nil
 }
 
 type programJSON struct {
@@ -245,7 +302,7 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("seed rerun (idempotency): %v", err)
 	}
 
-	srv := httptest.NewServer(server.New(server.Config{Pool: pool, AttachmentsDir: t.TempDir()}))
+	srv := httptest.NewServer(server.New(server.Config{Pool: pool, AttachmentsDir: t.TempDir(), Vision: &fakeVision{}}))
 	defer srv.Close()
 
 	owner := newClient(t, srv.URL)
@@ -1141,5 +1198,188 @@ func TestCashbackE2E(t *testing.T) {
 	if got := lookup.Ranked[0]; got.Percent == nil || *got.Percent != "1.5" ||
 		got.OfferCapValue == nil || *got.OfferCapValue != "5000" {
 		t.Fatalf("cinema entry = %+v, want percent 1.5 + offer cap 5000", got)
+	}
+
+	// --- Screenshot recognizer (docs/specs/cashback-recognizer.md):
+	// upload → 202 job → poll → prefill draft → the USER picks → commit
+	// through the four existing endpoints → the period matches a
+	// hand-entered control. The fake sits at the vision.Backend seam, so
+	// the real ladder, prompts, extractor and merge all run. ---
+	type recogRowJSON struct {
+		RawTitle            string   `json:"raw_title"`
+		Percent             *string  `json:"percent"`
+		CapValue            *string  `json:"cap_value"`
+		Kind                string   `json:"kind"`
+		BankCategoryID      *int64   `json:"bank_category_id"`
+		CanonicalCategoryID *int64   `json:"canonical_category_id"`
+		Checked             bool     `json:"checked"`
+		NeedsReview         bool     `json:"needs_review"`
+		SourceImages        []int    `json:"source_images"`
+		ReviewNotes         []string `json:"review_notes"`
+	}
+	type recogJobJSON struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+		Done   int    `json:"done"`
+		Total  int    `json:"total"`
+		Error  string `json:"error"`
+		Draft  *struct {
+			Rows        []recogRowJSON `json:"rows"`
+			SlotCount   *int           `json:"slot_count"`
+			PeriodTexts []string       `json:"period_texts"`
+			Notes       []string       `json:"notes"`
+			Images      []struct {
+				AttachmentID string `json:"attachment_id"`
+				ScreenType   string `json:"screen_type"`
+				Skipped      bool   `json:"skipped"`
+			} `json:"images"`
+		} `json:"draft"`
+	}
+
+	var recogClient clientJSON
+	owner.must("POST", "/api/v1/bank-clients", map[string]any{
+		"bank_id": alfa.BankID, "label": "Распознавание", "program_tier_id": alfaSmart.ID,
+	}, &recogClient, http.StatusCreated)
+
+	var aliasesBefore int
+	if err := pool.QueryRow(ctx, "select count(*) from bank_category_alias where bank_id = $1", alfa.BankID).Scan(&aliasesBefore); err != nil {
+		t.Fatal(err)
+	}
+
+	menuAtt := owner.upload("menu.png", "image/png", pngShot(t, 300, 200))
+	wheelAtt := owner.upload("wheel.png", "image/png", pngShot(t, 310, 210))
+
+	var recogJob recogJobJSON
+	owner.must("POST", "/api/v1/cashback/recognitions", map[string]any{
+		"bank_client_id": recogClient.ID, "attachment_ids": []string{menuAtt, wheelAtt},
+	}, &recogJob, http.StatusAccepted)
+	if recogJob.Status != "running" || recogJob.Total != 2 {
+		t.Fatalf("job = %+v, want running/2", recogJob)
+	}
+
+	// A foreign user's poll must read as absent.
+	if got := other.do("GET", "/api/v1/cashback/recognitions/"+recogJob.ID, nil, nil); got != http.StatusNotFound {
+		t.Fatalf("foreign job poll = %d, want 404", got)
+	}
+
+	pollDeadline := time.Now().Add(15 * time.Second)
+	for recogJob.Status == "running" {
+		if time.Now().After(pollDeadline) {
+			t.Fatalf("recognition never finished: %+v", recogJob)
+		}
+		time.Sleep(25 * time.Millisecond)
+		owner.must("GET", "/api/v1/cashback/recognitions/"+recogJob.ID, nil, &recogJob, http.StatusOK)
+	}
+	if recogJob.Status != "done" || recogJob.Draft == nil {
+		t.Fatalf("job = %+v (error %q), want done with draft", recogJob, recogJob.Error)
+	}
+	draft := recogJob.Draft
+
+	// The draft: menu rows merged with the барабан, values normalized,
+	// catalog match resolved, slot grammar «ещё 3» + 1 checked = 4.
+	if len(draft.Rows) != 3 {
+		t.Fatalf("draft rows = %+v, want 3", draft.Rows)
+	}
+	recogCafe, recogTest, recogSuper := draft.Rows[0], draft.Rows[1], draft.Rows[2]
+	cafeCatalog := findCatalogRow("Кафе и рестораны")
+	if recogCafe.RawTitle != "Кафе и рестораны" || recogCafe.Percent == nil || *recogCafe.Percent != "7" ||
+		!recogCafe.Checked || recogCafe.BankCategoryID == nil || *recogCafe.BankCategoryID != cafeCatalog.ID {
+		t.Fatalf("cafe row = %+v, want checked 7%% mapped to catalog row %d", recogCafe, cafeCatalog.ID)
+	}
+	if recogCafe.CanonicalCategoryID != nil {
+		t.Fatalf("cafe row = %+v — catalog matches carry bank_category_id ALONE (no alias write on commit)", recogCafe)
+	}
+	if recogTest.RawTitle != "Тестовая категория Икс" || recogTest.Percent == nil || *recogTest.Percent != "1.5" ||
+		recogTest.CapValue == nil || *recogTest.CapValue != "2000" || recogTest.BankCategoryID != nil {
+		t.Fatalf("test row = %+v, want unmapped 1.5%% / cap 2000", recogTest)
+	}
+	if recogSuper.Kind != "super" || !recogSuper.Checked || recogSuper.Percent == nil || *recogSuper.Percent != "10" {
+		t.Fatalf("super row = %+v, want pre-ticked барабан 10%%", recogSuper)
+	}
+	if draft.SlotCount == nil || *draft.SlotCount != 4 {
+		t.Fatalf("slot count = %v, want «ещё 3» + 1 checked = 4", draft.SlotCount)
+	}
+	if len(draft.PeriodTexts) != 1 || draft.PeriodTexts[0] != "на октябрь" {
+		t.Fatalf("period texts = %v", draft.PeriodTexts)
+	}
+	if len(draft.Images) != 2 || draft.Images[0].ScreenType != "menu" || draft.Images[1].ScreenType != "wheel_result" {
+		t.Fatalf("images = %+v", draft.Images)
+	}
+
+	// Invariant 1: nothing reached the database that the user did not
+	// pick — recognition alone created no period, no offers, no aliases.
+	var recogPeriods int
+	if err := pool.QueryRow(ctx, "select count(*) from offer_period where bank_client_id = $1", recogClient.ID).Scan(&recogPeriods); err != nil {
+		t.Fatal(err)
+	}
+	if recogPeriods != 0 {
+		t.Fatalf("recognition wrote %d periods before the user committed", recogPeriods)
+	}
+
+	// Commit: the user picks the cafe row and the барабан, SKIPS the
+	// test row, and replays the four existing endpoints verbatim.
+	var recogPeriod periodJSON
+	owner.must("POST", "/api/v1/cashback/offer-periods", map[string]any{
+		"bank_client_id": recogClient.ID, "period_start": "2026-10-01", "period_end": "2026-10-31",
+		"attachment_ids": []string{menuAtt, wheelAtt},
+	}, &recogPeriod, http.StatusCreated)
+	owner.must("PUT", fmt.Sprintf("/api/v1/cashback/offer-periods/%d/max-categories", recogPeriod.ID),
+		map[string]any{"value": *draft.SlotCount}, nil, http.StatusOK)
+	var committedCafe, committedSuper offerJSON
+	owner.must("POST", "/api/v1/cashback/category-offers", map[string]any{
+		"offer_period_id": recogPeriod.ID, "raw_title": recogCafe.RawTitle,
+		"bank_category_id": *recogCafe.BankCategoryID, "percent": *recogCafe.Percent,
+	}, &committedCafe, http.StatusCreated)
+	owner.must("POST", "/api/v1/cashback/category-offers", map[string]any{
+		"offer_period_id": recogPeriod.ID, "raw_title": recogSuper.RawTitle,
+		"percent": *recogSuper.Percent, "kind": "super",
+	}, &committedSuper, http.StatusCreated)
+	if got := sel(committedCafe.ID, "2026-10-05T10:00:00Z"); got != http.StatusCreated {
+		t.Fatalf("select cafe offer: %d", got)
+	}
+	// The барабан is granted, not chosen — its pre-tick becomes a
+	// selection only through the same explicit commit (invariant 5a).
+	if got := sel(committedSuper.ID, "2026-10-05T10:00:00Z"); got != http.StatusCreated {
+		t.Fatalf("select super offer: %d", got)
+	}
+
+	// Control: the committed period reads back exactly as hand-entered —
+	// two offers (the skipped row is absent), both screenshots attached.
+	var control struct {
+		Offers      []offerJSON `json:"offers"`
+		Attachments []string    `json:"attachment_ids"`
+	}
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/offer-periods/%d", recogPeriod.ID), nil, &control, http.StatusOK)
+	if len(control.Offers) != 2 {
+		t.Fatalf("committed offers = %+v, want exactly the 2 picked", control.Offers)
+	}
+	if len(control.Attachments) != 2 {
+		t.Fatalf("attachments = %v, want both screenshots as evidence", control.Attachments)
+	}
+	var aliasesAfter int
+	if err := pool.QueryRow(ctx, "select count(*) from bank_category_alias where bank_id = $1", alfa.BankID).Scan(&aliasesAfter); err != nil {
+		t.Fatal(err)
+	}
+	if aliasesAfter != aliasesBefore {
+		t.Fatalf("aliases %d → %d: committing a recognized draft must never write an alias", aliasesBefore, aliasesAfter)
+	}
+
+	// Degradation: a server with no vision backend answers 503 with a
+	// message — and manual entry (everything above) still works.
+	srvOff := httptest.NewServer(server.New(server.Config{Pool: pool, AttachmentsDir: t.TempDir()}))
+	defer srvOff.Close()
+	offline := newClient(t, srvOff.URL)
+	offline.must("POST", "/api/v1/auth/register", map[string]any{
+		"username": "novision", "display_name": "No Vision", "email": "novision@example.com", "password": "correct horse",
+	}, nil, http.StatusCreated)
+	var offClient clientJSON
+	offline.must("POST", "/api/v1/bank-clients", map[string]any{
+		"bank_id": alfa.BankID, "program_tier_id": alfaSmart.ID,
+	}, &offClient, http.StatusCreated)
+	offAtt := offline.upload("menu.png", "image/png", pngShot(t, 300, 200))
+	if got := offline.do("POST", "/api/v1/cashback/recognitions", map[string]any{
+		"bank_client_id": offClient.ID, "attachment_ids": []string{offAtt},
+	}, nil); got != http.StatusServiceUnavailable {
+		t.Fatalf("recognition without a backend = %d, want 503", got)
 	}
 }
