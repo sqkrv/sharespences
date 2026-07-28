@@ -14,6 +14,7 @@ import (
 
 	"github.com/sqkrv/sharespences/internal/auth"
 	"github.com/sqkrv/sharespences/internal/db"
+	"github.com/sqkrv/sharespences/internal/vision"
 )
 
 // Decimal values travel as strings in the JSON API («5», «7.5», «1500») —
@@ -58,7 +59,16 @@ func httpErr(err error) error {
 	case errors.Is(err, ErrBankCategoryExists):
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, ErrOutsidePeriod), errors.Is(err, ErrInvalidPeriod),
-		errors.Is(err, ErrBankCategoryWrongBank):
+		errors.Is(err, ErrBankCategoryWrongBank), errors.Is(err, ErrRecognitionImages):
+		return huma.Error422UnprocessableEntity(err.Error())
+	case errors.Is(err, ErrRecognitionBusy):
+		return huma.Error409Conflict(err.Error())
+	// Vision failures must not surface as a bare 500 with no message:
+	// backend absent/unreachable is honest degradation (manual entry
+	// still works), a failed read is a per-job 422.
+	case errors.Is(err, vision.ErrUnavailable):
+		return huma.Error503ServiceUnavailable(err.Error())
+	case errors.Is(err, vision.ErrFailed):
 		return huma.Error422UnprocessableEntity(err.Error())
 	}
 	return err
@@ -1221,5 +1231,40 @@ func RegisterHTTP(api huma.API, s *Service) {
 			return nil, huma.Error404NotFound("not found")
 		}
 		return &struct{}{}, nil
+	})
+
+	// --- Screenshot recognizer (docs/specs/cashback-recognizer.md): the
+	// job extracts a prefill draft; commit replays the four existing
+	// write endpoints. 202 = accepted for background processing (~2.5
+	// min/screenshot on the reference model) — poll the GET below. ---
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-recognition-create", Method: http.MethodPost,
+		Path: "/api/v1/cashback/recognitions", Summary: "Start recognizing uploaded picker screenshots", Tags: []string{"cashback"},
+		DefaultStatus: http.StatusAccepted,
+	}, func(ctx context.Context, in *struct {
+		Body struct {
+			BankClientID  int64       `json:"bank_client_id"`
+			AttachmentIDs []uuid.UUID `json:"attachment_ids" minItems:"1" maxItems:"10"`
+		}
+	}) (*struct{ Body RecognitionJobDTO }, error) {
+		job, err := s.StartRecognition(ctx, auth.UserID(ctx), in.Body.BankClientID, in.Body.AttachmentIDs)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{ Body RecognitionJobDTO }{job}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-recognition-get", Method: http.MethodGet,
+		Path: "/api/v1/cashback/recognitions/{id}", Summary: "Poll a recognition job", Tags: []string{"cashback"},
+	}, func(ctx context.Context, in *struct {
+		ID uuid.UUID `path:"id"`
+	}) (*struct{ Body RecognitionJobDTO }, error) {
+		job, err := s.GetRecognition(auth.UserID(ctx), in.ID)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{ Body RecognitionJobDTO }{job}, nil
 	})
 }

@@ -66,6 +66,13 @@ func (s *Store) Path(id uuid.UUID) string {
 	return filepath.Join(s.Dir, fmt.Sprintf("%s.bin", id))
 }
 
+// Open returns the attachment's stored bytes. Like Remove it is
+// uuid-only and carries no auth — every caller must pass through a
+// user-scoped row query first.
+func (s *Store) Open(id uuid.UUID) (io.ReadCloser, error) {
+	return os.Open(s.Path(id))
+}
+
 // Remove deletes the attachment's bytes from disk (missing file is fine —
 // the row is already gone by the time callers get here).
 func (s *Store) Remove(id uuid.UUID) error {

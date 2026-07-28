@@ -490,6 +490,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cashback/recognitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start recognizing uploaded picker screenshots */
+        post: operations["cashback-recognition-create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cashback/recognitions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Poll a recognition job */
+        get: operations["cashback-recognition-get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cashback/selections": {
         parameters: {
             query?: never;
@@ -984,6 +1018,17 @@ export interface components {
             /** Format: date */
             valid_to?: string;
         };
+        "Cashback-recognition-createRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Cashback-recognition-createRequest.json
+             */
+            readonly $schema?: string;
+            attachment_ids: string[] | null;
+            /** Format: int64 */
+            bank_client_id: number;
+        };
         "Cashback-selection-createRequest": {
             /**
              * Format: uri
@@ -1339,6 +1384,64 @@ export interface components {
             /** Format: int32 */
             selection_opens_day?: number;
         };
+        RecognitionDraftDTO: {
+            /** @description never trusted — the user's bank client is authoritative */
+            bank_guesses?: string[] | null;
+            images: components["schemas"]["RecognitionImageDTO"][] | null;
+            notes?: string[] | null;
+            /** @description cross-check hints from screen headers («на август») */
+            period_texts?: string[] | null;
+            rows: components["schemas"]["RecognitionRowDTO"][] | null;
+            slot_candidates?: components["schemas"]["SlotCandidateDTO"][] | null;
+            /** Format: int64 */
+            slot_count?: number;
+        };
+        RecognitionImageDTO: {
+            attachment_id: string;
+            note?: string;
+            screen_type?: string;
+            skipped?: boolean;
+        };
+        RecognitionJobDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RecognitionJobDTO.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description screenshots processed so far
+             */
+            done: number;
+            draft?: components["schemas"]["RecognitionDraftDTO"];
+            error?: string;
+            id: string;
+            /** @enum {string} */
+            status: "running" | "done" | "failed";
+            /** Format: int64 */
+            total: number;
+        };
+        RecognitionRowDTO: {
+            /** Format: int64 */
+            bank_category_id?: number;
+            /** Format: int64 */
+            canonical_category_id?: number;
+            cap_value?: string;
+            catalog_title?: string;
+            checked: boolean;
+            conflict_caps?: string[] | null;
+            conflict_percents?: string[] | null;
+            /** @enum {string} */
+            kind: "regular" | "super" | "special";
+            needs_review: boolean;
+            percent?: string;
+            raw_cap?: string;
+            raw_percent?: string;
+            raw_title: string;
+            review_notes?: string[] | null;
+            source_images: number[] | null;
+        };
         ResolveEntryDTO: {
             /** Format: int64 */
             bank_category_id: number;
@@ -1352,6 +1455,14 @@ export interface components {
             kind: string;
             note?: string;
             title: string;
+        };
+        SlotCandidateDTO: {
+            /** Format: int64 */
+            source_image: number;
+            /** @description not always verbatim — evidence is the number, never the quote */
+            source_text?: string;
+            /** Format: int64 */
+            value: number;
         };
         TierBody: {
             /**
@@ -2602,6 +2713,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TierDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-recognition-create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Cashback-recognition-createRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecognitionJobDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-recognition-get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecognitionJobDTO"];
                 };
             };
             /** @description Error */

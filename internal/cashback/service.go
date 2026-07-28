@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/sqkrv/sharespences/internal/db"
+	"github.com/sqkrv/sharespences/internal/vision"
 )
 
 // ErrNotFound covers rows that don't exist or belong to another user —
@@ -35,6 +37,16 @@ var ErrBankCategoryWrongBank = errors.New("cashback: категория из к�
 type Service struct {
 	Q                    *db.Queries
 	RemoveAttachmentFile func(id uuid.UUID) error
+	// ReadAttachmentFile opens an attachment's stored bytes — injected
+	// like RemoveAttachmentFile so this module never imports the
+	// attachment store (ADR-0002 seam). Callers must have user-scoped
+	// the attachment row first; the disk accessor itself carries no auth.
+	ReadAttachmentFile func(id uuid.UUID) (io.ReadCloser, error)
+	// Vision is the screenshot recognizer's model backend; nil = the
+	// feature is off and recognition endpoints answer 503.
+	Vision vision.Backend
+
+	recognitions recognitionStore
 }
 
 // clientLabel names a bank client for display: «Альфа-Банк» for the owner's

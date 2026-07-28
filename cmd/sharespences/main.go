@@ -7,6 +7,13 @@
 //
 // Config via env: DATABASE_URL (required), LISTEN_ADDR (default :8080),
 // ATTACHMENTS_DIR (default ./attachments).
+//
+// Screenshot recognizer (off unless configured):
+//
+//	VISION_BACKEND     ollama | anthropic (empty = feature off)
+//	VISION_MODEL       model name (default qwen3-vl:4b / claude-opus-5)
+//	OLLAMA_HOST        Ollama base URL (default http://localhost:11434)
+//	ANTHROPIC_API_KEY  required for the anthropic backend
 package main
 
 import (
@@ -24,6 +31,7 @@ import (
 	"github.com/sqkrv/sharespences/internal/migrations"
 	"github.com/sqkrv/sharespences/internal/seed"
 	"github.com/sqkrv/sharespences/internal/server"
+	"github.com/sqkrv/sharespences/internal/vision"
 )
 
 func envOr(key, def string) string {
@@ -31,6 +39,26 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// visionBackend builds the screenshot-recognizer backend from env.
+// Misconfiguration fails startup loudly rather than surfacing as 503s
+// later; an empty VISION_BACKEND just turns the feature off.
+func visionBackend() (vision.Backend, error) {
+	switch kind := os.Getenv("VISION_BACKEND"); kind {
+	case "":
+		return nil, nil
+	case "ollama":
+		return vision.NewOllama(envOr("OLLAMA_HOST", "http://localhost:11434"), envOr("VISION_MODEL", "qwen3-vl:4b")), nil
+	case "anthropic":
+		key := os.Getenv("ANTHROPIC_API_KEY")
+		if key == "" {
+			return nil, errors.New("VISION_BACKEND=anthropic needs ANTHROPIC_API_KEY")
+		}
+		return vision.NewAnthropic(key, os.Getenv("VISION_MODEL")), nil
+	default:
+		return nil, fmt.Errorf("unknown VISION_BACKEND %q (want ollama|anthropic or empty)", kind)
+	}
 }
 
 func main() {
@@ -83,9 +111,14 @@ func run() error {
 		_, err = os.Stdout.Write(spec)
 		return err
 	case "serve":
+		backend, err := visionBackend()
+		if err != nil {
+			return err
+		}
 		handler := server.New(server.Config{
 			Pool:           pool,
 			AttachmentsDir: envOr("ATTACHMENTS_DIR", "attachments"),
+			Vision:         backend,
 		})
 		srv := &http.Server{
 			Addr:              envOr("LISTEN_ADDR", ":8080"),

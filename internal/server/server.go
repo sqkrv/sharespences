@@ -29,6 +29,7 @@ import (
 	"github.com/sqkrv/sharespences/internal/cashback"
 	"github.com/sqkrv/sharespences/internal/db"
 	"github.com/sqkrv/sharespences/internal/mcc"
+	"github.com/sqkrv/sharespences/internal/vision"
 	"github.com/sqkrv/sharespences/internal/web"
 )
 
@@ -37,6 +38,11 @@ const sessionUserKey = "user_id"
 type Config struct {
 	Pool           *pgxpool.Pool
 	AttachmentsDir string
+	// Vision is the screenshot-recognizer model backend; nil turns the
+	// feature off (recognition endpoints answer 503, manual entry keeps
+	// working). Backends never dial at construction, so the openapi CI
+	// gate stays network-free.
+	Vision vision.Backend
 }
 
 // New builds the full HTTP handler (sessions wrapped around chi+huma,
@@ -82,7 +88,7 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 
 	authSvc := &auth.Service{Q: q}
 	store := &attach.Store{Q: q, Dir: cfg.AttachmentsDir}
-	cbSvc := &cashback.Service{Q: q, RemoveAttachmentFile: store.Remove}
+	cbSvc := &cashback.Service{Q: q, RemoveAttachmentFile: store.Remove, ReadAttachmentFile: store.Open, Vision: cfg.Vision}
 	mccSvc := &mcc.Service{Q: q}
 
 	registerAuth(api, sm, authSvc)
