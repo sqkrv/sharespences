@@ -9,6 +9,11 @@ x-backend: &backend
   image: sharespences
   environment:
     DATABASE_URL: postgres://sharespences:sharespences@db:5432/sharespences
+    # This stack serves plain http on localhost, where a Secure session cookie
+    # would never be stored by Safari — so login would silently fail. The
+    # server defaults to Secure ON; only this local stack opts out. A real
+    # deployment sits behind TLS and must NOT set this.
+    COOKIE_SECURE: ${COOKIE_SECURE:-false}
     # Screenshot recognizer (README «Screenshot recognizer») — off unless
     # VISION_BACKEND is set in the environment / .env. host.docker.internal
     # reaches an Ollama on the Docker host (extra_hosts below).

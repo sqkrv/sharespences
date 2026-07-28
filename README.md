@@ -33,6 +33,26 @@ go run ./cmd/sharespences serve   # web/: npm run dev proxies to :8080
 If 5432 is taken locally too, change the host side in the override (e.g.
 `"127.0.0.1:5433:5432"`) and the `DATABASE_URL` port to match.
 
+## Deploying
+
+The session cookie is marked `Secure`, so **the app must be served over
+HTTPS** — behind a TLS-terminating reverse proxy is the expected shape. The
+one escape hatch is `COOKIE_SECURE=false`, which `docker-compose.yaml` sets
+because that stack serves plain http on localhost (Safari refuses to store a
+Secure cookie there, and login would fail silently). A real deployment must
+not set it.
+
+Builds identify themselves. Pass the version at build time and it is served
+at `GET /api/v1/version` and shown in «Сервисы» → «О приложении»:
+
+```sh
+docker build --build-arg VERSION="$(git describe --tags --always --dirty)" -t sharespences .
+```
+
+Versions are CalVer `vYYYY.M.N` with an unpadded month (`v2026.7.1`); an
+unstamped build reports `dev`. API compatibility lives in the URL path
+(`/api/v1`), never in the tag.
+
 ## Screenshot recognizer (optional)
 
 The cashback period form can prefill itself from bank-app screenshots.

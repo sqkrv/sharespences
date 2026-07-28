@@ -1,6 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, unwrap, type Program, type Tier } from "./api/client";
 
+// The running binary's version (ADR-0006). Public endpoint, and the value
+// only changes on deploy — a long staleTime keeps it off the request path.
+export function useVersion() {
+  return useQuery({
+    queryKey: ["version"],
+    queryFn: async () => unwrap(await api.GET("/api/v1/version")),
+    staleTime: 60 * 60_000,
+  });
+}
+
 export function useBanks() {
   return useQuery({
     queryKey: ["banks"],

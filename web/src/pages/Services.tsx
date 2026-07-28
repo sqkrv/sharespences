@@ -1,14 +1,15 @@
 import { useMe, useLogout } from "../auth";
 import { useTheme, type ThemeSetting } from "../theme";
 import { useInstallPrompt } from "../pwa";
+import { useVersion } from "../hooks";
 import { Btn, Card } from "../components/ui";
 import { BUILD, isStale, useDevMode, useServerBuild } from "../dev/devmode";
 
-// BUILD is the compile-time ISO stamp (web/vite.config.ts). «О приложении»
-// shows it as a plain date outside dev mode, so a bug report from someone who
-// is not the owner can name the build — ADR-0006's «which build hit this?».
-// The CalVer tag replaces this line once the version is plumbed through the
-// binary (that lands with the Go→main merge, which the first tag waits on).
+// «О приложении» reports two different things on one line. The CalVer version
+// (ADR-0006) comes from the SERVER and names the running binary — the answer
+// to «which build hit this bug?» from someone who is not the author. BUILD is
+// the compile-time stamp of the BUNDLE the browser is running, which can lag
+// the server whenever a service worker is still serving an old one.
 const built = new Date(BUILD);
 const buildLabel = Number.isNaN(built.getTime())
   ? null
@@ -23,6 +24,7 @@ export default function Services() {
   const [setting, setSetting] = useTheme();
   const { isStandalone, isIOS, canInstall, install } = useInstallPrompt();
   const [dev, setDev] = useDevMode();
+  const version = useVersion();
   const serverBuild = useServerBuild(dev);
 
   const options: { value: ThemeSetting; label: string }[] = [
@@ -141,7 +143,10 @@ export default function Services() {
         <a href="/terms" className="mt-2 block text-sm font-semibold text-accl">
           Пользовательское соглашение →
         </a>
-        {buildLabel && <p className="mt-3 text-[11px] font-medium text-tx4">Сборка от {buildLabel}</p>}
+        <p className="mt-3 text-[11px] font-medium text-tx4">
+          {version.data?.version && version.data.version !== "dev" ? `Версия ${version.data.version}` : "Версия для разработки"}
+          {buildLabel && ` · сборка от ${buildLabel}`}
+        </p>
       </Card>
     </>
   );

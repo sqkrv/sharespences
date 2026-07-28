@@ -6,7 +6,13 @@
 //	sharespences openapi   print the OpenAPI 3.1 doc (frontend type codegen)
 //
 // Config via env: DATABASE_URL (required), LISTEN_ADDR (default :8080),
-// ATTACHMENTS_DIR (default ./attachments).
+// ATTACHMENTS_DIR (default ./attachments), COOKIE_SECURE (default true —
+// set false only for local development over plain http).
+//
+// The build identifies itself through `version`, stamped at link time
+// (ADR-0006 CalVer) and served at GET /api/v1/version:
+//
+//	go build -ldflags "-X main.version=$(git describe --tags --always --dirty)" ./cmd/sharespences
 //
 // Screenshot recognizer (off unless configured):
 //
@@ -17,6 +23,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -24,6 +31,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -34,11 +42,24 @@ import (
 	"github.com/sqkrv/sharespences/internal/vision"
 )
 
+// version is set at link time (-X main.version=…); an unstamped build says
+// "dev". ADR-0006: CalVer `vYYYY.M.N`, unpadded month.
+var version string
+
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return def
+}
+
+// envBool reads a boolean env var, falling back to def when unset or unparsable.
+func envBool(key string, def bool) bool {
+	v, err := strconv.ParseBool(os.Getenv(key))
+	if err != nil {
+		return def
+	}
+	return v
 }
 
 // visionBackend builds the screenshot-recognizer backend from env.
@@ -119,6 +140,11 @@ func run() error {
 			Pool:           pool,
 			AttachmentsDir: envOr("ATTACHMENTS_DIR", "attachments"),
 			Vision:         backend,
+			Version:        version,
+			// Secure by default: production is HTTPS and the session cookie
+			// must never ride a plaintext request. Opt out only for local
+			// development over http.
+			InsecureCookie: !envBool("COOKIE_SECURE", true),
 		})
 		srv := &http.Server{
 			Addr:              envOr("LISTEN_ADDR", ":8080"),
@@ -131,7 +157,7 @@ func run() error {
 			defer cancel()
 			_ = srv.Shutdown(shutdownCtx)
 		}()
-		log.Printf("listening on %s (docs at /docs)", srv.Addr)
+		log.Printf("sharespences %s listening on %s (docs at /docs)", cmp.Or(version, "dev"), srv.Addr)
 		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}

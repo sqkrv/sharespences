@@ -16,9 +16,14 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY "cmd/" "cmd/"
 COPY internal/ internal/
 COPY --from=web /src/internal/web/dist internal/web/dist
+# VERSION stamps the build (ADR-0006 CalVer) into GET /api/v1/version and the
+# «О приложении» card. Left at "dev" when the build arg is not passed — the
+# git tree is not in this stage, so it cannot be derived here:
+#   docker build --build-arg VERSION="$(git describe --tags --always --dirty)" .
+ARG VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/sharespences "./cmd/sharespences"
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/sharespences "./cmd/sharespences"
 
 # --- Runtime ---
 FROM alpine:3.22

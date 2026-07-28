@@ -44,7 +44,19 @@ type Config struct {
 	// working). Backends never dial at construction, so the openapi CI
 	// gate stays network-free.
 	Vision vision.Backend
+	// Version identifies the running build — ADR-0006 CalVer (`v2026.7.1`),
+	// injected at link time. Empty means an unstamped build.
+	Version string
+	// InsecureCookie drops the Secure flag from the session cookie. Secure is
+	// the default because the app is served over HTTPS in production and the
+	// cookie must never travel in clear; this escape hatch exists for local
+	// development over plain http, where Safari (unlike Chrome and Firefox)
+	// refuses to store a Secure cookie even on localhost.
+	InsecureCookie bool
 }
+
+// version reported when the binary was built without -ldflags.
+const devVersion = "dev"
 
 // New builds the full HTTP handler (sessions wrapped around chi+huma,
 // embedded SPA as the catch-all). Sessions wrap ONLY /api/: scs stamps
@@ -83,12 +95,19 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 	sm.Lifetime = 30 * 24 * time.Hour
 	sm.Cookie.HttpOnly = true
 	sm.Cookie.SameSite = http.SameSiteLaxMode
+	// scs defaults Secure to false, which would let the session cookie ride a
+	// plaintext request — a redirect, a typed http:// URL, a stale link.
+	sm.Cookie.Secure = !cfg.InsecureCookie
 
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(limitUploadBody)
 
-	humaCfg := huma.DefaultConfig("Sharespences API", "0.1.0")
+	apiVersion := cfg.Version
+	if apiVersion == "" {
+		apiVersion = devVersion
+	}
+	humaCfg := huma.DefaultConfig("Sharespences API", apiVersion)
 	api := humachi.New(r, humaCfg)
 	api.UseMiddleware(requireSession(api, sm))
 
@@ -97,6 +116,7 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 	cbSvc := &cashback.Service{Q: q, RemoveAttachmentFile: store.Remove, ReadAttachmentFile: store.Open, Vision: cfg.Vision}
 	mccSvc := &mcc.Service{Q: q}
 
+	registerVersion(api, apiVersion)
 	registerAuth(api, sm, authSvc)
 	registerBanks(api, q)
 	registerAttachments(api, store)
@@ -156,6 +176,7 @@ func requireSession(api huma.API, sm *scs.SessionManager) func(huma.Context, fun
 	public := map[string]bool{
 		"/api/v1/auth/register": true,
 		"/api/v1/auth/login":    true,
+		"/api/v1/version":       true,
 	}
 	return func(ctx huma.Context, next func(huma.Context)) {
 		if public[ctx.Operation().Path] {
@@ -276,6 +297,26 @@ type CardDTO struct {
 	BankName      string `json:"bank_name,omitempty"`
 	Last4Digits   int32  `json:"last_4_digits"`
 	PaymentSystem string `json:"payment_system"`
+}
+
+// VersionDTO identifies the running build. `api` is the path-versioned
+// contract (ADR-0006 decision 2): the tag never promises API compatibility,
+// so the two are reported separately and mean different things.
+type VersionDTO struct {
+	Version string `json:"version"`
+	API     string `json:"api"`
+}
+
+// registerVersion answers «which build am I on?» — the question ADR-0006
+// exists to make answerable for a user who is not the author. Public: it is
+// not a secret, and a bug report may come from someone who cannot sign in.
+func registerVersion(api huma.API, version string) {
+	huma.Register(api, huma.Operation{
+		OperationID: "meta-version", Method: http.MethodGet,
+		Path: "/api/v1/version", Summary: "Running build version", Tags: []string{"meta"},
+	}, func(_ context.Context, _ *struct{}) (*struct{ Body VersionDTO }, error) {
+		return &struct{ Body VersionDTO }{VersionDTO{Version: version, API: "v1"}}, nil
+	})
 }
 
 func registerBanks(api huma.API, q *db.Queries) {

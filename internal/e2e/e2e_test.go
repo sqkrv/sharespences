@@ -302,7 +302,10 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("seed rerun (idempotency): %v", err)
 	}
 
-	srv := httptest.NewServer(server.New(server.Config{Pool: pool, AttachmentsDir: t.TempDir(), Vision: &fakeVision{}}))
+	// InsecureCookie: httptest serves plain http and Go's cookiejar refuses to
+	// send a Secure cookie over it — every authenticated request would 401.
+	// Production keeps the flag on; this is the same opt-out local dev uses.
+	srv := httptest.NewServer(server.New(server.Config{Pool: pool, AttachmentsDir: t.TempDir(), Vision: &fakeVision{}, InsecureCookie: true}))
 	defer srv.Close()
 
 	owner := newClient(t, srv.URL)
@@ -1370,7 +1373,7 @@ func TestCashbackE2E(t *testing.T) {
 
 	// Degradation: a server with no vision backend answers 503 with a
 	// message — and manual entry (everything above) still works.
-	srvOff := httptest.NewServer(server.New(server.Config{Pool: pool, AttachmentsDir: t.TempDir()}))
+	srvOff := httptest.NewServer(server.New(server.Config{Pool: pool, AttachmentsDir: t.TempDir(), InsecureCookie: true}))
 	defer srvOff.Close()
 	offline := newClient(t, srvOff.URL)
 	offline.must("POST", "/api/v1/auth/register", map[string]any{
