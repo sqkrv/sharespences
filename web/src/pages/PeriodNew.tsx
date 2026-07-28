@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, api, unwrap, uploadAttachment, type RecognitionDraft } from "../api/client";
 import { useClients, useTierMap } from "../hooks";
-import { Badge, Btn, Card, ErrMsg, Field, Input, Select, Spinner } from "../components/ui";
+import { Badge, Btn, Card, ErrMsg, errorText, Field, Input, Select, Spinner } from "../components/ui";
 import { CategoryPicker, type PickedCategory } from "../components/CategoryPicker";
 import { monthRange, quarterRange } from "../lib";
 
@@ -336,7 +336,7 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
               <p className="mt-1 text-[12px] font-medium text-tx3">
                 {notFound
                   ? "Задание не найдено — истёк срок хранения или сервер перезапускался."
-                  : (poll.data?.error ?? (poll.error instanceof ApiError ? poll.error.message : String(poll.error ?? "")))}
+                  : (poll.data?.error ?? errorText(poll.error))}
               </p>
               <p className="mt-1 text-[12px] font-medium text-tx3">Период всегда можно заполнить вручную — скриншоты уже загружены.</p>
               <Btn variant="soft" className="mt-3 w-full" onClick={leave}>

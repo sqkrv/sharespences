@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	ErrInvalidCredentials = errors.New("auth: invalid email or password")
-	ErrEmailTaken         = errors.New("auth: email or username already registered")
+	ErrInvalidCredentials = errors.New("неверная почта или пароль")
+	ErrEmailTaken         = errors.New("почта или имя пользователя уже заняты")
 )
 
 const (

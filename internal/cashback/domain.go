@@ -88,15 +88,15 @@ const (
 
 var (
 	// ErrInvalidPeriod — period range has End before Start.
-	ErrInvalidPeriod = errors.New("cashback: invalid period range")
+	ErrInvalidPeriod = errors.New("конец периода раньше начала")
 	// ErrPeriodOverlap — invariant 4: offer_period ranges for one bank client never overlap.
-	ErrPeriodOverlap = errors.New("cashback: offer periods overlap for this bank client")
+	ErrPeriodOverlap = errors.New("период пересекается с другим периодом этого банка")
 	// ErrSlotsExhausted — invariant 1: selections per period ≤ tier.max_categories.
-	ErrSlotsExhausted = errors.New("cashback: tier category slots exhausted")
+	ErrSlotsExhausted = errors.New("все слоты категорий по тарифу заняты")
 	// ErrOutsidePeriod — invariant 2: selected_at date outside the offer's period.
-	ErrOutsidePeriod = errors.New("cashback: selection date outside offer period")
+	ErrOutsidePeriod = errors.New("дата выбора вне периода")
 	// ErrAlreadySelected — an offer is selected at most once.
-	ErrAlreadySelected = errors.New("cashback: offer already selected")
+	ErrAlreadySelected = errors.New("категория уже выбрана")
 )
 
 // Date builds a calendar date (UTC midnight). Period bounds are dates, not

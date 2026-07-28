@@ -31,9 +31,9 @@ const (
 var (
 	// ErrRecognitionBusy — one running job per user (owner decision):
 	// the backend is a single GPU and jobs run minutes.
-	ErrRecognitionBusy = errors.New("cashback: распознавание уже идёт — дождись окончания")
+	ErrRecognitionBusy = errors.New("распознавание уже идёт — дождись окончания")
 	// ErrRecognitionImages — the 1–10 screenshot bound.
-	ErrRecognitionImages = errors.New("cashback: recognition takes 1–10 screenshots")
+	ErrRecognitionImages = errors.New("за раз можно распознать от 1 до 10 скриншотов")
 )
 
 // RecognitionJobDTO is the poll response. Draft appears only on done.

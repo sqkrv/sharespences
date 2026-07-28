@@ -14,10 +14,10 @@ import (
 )
 
 // ErrNotFound — the code is not in the dictionary.
-var ErrNotFound = errors.New("mcc: код не найден в справочнике")
+var ErrNotFound = errors.New("код не найден в справочнике")
 
 // ErrBadCode — the input is not a 3-4 digit MCC.
-var ErrBadCode = errors.New("mcc: код должен быть числом из 3-4 цифр")
+var ErrBadCode = errors.New("код должен быть числом из 3–4 цифр")
 
 // FormatCode renders a code the way banks print them: zero-padded to four
 // digits («0742»).

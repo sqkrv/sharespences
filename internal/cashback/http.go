@@ -35,7 +35,7 @@ func strToDec(s *string, field string) (*decimal.Decimal, error) {
 	// RU keyboards type «1,5» — the comma is a decimal separator here.
 	d, err := decimal.NewFromString(strings.ReplaceAll(*s, ",", "."))
 	if err != nil {
-		return nil, huma.Error422UnprocessableEntity(fmt.Sprintf("%s: not a decimal number: %q", field, *s))
+		return nil, huma.Error422UnprocessableEntity(fmt.Sprintf("%s: «%s» — не число", field, *s))
 	}
 	return &d, nil
 }
@@ -43,7 +43,7 @@ func strToDec(s *string, field string) (*decimal.Decimal, error) {
 func parseDate(s string, field string) (time.Time, error) {
 	t, err := time.Parse("2006-01-02", s)
 	if err != nil {
-		return time.Time{}, huma.Error422UnprocessableEntity(fmt.Sprintf("%s: want YYYY-MM-DD, got %q", field, s))
+		return time.Time{}, huma.Error422UnprocessableEntity(fmt.Sprintf("%s: ожидается дата вида ГГГГ-ММ-ДД, получено «%s»", field, s))
 	}
 	return t, nil
 }
@@ -51,7 +51,7 @@ func parseDate(s string, field string) (time.Time, error) {
 func httpErr(err error) error {
 	switch {
 	case errors.Is(err, ErrNotFound):
-		return huma.Error404NotFound("not found")
+		return huma.Error404NotFound("не найдено")
 	case errors.Is(err, ErrSlotsExhausted),
 		errors.Is(err, ErrAlreadySelected),
 		errors.Is(err, ErrPeriodOverlap):
@@ -67,9 +67,11 @@ func httpErr(err error) error {
 	// backend absent/unreachable is honest degradation (manual entry
 	// still works), a failed read is a per-job 422.
 	case errors.Is(err, vision.ErrUnavailable):
-		return huma.Error503ServiceUnavailable(err.Error())
+		return huma.Error503ServiceUnavailable("распознавание сейчас недоступно — заполни период вручную")
 	case errors.Is(err, vision.ErrFailed):
-		return huma.Error422UnprocessableEntity(err.Error())
+		return huma.Error422UnprocessableEntity("не удалось разобрать скриншот — попробуй другой снимок или заполни вручную")
+	case errors.Is(err, vision.ErrBadImage):
+		return huma.Error422UnprocessableEntity("файл не похож на изображение меню категорий")
 	}
 	return err
 }
@@ -1228,7 +1230,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			return nil, err
 		}
 		if n == 0 {
-			return nil, huma.Error404NotFound("not found")
+			return nil, huma.Error404NotFound("не найдено")
 		}
 		return &struct{}{}, nil
 	})

@@ -234,10 +234,25 @@ export function GradientCard({ children, className = "", ...rest }: React.HTMLAt
   );
 }
 
+// The API answers in Russian (internal/i18n), so an ApiError is shown as-is.
+// What reaches here in English is the transport layer — a dropped connection
+// surfaces as the browser's own «Failed to fetch»/«Load failed» TypeError —
+// and genuine JS bugs, which get a neutral line while the original goes to
+// the console for debugging (owner 2026-07-28: errors follow the UI language).
+export function errorText(error: unknown): string {
+  if (error instanceof ApiError) return error.message;
+  if (error instanceof TypeError) return "Нет связи с сервером — проверь интернет";
+  if (error instanceof Error) {
+    console.error(error);
+    return "Что-то пошло не так — попробуй ещё раз";
+  }
+  console.error(error);
+  return "Что-то пошло не так — попробуй ещё раз";
+}
+
 export function ErrMsg({ error }: { error: unknown }) {
   if (!error) return null;
-  const msg = error instanceof ApiError ? error.message : error instanceof Error ? error.message : String(error);
-  return <p className="mt-2 rounded-xl bg-warn/10 px-3 py-2 text-sm font-medium text-warn">{msg}</p>;
+  return <p className="mt-2 rounded-xl bg-warn/10 px-3 py-2 text-sm font-medium text-warn">{errorText(error)}</p>;
 }
 
 export function Spinner() {

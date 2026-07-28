@@ -20,14 +20,14 @@ import (
 
 // ErrNotFound covers rows that don't exist or belong to another user —
 // scoping never reveals which.
-var ErrNotFound = errors.New("cashback: not found")
+var ErrNotFound = errors.New("не найдено")
 
 // ErrBankCategoryExists — the bank already has a catalog row with this title.
-var ErrBankCategoryExists = errors.New("cashback: категория с таким названием уже есть у этого банка")
+var ErrBankCategoryExists = errors.New("категория с таким названием уже есть у этого банка")
 
 // ErrBankCategoryWrongBank — the referenced catalog row belongs to another
 // bank than the offer period's.
-var ErrBankCategoryWrongBank = errors.New("cashback: категория из каталога другого банка")
+var ErrBankCategoryWrongBank = errors.New("категория из каталога другого банка")
 
 // Service wires the domain rules to storage. Reference reads of bank /
 // bank_client are the seam decided at skeleton time (00003_cashback.sql,

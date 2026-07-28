@@ -28,6 +28,7 @@ import (
 	"github.com/sqkrv/sharespences/internal/auth"
 	"github.com/sqkrv/sharespences/internal/cashback"
 	"github.com/sqkrv/sharespences/internal/db"
+	"github.com/sqkrv/sharespences/internal/i18n"
 	"github.com/sqkrv/sharespences/internal/mcc"
 	"github.com/sqkrv/sharespences/internal/vision"
 	"github.com/sqkrv/sharespences/internal/web"
@@ -70,6 +71,11 @@ func OpenAPI(cfg Config) ([]byte, error) {
 }
 
 func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
+	// The API answers in the interface language (Russian only for now,
+	// owner 2026-07-28) — this switches huma's own validation vocabulary and
+	// error titles; module messages are written in Russian at their source.
+	i18n.Install()
+
 	q := db.New(cfg.Pool)
 
 	sm := scs.New()
@@ -101,22 +107,22 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 	r.Get("/api/v1/attachments/{id}/content", func(w http.ResponseWriter, req *http.Request) {
 		userID, ok := sessionUser(sm, req.Context())
 		if !ok {
-			http.Error(w, "authentication required", http.StatusUnauthorized)
+			http.Error(w, "нужно войти", http.StatusUnauthorized)
 			return
 		}
 		id, err := uuid.Parse(chi.URLParam(req, "id"))
 		if err != nil {
-			http.Error(w, "bad attachment id", http.StatusBadRequest)
+			http.Error(w, "некорректный идентификатор файла", http.StatusBadRequest)
 			return
 		}
 		a, err := store.Get(req.Context(), userID, id)
 		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
+			http.Error(w, "не найдено", http.StatusNotFound)
 			return
 		}
 		f, err := os.Open(store.Path(a.ID))
 		if err != nil {
-			http.Error(w, "stored file missing", http.StatusInternalServerError)
+			http.Error(w, "файл не найден на диске", http.StatusInternalServerError)
 			return
 		}
 		defer func() { _ = f.Close() }()
@@ -158,7 +164,7 @@ func requireSession(api huma.API, sm *scs.SessionManager) func(huma.Context, fun
 		}
 		id, ok := sessionUser(sm, ctx.Context())
 		if !ok {
-			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "authentication required")
+			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "нужно войти")
 			return
 		}
 		next(huma.WithValue(ctx, auth.ContextKey, id))
@@ -192,7 +198,7 @@ func registerAuth(api huma.API, sm *scs.SessionManager, svc *auth.Service) {
 		u, err := svc.Register(ctx, in.Body.Username, in.Body.DisplayName, in.Body.Email, in.Body.Password)
 		if err != nil {
 			if errors.Is(err, auth.ErrEmailTaken) {
-				return nil, huma.Error409Conflict("email or username already registered")
+				return nil, huma.Error409Conflict("почта или имя пользователя уже заняты")
 			}
 			return nil, err
 		}
@@ -214,7 +220,7 @@ func registerAuth(api huma.API, sm *scs.SessionManager, svc *auth.Service) {
 	}) (*struct{ Body UserDTO }, error) {
 		u, err := svc.Login(ctx, in.Body.Email, in.Body.Password)
 		if err != nil {
-			return nil, huma.Error401Unauthorized("invalid email or password")
+			return nil, huma.Error401Unauthorized("неверная почта или пароль")
 		}
 		if err := sm.RenewToken(ctx); err != nil {
 			return nil, err
@@ -240,7 +246,7 @@ func registerAuth(api huma.API, sm *scs.SessionManager, svc *auth.Service) {
 	}, func(ctx context.Context, _ *struct{}) (*struct{ Body UserDTO }, error) {
 		u, err := svc.Q.GetUserByID(ctx, auth.UserID(ctx))
 		if err != nil {
-			return nil, huma.Error401Unauthorized("authentication required")
+			return nil, huma.Error401Unauthorized("нужно войти")
 		}
 		return &struct{ Body UserDTO }{userDTO(u)}, nil
 	})
@@ -305,7 +311,7 @@ func registerBanks(api huma.API, q *db.Queries) {
 		})
 		if err != nil {
 			if isPgCode(err, "23505") {
-				return nil, huma.Error409Conflict("bank client already exists for this bank and держатель")
+				return nil, huma.Error409Conflict("такой держатель у этого банка уже добавлен")
 			}
 			return nil, err
 		}
@@ -330,9 +336,9 @@ func registerBanks(api huma.API, q *db.Queries) {
 		})
 		if err != nil {
 			if isPgCode(err, "23505") {
-				return nil, huma.Error409Conflict("bank client already exists for this bank and держатель")
+				return nil, huma.Error409Conflict("такой держатель у этого банка уже добавлен")
 			}
-			return nil, huma.Error404NotFound("not found")
+			return nil, huma.Error404NotFound("не найдено")
 		}
 		return &struct{ Body BankClientDTO }{BankClientDTO{
 			ID: c.ID, BankID: c.BankID, Label: c.Label, ProgramTierID: c.ProgramTierID,
@@ -375,7 +381,7 @@ func registerBanks(api huma.API, q *db.Queries) {
 		})
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return nil, huma.Error404NotFound("bank client not found")
+				return nil, huma.Error404NotFound("банк не найден")
 			}
 			return nil, err
 		}
@@ -401,7 +407,7 @@ func registerBanks(api huma.API, q *db.Queries) {
 			PaymentSystem: db.PaymentSystem(in.Body.PaymentSystem),
 		})
 		if err != nil {
-			return nil, huma.Error404NotFound("not found")
+			return nil, huma.Error404NotFound("не найдено")
 		}
 		return &struct{ Body CardDTO }{CardDTO{
 			ID: c.ID, BankClientID: c.BankClientID, Last4Digits: c.Last4Digits,
@@ -419,12 +425,12 @@ func registerBanks(api huma.API, q *db.Queries) {
 		n, err := q.DeleteCardForUser(ctx, db.DeleteCardForUserParams{ID: in.ID, UserID: auth.UserID(ctx)})
 		if err != nil {
 			if isPgCode(err, "23503") {
-				return nil, huma.Error409Conflict("card is referenced elsewhere")
+				return nil, huma.Error409Conflict("карта используется в других записях")
 			}
 			return nil, err
 		}
 		if n == 0 {
-			return nil, huma.Error404NotFound("not found")
+			return nil, huma.Error404NotFound("не найдено")
 		}
 		return &struct{}{}, nil
 	})
@@ -439,12 +445,12 @@ func registerBanks(api huma.API, q *db.Queries) {
 		n, err := q.DeleteBankClientForUser(ctx, db.DeleteBankClientForUserParams{ID: in.ID, UserID: auth.UserID(ctx)})
 		if err != nil {
 			if isPgCode(err, "23503") {
-				return nil, huma.Error409Conflict("bank client has КБ history (offer periods or partner offers) — delete those first")
+				return nil, huma.Error409Conflict("у банка есть история КБ (периоды или партнёрские предложения) — сначала удали её")
 			}
 			return nil, err
 		}
 		if n == 0 {
-			return nil, huma.Error404NotFound("not found")
+			return nil, huma.Error404NotFound("не найдено")
 		}
 		return &struct{}{}, nil
 	})
