@@ -337,7 +337,7 @@ function AddCustomForm({
       {newCat && (
         <div className="grid grid-cols-2 gap-2.5">
           <Field label="Slug (латиницей)">
-            <Input value={newSlug} onChange={(e) => setNewSlug(e.target.value)} pattern="[a-z0-9-]+" placeholder="coffee-shops" className="!py-2" />
+            <Input value={newSlug} onChange={(e) => setNewSlug(e.target.value)} pattern="[a-z0-9-]+" title="Латиница в нижнем регистре, цифры и дефис" placeholder="coffee-shops" className="!py-2" />
           </Field>
           <Field label="Название (по-русски)">
             <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Кофейни" className="!py-2" />

@@ -364,7 +364,7 @@ function AddCardForm({
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Последние 4 цифры">
-            <Input required inputMode="numeric" pattern="\d{4}" maxLength={4} value={last4Str} onChange={(e) => setLast4Str(e.target.value)} placeholder="1234" />
+            <Input required inputMode="numeric" pattern="\d{4}" maxLength={4} title="Ровно четыре цифры" value={last4Str} onChange={(e) => setLast4Str(e.target.value)} placeholder="1234" />
           </Field>
           <Field label="Платёжная система">
             <Select value={paySystem} onChange={(e) => setPaySystem(e.target.value as PaySystem)}>

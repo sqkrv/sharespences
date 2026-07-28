@@ -63,15 +63,87 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
+// The browser's own constraint bubbles («Please fill out this field») follow
+// the BROWSER locale, not the interface — an English-locale browser answers a
+// Russian UI in English, which is the thing internal/i18n exists to prevent on
+// the server side (owner 2026-07-28: anything a user can read is Russian).
+// setCustomValidity replaces the bubble text, and an element carries only one
+// message, so it has to be recomputed from whichever constraint just failed.
+type Constrained = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
+// «1 символ» / «22 символа» / «8 символов».
+function chars(n: number): string {
+  const one = n % 10 === 1 && n % 100 !== 11;
+  const few = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
+  return `${n} ${one ? "символ" : few ? "символа" : "символов"}`;
+}
+
+// `.type` reads «select-one»/«select-multiple» on a <select> and «textarea» on
+// a <textarea>, so one table covers all three elements.
+const MISSING: Record<string, string> = {
+  "select-one": "Выберите значение",
+  "select-multiple": "Выберите значение",
+  checkbox: "Отметьте, чтобы продолжить",
+  radio: "Выберите вариант",
+  file: "Выберите файл",
+  date: "Укажите дату",
+  month: "Укажите месяц",
+  time: "Укажите время",
+};
+
+const MISMATCH: Record<string, string> = {
+  email: "Введите адрес почты — например, name@example.com",
+  url: "Введите ссылку целиком — например, https://example.com",
+};
+
+// Empty when no native constraint failed. That also self-heals the one case
+// onChange cannot cover: a stale custom message is itself a reason to be
+// invalid, so an element left holding one after its value changed some other
+// way (a controlled parent, a reset) clears it on the next validation pass.
+function validityMessage(el: Constrained): string {
+  const v = el.validity;
+  if (v.valueMissing) return MISSING[el.type] ?? "Заполните поле";
+  if (v.typeMismatch) return MISMATCH[el.type] ?? "Проверьте формат";
+  // A pattern means nothing without its explanation — browsers append `title`
+  // to their own message for the same reason.
+  if (v.patternMismatch) return el.title || "Проверьте формат";
+  if (v.tooShort && "minLength" in el) return `Не меньше ${chars(el.minLength)}`;
+  if (v.tooLong && "maxLength" in el) return `Не больше ${chars(el.maxLength)}`;
+  if (v.rangeUnderflow && "min" in el) return `Не меньше ${el.min}`;
+  if (v.rangeOverflow && "max" in el) return `Не больше ${el.max}`;
+  if (v.stepMismatch || v.badInput) return "Проверьте формат";
+  return "";
+}
+
+// Fold into any element carrying a native constraint. onInvalid rewrites the
+// message from the constraint that failed; onChange drops it on every edit —
+// a custom message keeps the element invalid by itself, so a stale one would
+// freeze a field the user has already fixed. Both chain to the caller's own
+// handler, which is what a form's state is wired through.
+export function validityProps<E extends Constrained>(
+  props: { onInvalid?: React.FormEventHandler<E>; onChange?: React.ChangeEventHandler<E> } = {},
+) {
+  return {
+    onInvalid: (e: React.FormEvent<E>) => {
+      e.currentTarget.setCustomValidity(validityMessage(e.currentTarget));
+      props.onInvalid?.(e);
+    },
+    onChange: (e: React.ChangeEvent<E>) => {
+      e.currentTarget.setCustomValidity("");
+      props.onChange?.(e);
+    },
+  };
+}
+
 const inputCls =
   "w-full rounded-xl border border-brd2 bg-srf2 px-3 py-2.5 text-sm font-medium text-tx placeholder:text-tx4 focus:border-acc focus:outline-none";
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`${inputCls} ${props.className ?? ""}`} />;
+  return <input {...props} {...validityProps<HTMLInputElement>(props)} className={`${inputCls} ${props.className ?? ""}`} />;
 }
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={`${inputCls} ${props.className ?? ""}`} />;
+  return <select {...props} {...validityProps<HTMLSelectElement>(props)} className={`${inputCls} ${props.className ?? ""}`} />;
 }
 
 export function Badge({ children, tone = "slate" }: { children: ReactNode; tone?: "slate" | "amber" | "green" | "indigo" }) {
