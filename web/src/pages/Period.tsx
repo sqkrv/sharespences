@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, unwrap, attachmentURL, uploadAttachment, ApiError, type CanonicalCategory, type CategoryOffer, type HelperRow } from "../api/client";
 import { useBankCategories, useBanks, useCards, useCategories, useClients, useTierMap } from "../hooks";
-import { Badge, Btn, Card, CheckDot, ErrMsg, Field, GradientCard, Input, Pct, Select, Spinner } from "../components/ui";
+import { Badge, Btn, Card, CheckDot, ErrMsg, errorText, Field, GradientCard, Input, Pct, Select, Spinner } from "../components/ui";
 import { CategoryPicker, type PickedCategory } from "../components/CategoryPicker";
 import { currencyBadge, fmtRange } from "../lib";
 
@@ -473,10 +473,18 @@ export default function Period() {
     },
   });
 
+  // Keyed by the OFFER, not the selection: the error belongs under the row
+  // the user clicked, and the selection id is gone as soon as it succeeds.
   const unselect = useMutation({
-    mutationFn: async (selectionID: number) =>
+    mutationFn: async ({ selectionID }: { selectionID: number; offerID: number }) =>
       unwrap(await api.DELETE("/api/v1/cashback/selections/{id}", { params: { path: { id: selectionID } } })),
-    onSuccess: invalidate,
+    onSuccess: (_, { offerID }) => {
+      setRowErrors((e) => ({ ...e, [offerID]: "" }));
+      invalidate();
+    },
+    onError: (err, { offerID }) => {
+      setRowErrors((e) => ({ ...e, [offerID]: errorText(err) }));
+    },
   });
 
   const removePeriod = useMutation({
@@ -597,7 +605,12 @@ export default function Period() {
                     </p>
                   </div>
                   {selected ? (
-                    <Btn variant="danger" className="!px-2.5 !py-1.5 text-xs" onClick={() => unselect.mutate(offer.selection_id!)}>
+                    <Btn
+                      variant="danger"
+                      className="!px-2.5 !py-1.5 text-xs"
+                      onClick={() => unselect.mutate({ selectionID: offer.selection_id!, offerID: offer.id })}
+                      disabled={unselect.isPending}
+                    >
                       Снять
                     </Btn>
                   ) : (
@@ -647,7 +660,12 @@ export default function Period() {
                 {selected ? (
                   <>
                     <Pct percent={offer.percent} currency={currency} className="text-[14px]" />
-                    <Btn variant="danger" className="!px-2.5 !py-1.5 text-xs" onClick={() => unselect.mutate(offer.selection_id!)} disabled={unselect.isPending}>
+                    <Btn
+                      variant="danger"
+                      className="!px-2.5 !py-1.5 text-xs"
+                      onClick={() => unselect.mutate({ selectionID: offer.selection_id!, offerID: offer.id })}
+                      disabled={unselect.isPending}
+                    >
                       Снять
                     </Btn>
                   </>
