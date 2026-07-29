@@ -4,6 +4,7 @@
 //	sharespences seed      load reference data (banks, КБ programs, categories)
 //	sharespences serve     run the HTTP API + embedded SPA (default)
 //	sharespences openapi   print the OpenAPI 3.1 doc (frontend type codegen)
+//	sharespences import-pos <csv>   load the merchant base (mcc-codes.ru scrape)
 //
 // Config via env: DATABASE_URL (required), LISTEN_ADDR (default :8080),
 // ATTACHMENTS_DIR (default ./attachments), COOKIE_SECURE (default true —
@@ -36,6 +37,7 @@ import (
 	"time"
 
 	"github.com/sqkrv/sharespences/internal/db"
+	"github.com/sqkrv/sharespences/internal/mcc"
 	"github.com/sqkrv/sharespences/internal/migrations"
 	"github.com/sqkrv/sharespences/internal/seed"
 	"github.com/sqkrv/sharespences/internal/server"
@@ -124,6 +126,24 @@ func run() error {
 		}
 		log.Println("seed data loaded")
 		return nil
+	case "import-pos":
+		if len(os.Args) < 3 {
+			return errors.New("usage: sharespences import-pos <points_of_sale.csv>")
+		}
+		f, err := os.Open(os.Args[2])
+		if err != nil {
+			return err
+		}
+		defer func() { _ = f.Close() }()
+		stats, err := mcc.ImportPointsOfSale(ctx, pool, f, log.Printf)
+		if err != nil {
+			return err
+		}
+		log.Printf("points of sale: %d upserted, %d bad rows skipped", stats.Upserted, stats.BadRows)
+		if stats.UnknownMCCRows > 0 {
+			log.Printf("skipped %d rows with MCCs missing from the dictionary: %v", stats.UnknownMCCRows, stats.UnknownMCCCodes)
+		}
+		return nil
 	case "openapi":
 		spec, err := server.OpenAPI(server.Config{Pool: pool, AttachmentsDir: "attachments"})
 		if err != nil {
@@ -163,6 +183,6 @@ func run() error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q (want migrate|seed|serve|openapi)", cmd)
+		return fmt.Errorf("unknown command %q (want migrate|seed|serve|openapi|import-pos)", cmd)
 	}
 }
