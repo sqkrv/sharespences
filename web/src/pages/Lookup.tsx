@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { api, unwrap, ApiError, type LookupEntry, type Schemas } from "../api/client";
 import { useCards, useCategories } from "../hooks";
 import { BankBadge, Btn, Card, ErrMsg, GradientCard, Pct, SegTabs, Spinner } from "../components/ui";
-import { capNote, currencyBadge, currencyWord, FALLBACK_EMOJI, fmtPercent } from "../lib";
+import { capNote, currencyBadge, currencyWord, FALLBACK_EMOJI, fmtDate, fmtPercent } from "../lib";
 
 type AvailableEntry = Schemas["AvailableEntryDTO"];
 
@@ -55,11 +55,52 @@ function MapStub() {
 // mcc-codes.ru), see which category the code lands in at each bank, then
 // hand off to the wired «Категория» lookup for the actual card ranking.
 const POS_TYPE_RU: Record<string, string> = {
-  offline: "офлайн",
+  offline: "офлайн-точка",
   online: "онлайн",
   app: "приложение",
   other: "другое",
 };
+
+// Point-of-sale kind as a glyph (the source base shows one too) — it carries
+// the type so the text rows stay for name / выписка / адрес. An unknown type
+// gets a neutral dash rather than a guessed pin.
+const POS_TYPE_PATH: Record<string, ReactNode> = {
+  offline: (
+    <>
+      <path d="M12 21s6.5-5.6 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.4 12 21 12 21z" />
+      <circle cx="12" cy="10.5" r="2.4" />
+    </>
+  ),
+  online: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17" />
+      <path d="M12 3.5c2.4 2.6 3.6 5.4 3.6 8.5S14.4 18.4 12 20.5c-2.4-2.6-3.6-5.4-3.6-8.5S9.6 5.6 12 3.5z" />
+    </>
+  ),
+  app: (
+    <>
+      <rect x="7" y="2.5" width="10" height="19" rx="2.6" />
+      <path d="M10.8 18.4h2.4" />
+    </>
+  ),
+  other: <path d="M4.5 19.5h4L18 10a2.7 2.7 0 0 0-3.8-3.8L4.5 15.5v4z" />,
+};
+
+function PosTypeIcon({ type }: { type?: string | null }) {
+  const label = (type && POS_TYPE_RU[type]) || "тип неизвестен";
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[9px] bg-inset text-tx3"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        {(type && POS_TYPE_PATH[type]) || <path d="M8 12h8" />}
+      </svg>
+    </span>
+  );
+}
 
 function MccSearch({ onCategory }: { onCategory: (slug: string) => void }) {
   const [q, setQ] = useState("");
@@ -121,16 +162,8 @@ function MccSearch({ onCategory }: { onCategory: (slug: string) => void }) {
         />
       </div>
       <p className="mx-1 text-[10.5px] leading-snug font-medium text-tx4">
-        Справочник MCC и база точек — данные{" "}
-        <a
-          href="https://mcc-codes.ru"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-semibold text-accl underline decoration-dotted underline-offset-2"
-        >
-          mcc-codes.ru
-        </a>
-        ; код можно также узнать из чека или выписки — база покажет, какой категорией он считается у каждого банка.
+        Справочник MCC и база точек — данные <span className="font-semibold text-tx3">mcc-codes.ru</span>; код можно также
+        узнать из чека или выписки — база покажет, какой категорией он считается у каждого банка.
       </p>
 
       {code == null && suggest.data && suggest.data.length > 0 && (
@@ -157,24 +190,36 @@ function MccSearch({ onCategory }: { onCategory: (slug: string) => void }) {
               key={m.id}
               type="button"
               onClick={() => setPicked(m.mcc)}
-              className="flex w-full items-center gap-2.5 rounded-xl border border-brd bg-srf px-3 py-2 text-left hover:bg-srf2"
+              className="flex w-full items-start gap-2.5 rounded-xl border border-brd bg-srf px-3 py-2.5 text-left hover:bg-srf2"
             >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[12.5px] font-semibold text-tx2">
-                  {m.name}
-                  {m.merchant_title && <span className="ml-1.5 text-[10px] font-medium text-tx4">{m.merchant_title}</span>}
-                </p>
-                <p className="truncate text-[10px] font-medium text-tx4">
-                  {[
-                    m.type && POS_TYPE_RU[m.type],
-                    m.address,
-                    m.confirmations > 0 ? `подтверждений: ${m.confirmations}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
+              <PosTypeIcon type={m.type} />
+              {/* Three fixed roles, one per row: the human name, the string a
+                  выписка shows, the address. */}
+              <div className="min-w-0 flex-1 space-y-[3px]">
+                <p className="truncate text-[12.5px] leading-tight font-semibold text-tx2">{m.name}</p>
+                {m.merchant_title && (
+                  <p className="truncate font-mono text-[10px] leading-tight font-semibold tracking-wide text-tx3">
+                    {m.merchant_title}
+                  </p>
+                )}
+                {m.address && <p className="truncate text-[10px] leading-tight font-medium text-tx4">{m.address}</p>}
               </div>
-              <span className="flex-none font-mono text-[12px] font-bold text-accl">{m.mcc}</span>
+              <div className="flex flex-none flex-col items-end gap-1">
+                <span className="font-mono text-[12px] leading-tight font-bold text-accl">{m.mcc}</span>
+                {m.confirmations > 0 && (
+                  <span
+                    title={`Подтверждений: ${m.confirmations}${
+                      m.last_confirmed_at ? `, последнее ${fmtDate(m.last_confirmed_at.slice(0, 10))}` : ""
+                    }`}
+                    className="flex items-center gap-[3px] rounded-md bg-mint/15 px-1 py-[1px] text-[9.5px] font-bold text-mint"
+                  >
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12.5 10 17.5 19 6.5" />
+                    </svg>
+                    {m.confirmations}
+                  </span>
+                )}
+              </div>
             </button>
           ))}
         </div>
