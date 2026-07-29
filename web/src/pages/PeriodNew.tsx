@@ -17,7 +17,7 @@ import {
   type ReviewRow,
 } from "../recognition";
 import ProgressRing from "../components/ProgressRing";
-import { monthRange, quarterRange } from "../lib";
+import { fmtRange, monthRange, quarterRange } from "../lib";
 
 // S1 step 1, design screen 07 header: «Новый период» — pick the bank client
 // (person × bank; all its cards share the selection), the range defaults
@@ -178,17 +178,19 @@ function PeriodForm() {
           <Btn type="submit" disabled={create.isPending || recognize.isPending || !clientID} className="w-full">
             {create.isPending ? "Создание…" : "Открыть период"}
           </Btn>
-          {files.length > 0 && (
-            <Btn
-              type="button"
-              variant="soft"
-              disabled={create.isPending || recognize.isPending || !clientID}
-              className="w-full"
-              onClick={() => recognize.mutate()}
-            >
-              {recognize.isPending ? "Загрузка скриншотов…" : "Распознать со скриншотов"}
-            </Btn>
-          )}
+          {/* Shown even with no files picked (disabled): the button IS how
+              one learns the screenshots can be read automatically — hidden
+              until a file was chosen, it was only ever found by accident. */}
+          <Btn
+            type="button"
+            variant="soft"
+            disabled={create.isPending || recognize.isPending || !clientID || files.length === 0}
+            className="w-full"
+            onClick={() => recognize.mutate()}
+            title={files.length === 0 ? "Сначала приложи скрины меню выше" : undefined}
+          >
+            {recognize.isPending ? "Загрузка скриншотов…" : "Распознать со скриншотов"}
+          </Btn>
           <ErrMsg error={create.error} />
           <ErrMsg error={recognizeError} />
         </form>
@@ -221,6 +223,12 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
     backToForm();
   };
 
+  // What is being recognized — the wait is minutes long and the chip can
+  // bring you back to it from anywhere, so the screen has to say which bank
+  // client and which period the job belongs to. Read-only here; both are
+  // editable one step later, on review.
+  const client = (clients.data ?? []).find((c) => String(c.id) === state?.clientID);
+
   const header = (
     <div className="flex items-center gap-2.5">
       <Link to="/" className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-brd bg-srf">
@@ -229,6 +237,7 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
         </svg>
       </Link>
       <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">Распознавание</h1>
+      {client && <Badge tone="indigo">{client.bank_name}</Badge>}
     </div>
   );
 
@@ -274,6 +283,11 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
               <ProgressRing done={poll.data?.done ?? 0} total={poll.data?.total ?? state.attachmentIDs.length} active />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">Распознаём скриншоты</p>
+                <p className="mt-0.5 text-[11px] font-medium text-tx3">
+                  {[client && [client.bank_name, client.label].filter(Boolean).join(" · "), fmtRange(state.start, state.end)]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
                 <p className="mt-0.5 text-[12px] font-semibold text-acc">{phaseCaption(poll.data)}</p>
                 <p className="mt-0.5 text-[12px] font-medium text-tx3">
                   Локальная модель читает меню ≈2–3 минуты на скриншот. Можно уйти с экрана — плашка внизу покажет, когда будет

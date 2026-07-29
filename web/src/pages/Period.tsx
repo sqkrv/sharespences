@@ -601,7 +601,7 @@ export default function Period() {
                       Снять
                     </Btn>
                   ) : (
-                    <Btn variant="soft" className="!px-2.5 !py-1.5 text-xs" onClick={() => select.mutate(offer.id)}>
+                    <Btn variant="soft" className="!px-2.5 !py-1.5 text-xs" onClick={() => select.mutate(offer.id)} disabled={select.isPending}>
                       Отметить
                     </Btn>
                   )}
@@ -609,6 +609,12 @@ export default function Period() {
                     ✎
                   </button>
                 </div>
+                {/* Bonus rows skip the slot check but NOT invariant 2, so
+                    «Отметить» on a period that isn't today is rejected like
+                    any other row — without this the refusal was invisible. */}
+                {rowErrors[offer.id] && (
+                  <p className="mt-1.5 ml-8 rounded-lg bg-warn/10 px-2 py-1 text-[10.5px] font-medium text-warn">{rowErrors[offer.id]}</p>
+                )}
                 {editingID === offer.id && (
                   <EditOfferForm offer={offer} categories={categories.data ?? []} bankID={p.bank_id} bankName={p.bank_name} bankColor={bankColor} onDone={() => setEditingID(null)} />
                 )}
