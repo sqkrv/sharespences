@@ -80,15 +80,17 @@ func (b fixedBackend) Complete(_ context.Context, req vision.Request) (vision.Re
 func TestRunRecognitionDedupSkipAndDraft(t *testing.T) {
 	imgA := pngBytes(t, 400, 300)
 	imgB := pngBytes(t, 401, 300)
+	idA, idB, idPDF := uuid.New(), uuid.New(), uuid.New()
 	files := map[uuid.UUID][]byte{
-		uuid.New(): imgA,
-		uuid.New(): imgB,
-		uuid.New(): []byte("%PDF-1.4 pretending"),
+		idA:   imgA,
+		idB:   imgB,
+		idPDF: []byte("%PDF-1.4 pretending"),
 	}
-	var ids []uuid.UUID
-	for id := range files {
-		ids = append(ids, id)
-	}
+	// Listed explicitly, never by ranging the map: Go randomises map
+	// iteration, and the assertions below address images by position — the
+	// undecodable one has to be third. Ranging made this test pass only when
+	// the PDF happened to land there.
+	ids := []uuid.UUID{idA, idB, idPDF}
 	dupOf := ids[0]
 	dup := uuid.New()
 	files[dup] = files[dupOf] // same bytes → sha256 dedup
