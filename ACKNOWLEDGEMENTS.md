@@ -55,6 +55,12 @@ their own rows here.
 
 ## Data
 
-- **MCC dictionary** — assembled from public MCC references (mcc-codes.ru and
-  the banks' own published MCC appendices); per-bank category↔MCC membership is
-  derived from each bank's loyalty documents. See `internal/seed/data/`.
+- **MCC dictionary** — assembled from public MCC references
+  ([mcc-codes.ru](https://mcc-codes.ru) and the banks' own published MCC
+  appendices); per-bank category↔MCC membership is derived from each bank's
+  loyalty documents. See `internal/seed/data/`.
+- **Merchant base (points of sale)** — the crowd-sourced merchant→MCC data
+  from [mcc-codes.ru](https://mcc-codes.ru), imported into each deployment at
+  run time via `sharespences import-pos` (the dataset itself is not bundled in
+  this repository). mcc-codes.ru permits copying with a reference to their
+  site; the app credits them next to the search that uses the data.
