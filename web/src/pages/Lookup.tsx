@@ -50,9 +50,17 @@ function MapStub() {
   );
 }
 
-// «Поиск» — MCC search against the dictionary: type a code (3-4 digits) or
-// a name fragment, see which category the code lands in at each bank, then
+// «Поиск» — MCC search against the dictionary and the merchant base: type a
+// code (3-4 digits), a category-name fragment, or a merchant name (данные
+// mcc-codes.ru), see which category the code lands in at each bank, then
 // hand off to the wired «Категория» lookup for the actual card ranking.
+const POS_TYPE_RU: Record<string, string> = {
+  offline: "офлайн",
+  online: "онлайн",
+  app: "приложение",
+  other: "другое",
+};
+
 function MccSearch({ onCategory }: { onCategory: (slug: string) => void }) {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
@@ -71,6 +79,16 @@ function MccSearch({ onCategory }: { onCategory: (slug: string) => void }) {
     enabled: code == null && debouncedQ.length >= 2,
     queryFn: async () =>
       unwrap(await api.GET("/api/v1/mcc/codes", { params: { query: { query: debouncedQ } } })) ?? [],
+  });
+
+  // Text queries also search the merchant base; a digit query is a code, not
+  // a merchant name.
+  const merchantsEnabled = code == null && debouncedQ.length >= 2 && !/^\d+$/.test(debouncedQ);
+  const merchants = useQuery({
+    queryKey: ["mcc-merchants", debouncedQ],
+    enabled: merchantsEnabled,
+    queryFn: async () =>
+      unwrap(await api.GET("/api/v1/mcc/merchants", { params: { query: { query: debouncedQ } } })) ?? [],
   });
 
   const resolve = useQuery({
@@ -103,11 +121,21 @@ function MccSearch({ onCategory }: { onCategory: (slug: string) => void }) {
         />
       </div>
       <p className="mx-1 text-[10.5px] leading-snug font-medium text-tx4">
-        MCC мерчанта можно узнать на mcc-codes.ru или из чека/выписки — база покажет, какой категорией он считается у каждого банка.
+        Справочник MCC и база точек — данные{" "}
+        <a
+          href="https://mcc-codes.ru"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-semibold text-accl underline decoration-dotted underline-offset-2"
+        >
+          mcc-codes.ru
+        </a>
+        ; код можно также узнать из чека или выписки — база покажет, какой категорией он считается у каждого банка.
       </p>
 
       {code == null && suggest.data && suggest.data.length > 0 && (
         <div className="space-y-1">
+          {merchantsEnabled && <p className="mx-0.5 text-[11px] font-semibold text-tx3">Справочник MCC</p>}
           {suggest.data.map((s) => (
             <button
               key={s.code}
@@ -121,9 +149,45 @@ function MccSearch({ onCategory }: { onCategory: (slug: string) => void }) {
           ))}
         </div>
       )}
-      {code == null && debouncedQ.length >= 2 && suggest.data && suggest.data.length === 0 && (
-        <p className="px-1 text-center text-xs font-medium text-tx4">Ничего не найдено в справочнике MCC</p>
+      {code == null && merchants.data && merchants.data.length > 0 && (
+        <div data-sid="CB-04.g" className="space-y-1">
+          <p className="mx-0.5 text-[11px] font-semibold text-tx3">Точки продаж</p>
+          {merchants.data.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setPicked(m.mcc)}
+              className="flex w-full items-center gap-2.5 rounded-xl border border-brd bg-srf px-3 py-2 text-left hover:bg-srf2"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12.5px] font-semibold text-tx2">
+                  {m.name}
+                  {m.merchant_title && <span className="ml-1.5 text-[10px] font-medium text-tx4">{m.merchant_title}</span>}
+                </p>
+                <p className="truncate text-[10px] font-medium text-tx4">
+                  {[
+                    m.type && POS_TYPE_RU[m.type],
+                    m.address,
+                    m.confirmations > 0 ? `подтверждений: ${m.confirmations}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+              <span className="flex-none font-mono text-[12px] font-bold text-accl">{m.mcc}</span>
+            </button>
+          ))}
+        </div>
       )}
+      {code == null &&
+        debouncedQ.length >= 2 &&
+        suggest.data &&
+        suggest.data.length === 0 &&
+        (!merchantsEnabled || (merchants.data && merchants.data.length === 0)) && (
+          <p className="px-1 text-center text-xs font-medium text-tx4">
+            {merchantsEnabled ? "Ничего не найдено в справочнике MCC и базе точек" : "Ничего не найдено в справочнике MCC"}
+          </p>
+        )}
 
       {code != null && resolve.isPending && <Spinner />}
       {unknownCode && (
@@ -323,7 +387,7 @@ export default function Lookup() {
         <>
           <MapStub />
           <ComingSoon
-            text="Определение места по геолокации появится вместе с базой точек и MCC — пока подскажем по категории."
+            text="База точек и MCC уже в приложении (вкладка «Поиск»), но пока без координат — определение места по геолокации появится позже, а сейчас подскажем по категории."
             onPickCategory={() => setMode("cat")}
           />
         </>

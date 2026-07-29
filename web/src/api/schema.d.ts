@@ -609,6 +609,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mcc/merchants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search the merchant base (points of sale) by name */
+        get: operations["mcc-merchant-search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mcc/resolve": {
         parameters: {
             query?: never;
@@ -1251,6 +1268,19 @@ export interface components {
             banks: components["schemas"]["ResolveEntryDTO"][] | null;
             canonicals: components["schemas"]["CanonicalRefDTO"][] | null;
             code: components["schemas"]["CodeDTO"];
+        };
+        MerchantDTO: {
+            address?: string;
+            /** Format: int64 */
+            confirmations: number;
+            id: string;
+            /** Format: date-time */
+            last_confirmed_at?: string;
+            mcc: string;
+            merchant_title?: string;
+            name: string;
+            /** @enum {string} */
+            type?: "offline" | "online" | "app" | "other";
         };
         OfferPeriodDTO: {
             /**
@@ -2976,6 +3006,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CodeDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "mcc-merchant-search": {
+        parameters: {
+            query: {
+                query: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDTO"][] | null;
                 };
             };
             /** @description Error */
