@@ -29,6 +29,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/sqkrv/sharespences/internal/db"
+	"github.com/sqkrv/sharespences/internal/mcc"
 	"github.com/sqkrv/sharespences/internal/migrations"
 	"github.com/sqkrv/sharespences/internal/seed"
 	"github.com/sqkrv/sharespences/internal/server"
@@ -1100,6 +1101,94 @@ func TestCashbackE2E(t *testing.T) {
 	}
 	if journalAfter != journalCount {
 		t.Fatalf("journal grew on a no-change seed re-run: %d → %d", journalCount, journalAfter)
+	}
+
+	// --- Merchant base (2026-07-29): import-pos loads the mcc-codes.ru
+	// scrape into point_of_sale (upsert by the site's row UUID, unknown-MCC
+	// and malformed rows skipped, absent rows kept), merchant search rides
+	// the 00013 trigram indexes. ---
+
+	posFixture := "id;title;merchant_title;mcc;type;address;confirmations;created_at;actual_at\n" +
+		"9e0e3ba5-0001-4000-8000-000000000001;Тестовый Магазин;TESTOVY MAGAZIN;5411;offline;Москва, ул. Ленина 1;5;2024-05-01;2026-06-15\n" +
+		"9e0e3ba5-0002-4000-8000-000000000002;Ветклиника Кот;;742;online;;0;2023-11-10;\n" +
+		"9e0e3ba5-0003-4000-8000-000000000003;\"Кафе \"\"Уют\"\"\";CAFE UYUT;5814;;Казань;2;2024-01-20;2025-12-01\n" +
+		"9e0e3ba5-0004-4000-8000-000000000004;Кафе Ночь;CAFE NOCH;5814;app;Пермь;7;2024-02-02;2026-01-01\n" +
+		"9e0e3ba5-0005-4000-8000-000000000005;Неизвестный Код;;123;offline;;1;2024-03-03;\n" +
+		"not-a-uuid;Битая Строка;;5411;offline;;0;2024-04-04;\n"
+	posStats, err := mcc.ImportPointsOfSale(ctx, pool, strings.NewReader(posFixture), nil)
+	if err != nil {
+		t.Fatalf("import-pos: %v", err)
+	}
+	if posStats.Upserted != 4 || posStats.BadRows != 1 || posStats.UnknownMCCRows != 1 {
+		t.Fatalf("import-pos stats = %+v, want 4 upserted / 1 bad / 1 unknown-mcc", posStats)
+	}
+	var posCount int
+	if err := pool.QueryRow(ctx, "select count(*) from point_of_sale").Scan(&posCount); err != nil {
+		t.Fatal(err)
+	}
+	if posCount != 4 {
+		t.Fatalf("point_of_sale count = %d, want 4 (unknown-MCC and malformed rows skipped)", posCount)
+	}
+	// Idempotent re-import: same counts, nothing duplicated.
+	if _, err := mcc.ImportPointsOfSale(ctx, pool, strings.NewReader(posFixture), nil); err != nil {
+		t.Fatalf("import-pos re-run: %v", err)
+	}
+	if err := pool.QueryRow(ctx, "select count(*) from point_of_sale").Scan(&posCount); err != nil {
+		t.Fatal(err)
+	}
+	if posCount != 4 {
+		t.Fatalf("point_of_sale count after re-import = %d, want 4", posCount)
+	}
+	// A changed row re-lands via the upsert (confirmations 7 → 9).
+	bumped := strings.Replace(posFixture, ";Пермь;7;", ";Пермь;9;", 1)
+	if _, err := mcc.ImportPointsOfSale(ctx, pool, strings.NewReader(bumped), nil); err != nil {
+		t.Fatalf("import-pos bumped run: %v", err)
+	}
+	var nochConfirmations int64
+	if err := pool.QueryRow(ctx,
+		"select confirmations from point_of_sale where id = '9e0e3ba5-0004-4000-8000-000000000004'").Scan(&nochConfirmations); err != nil {
+		t.Fatal(err)
+	}
+	if nochConfirmations != 9 {
+		t.Fatalf("re-imported confirmations = %d, want 9", nochConfirmations)
+	}
+
+	if got := anon.do("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape("кафе"), nil, nil); got != http.StatusUnauthorized {
+		t.Fatalf("anonymous merchant search: %d, want 401", got)
+	}
+	type merchantJSON struct {
+		ID            string  `json:"id"`
+		Name          string  `json:"name"`
+		MerchantTitle *string `json:"merchant_title"`
+		MCC           string  `json:"mcc"`
+		Type          *string `json:"type"`
+		Confirmations int64   `json:"confirmations"`
+	}
+	// Case-insensitive Cyrillic substring, ranked by confirmations.
+	var merchants []merchantJSON
+	owner.must("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants) != 2 {
+		t.Fatalf("merchants?query=кафе = %+v, want 2 rows", merchants)
+	}
+	if merchants[0].Name != "Кафе Ночь" || merchants[0].Confirmations != 9 {
+		t.Fatalf("merchant ranking = %+v, want Кафе Ночь (9 confirmations) first", merchants)
+	}
+	if merchants[1].Name != `Кафе "Уют"` {
+		t.Fatalf("quoted-title row = %+v, want Кафе \"Уют\"", merchants[1])
+	}
+	// Sub-4-digit MCC comes back zero-padded; empty type maps to null.
+	owner.must("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape("ветклиника"), nil, &merchants, http.StatusOK)
+	if len(merchants) != 1 || merchants[0].MCC != "0742" {
+		t.Fatalf("merchants?query=ветклиника = %+v, want one 0742 row", merchants)
+	}
+	// merchant_title (Latin) is searched too.
+	owner.must("GET", "/api/v1/mcc/merchants?query=testovy", nil, &merchants, http.StatusOK)
+	if len(merchants) != 1 || merchants[0].Name != "Тестовый Магазин" {
+		t.Fatalf("merchants?query=testovy = %+v, want Тестовый Магазин", merchants)
+	}
+	// minLength guard.
+	if got := owner.do("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape("к"), nil, nil); got != http.StatusUnprocessableEntity {
+		t.Fatalf("1-char merchant query: %d, want 422", got)
 	}
 
 	// --- Bank-first flow (2026-07-23): DELETE for cards and bank clients.

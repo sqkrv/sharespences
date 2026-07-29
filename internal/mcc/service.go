@@ -52,6 +52,16 @@ func (s *Service) Resolve(ctx context.Context, code int16) (db.Mcc, []db.Resolve
 	return entry, rows, nil
 }
 
+// SearchMerchants finds points of sale (the imported mcc-codes.ru base) by
+// name or merchant-title substring, most-confirmed first.
+func (s *Service) SearchMerchants(ctx context.Context, query string, limit int32) ([]db.SearchMerchantsRow, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, nil
+	}
+	return s.Q.SearchMerchants(ctx, db.SearchMerchantsParams{Query: query, MaxRows: limit})
+}
+
 // Changes returns the newest journal rows (news-digest precursor).
 func (s *Service) Changes(ctx context.Context, limit int32) ([]db.ListMCCChangesRow, error) {
 	return s.Q.ListMCCChanges(ctx, limit)

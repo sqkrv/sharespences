@@ -40,6 +40,22 @@ where bcm.mcc_code = $1
   and bc.active
 order by b.name, bc.title;
 
+-- name: SearchMerchants :many
+select id,
+       name,
+       merchant_title,
+       mcc_code,
+       coalesce(type::text, '')::text as pos_type,
+       address,
+       confirmations,
+       last_confirmed_at
+from point_of_sale
+where mcc_code is not null -- a merchant row without an MCC answers nothing here
+  and (name ilike '%' || sqlc.arg(query)::text || '%'
+    or merchant_title ilike '%' || sqlc.arg(query)::text || '%')
+order by confirmations desc nulls last, last_confirmed_at desc nulls last, name
+limit sqlc.arg(max_rows);
+
 -- name: ListMCCChanges :many
 select mc.id,
        mc.bank_id,

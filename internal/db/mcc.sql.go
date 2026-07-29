@@ -8,6 +8,8 @@ package db
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const getMCC = `-- name: GetMCC :one
@@ -185,6 +187,68 @@ func (q *Queries) SearchMCC(ctx context.Context, arg SearchMCCParams) ([]Mcc, er
 	for rows.Next() {
 		var i Mcc
 		if err := rows.Scan(&i.Code, &i.Name, &i.Description); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchMerchants = `-- name: SearchMerchants :many
+select id,
+       name,
+       merchant_title,
+       mcc_code,
+       coalesce(type::text, '')::text as pos_type,
+       address,
+       confirmations,
+       last_confirmed_at
+from point_of_sale
+where mcc_code is not null -- a merchant row without an MCC answers nothing here
+  and (name ilike '%' || $1::text || '%'
+    or merchant_title ilike '%' || $1::text || '%')
+order by confirmations desc nulls last, last_confirmed_at desc nulls last, name
+limit $2
+`
+
+type SearchMerchantsParams struct {
+	Query   string
+	MaxRows int32
+}
+
+type SearchMerchantsRow struct {
+	ID              uuid.UUID
+	Name            string
+	MerchantTitle   *string
+	MccCode         *int16
+	PosType         string
+	Address         *string
+	Confirmations   *int64
+	LastConfirmedAt *time.Time
+}
+
+func (q *Queries) SearchMerchants(ctx context.Context, arg SearchMerchantsParams) ([]SearchMerchantsRow, error) {
+	rows, err := q.db.Query(ctx, searchMerchants, arg.Query, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchMerchantsRow
+	for rows.Next() {
+		var i SearchMerchantsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MerchantTitle,
+			&i.MccCode,
+			&i.PosType,
+			&i.Address,
+			&i.Confirmations,
+			&i.LastConfirmedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

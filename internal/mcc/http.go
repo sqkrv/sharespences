@@ -44,6 +44,19 @@ type CanonicalRefDTO struct {
 	Title string `json:"title"`
 }
 
+// MerchantDTO — one point of sale from the imported merchant base
+// (mcc-codes.ru scrape; данные mcc-codes.ru — the SPA renders the credit).
+type MerchantDTO struct {
+	ID              string     `json:"id"` // the site's own row UUID — stable across re-imports
+	Name            string     `json:"name"`
+	MerchantTitle   *string    `json:"merchant_title,omitempty"`
+	MCC             string     `json:"mcc"` // zero-padded
+	Type            *string    `json:"type,omitempty" enum:"offline,online,app,other"`
+	Address         *string    `json:"address,omitempty"`
+	Confirmations   int64      `json:"confirmations"`
+	LastConfirmedAt *time.Time `json:"last_confirmed_at,omitempty"`
+}
+
 type ChangeDTO struct {
 	ID             int64     `json:"id"`
 	BankID         int32     `json:"bank_id"`
@@ -86,6 +99,38 @@ func RegisterHTTP(api huma.API, s *Service) {
 			out[i] = codeDTO(r)
 		}
 		return &struct{ Body []CodeDTO }{out}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "mcc-merchant-search", Method: http.MethodGet,
+		Path: "/api/v1/mcc/merchants", Summary: "Search the merchant base (points of sale) by name", Tags: []string{"mcc"},
+	}, func(ctx context.Context, in *struct {
+		Query string `query:"query" required:"true" minLength:"2"`
+		Limit int32  `query:"limit" default:"20" minimum:"1" maximum:"50"`
+	}) (*struct{ Body []MerchantDTO }, error) {
+		rows, err := s.SearchMerchants(ctx, in.Query, in.Limit)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]MerchantDTO, len(rows))
+		for i, r := range rows {
+			d := MerchantDTO{
+				ID: r.ID.String(), Name: r.Name, MerchantTitle: r.MerchantTitle,
+				Address: r.Address, LastConfirmedAt: r.LastConfirmedAt,
+			}
+			if r.MccCode != nil {
+				d.MCC = FormatCode(*r.MccCode)
+			}
+			if r.PosType != "" {
+				t := r.PosType
+				d.Type = &t
+			}
+			if r.Confirmations != nil {
+				d.Confirmations = *r.Confirmations
+			}
+			out[i] = d
+		}
+		return &struct{ Body []MerchantDTO }{out}, nil
 	})
 
 	huma.Register(api, huma.Operation{
