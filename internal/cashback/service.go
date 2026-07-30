@@ -297,20 +297,39 @@ func (s *Service) CreateBankCategory(ctx context.Context, bankID int32, title st
 	return bc, nil
 }
 
-// checkBankCategory validates that a referenced catalog row exists and
-// belongs to the given bank (a picker pick can't attach another bank's row).
-func (s *Service) checkBankCategory(ctx context.Context, bankCategoryID *int64, bankID int32) error {
+// firstNonNil is the explicit-wins rule for optional mappings: what the
+// caller sent, else what the catalog row supplies.
+func firstNonNil[T any](explicit, fallback *T) *T {
+	if explicit != nil {
+		return explicit
+	}
+	return fallback
+}
+
+// resolveBankCategory validates that a referenced catalog row exists and
+// belongs to the given bank (a picker pick can't attach another bank's row),
+// and returns the canonical mapping that row carries.
+//
+// A catalog pick reaches the API as bank_category_id ALONE — both the picker
+// and the recognizer's draft do that — while every read path (lookup,
+// overview) keys on the offer's own canonical_category_id. Without the
+// inheritance below, a committed and selected row stays invisible to «Какой
+// картой?» and to the overview's «Категории» cut, and nothing warns: the
+// unmapped badge is suppressed for catalog rows precisely because the
+// catalog is supposed to hold the mapping (report 2026-07-30). Rows that are
+// canonical-less by design (Альфа-Тревел, канальные) return nil and stay so.
+func (s *Service) resolveBankCategory(ctx context.Context, bankCategoryID *int64, bankID int32) (*int64, error) {
 	if bankCategoryID == nil {
-		return nil
+		return nil, nil
 	}
 	bc, err := s.Q.GetBankCategory(ctx, *bankCategoryID)
 	if err != nil {
-		return notFound(err)
+		return nil, notFound(err)
 	}
 	if bc.BankID != bankID {
-		return ErrBankCategoryWrongBank
+		return nil, ErrBankCategoryWrongBank
 	}
-	return nil
+	return bc.CanonicalCategoryID, nil
 }
 
 // CreateCategoryOffer records one menu row. A provided canonical mapping is
@@ -320,13 +339,14 @@ func (s *Service) CreateCategoryOffer(ctx context.Context, userID uuid.UUID, off
 	if err != nil {
 		return db.CategoryOffer{}, notFound(err)
 	}
-	if err := s.checkBankCategory(ctx, bankCategoryID, int32(period.BankID)); err != nil {
+	inherited, err := s.resolveBankCategory(ctx, bankCategoryID, int32(period.BankID))
+	if err != nil {
 		return db.CategoryOffer{}, err
 	}
 	offer, err := s.Q.CreateCategoryOffer(ctx, db.CreateCategoryOfferParams{
 		OfferPeriodID:       offerPeriodID,
 		RawTitle:            rawTitle,
-		CanonicalCategoryID: canonicalID,
+		CanonicalCategoryID: firstNonNil(canonicalID, inherited),
 		Percent:             percent,
 		Kind:                db.CashbackOfferKind(kind),
 		Notes:               notes,
@@ -411,14 +431,15 @@ func (s *Service) UpdateCategoryOffer(ctx context.Context, userID uuid.UUID, off
 	if err != nil {
 		return db.CategoryOffer{}, notFound(err)
 	}
-	if err := s.checkBankCategory(ctx, bankCategoryID, int32(ctxRow.BankID)); err != nil {
+	inherited, err := s.resolveBankCategory(ctx, bankCategoryID, int32(ctxRow.BankID))
+	if err != nil {
 		return db.CategoryOffer{}, err
 	}
 	offer, err := s.Q.UpdateCategoryOfferForUser(ctx, db.UpdateCategoryOfferForUserParams{
 		ID:                  offerID,
 		UserID:              userID,
 		RawTitle:            rawTitle,
-		CanonicalCategoryID: canonicalID,
+		CanonicalCategoryID: firstNonNil(canonicalID, inherited),
 		Percent:             percent,
 		Kind:                db.CashbackOfferKind(kind),
 		Notes:               notes,

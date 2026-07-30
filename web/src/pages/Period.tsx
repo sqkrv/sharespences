@@ -585,8 +585,11 @@ export default function Period() {
           const isBonus = offer.kind !== "regular";
           // Canonical-less is only a data gap when the row wasn't picked
           // from the catalog: catalog rows without a canonical (Альфа-Тревел,
-          // канальные…) are deliberately so (2026-07-21).
-          const unmapped = !isBonus && offer.canonical_category_id == null && offer.bank_category_id == null;
+          // канальные…) are deliberately so (2026-07-21). A барабан ranks
+          // like a regular row, so it warns like one (2026-07-30 — three
+          // unmapped барабаны went missing from «Категории» in silence);
+          // спец never ranks, so it never nags.
+          const unmapped = offer.kind !== "special" && offer.canonical_category_id == null && offer.bank_category_id == null;
           const blocked = !selected && !isBonus && slotsFull;
           const canonTitle = (categories.data ?? []).find((c) => c.id === offer.canonical_category_id)?.title_ru;
           if (isBonus) {
@@ -603,6 +606,12 @@ export default function Period() {
                       не занимает слот · {offer.kind === "super" ? "ранжируется в «Какой картой?»" : "сверх меню"}
                       {offer.cap_value && ` · до ${offer.cap_value} ${currency === "points" ? "баллов" : "₽"}`}
                     </p>
+                    {unmapped && (
+                      <p className="mt-0.5 flex items-center gap-1.5 text-[9.5px] font-semibold text-warn">
+                        <span className="h-[5px] w-[5px] rounded-full bg-warn" />
+                        сопоставьте категорию — не попадёт в «Какой картой?»
+                      </p>
+                    )}
                   </div>
                   {selected ? (
                     <Btn
