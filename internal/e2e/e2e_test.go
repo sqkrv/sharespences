@@ -20,6 +20,7 @@ import (
 	"net/http/httptest"
 	"net/textproto"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1458,6 +1459,29 @@ func TestCashbackE2E(t *testing.T) {
 	}
 	if aliasesAfter != aliasesBefore {
 		t.Fatalf("aliases %d → %d: committing a recognized draft must never write an alias", aliasesBefore, aliasesAfter)
+	}
+	// Regression (report 2026-07-30): a row picked from the catalog carries
+	// bank_category_id ALONE, so the offer must inherit the catalog row's
+	// canonical mapping — otherwise a committed, selected row is invisible
+	// to «Какой картой?» and to the overview's «Категории» cut, with no
+	// warning anywhere (the catalog pick suppresses the unmapped badge).
+	var catalogLookup lookupJSON
+	owner.must("GET", "/api/v1/cashback/lookup?category=restaurants&date=2026-10-05", nil, &catalogLookup, http.StatusOK)
+	if len(catalogLookup.Ranked) != 1 || catalogLookup.Ranked[0].Percent == nil || *catalogLookup.Ranked[0].Percent != "7" {
+		t.Fatalf("lookup restaurants = %+v, want the committed catalog row at 7%%", catalogLookup.Ranked)
+	}
+	var catalogOverview struct {
+		Categories []struct {
+			Slug string `json:"slug"`
+		} `json:"categories"`
+	}
+	owner.must("GET", "/api/v1/cashback/overview?date=2026-10-05", nil, &catalogOverview, http.StatusOK)
+	if !slices.ContainsFunc(catalogOverview.Categories, func(c struct {
+		Slug string `json:"slug"`
+	}) bool {
+		return c.Slug == "restaurants"
+	}) {
+		t.Fatalf("overview categories = %+v, want the committed catalog row under restaurants", catalogOverview.Categories)
 	}
 
 	// Degradation: a server with no vision backend answers 503 with a
