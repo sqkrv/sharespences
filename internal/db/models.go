@@ -315,6 +315,50 @@ func (ns NullCashbackSelectionMode) Value() (driver.Value, error) {
 	return string(ns.CashbackSelectionMode), nil
 }
 
+type FriendRequestStatus string
+
+const (
+	FriendRequestStatusPending   FriendRequestStatus = "pending"
+	FriendRequestStatusAccepted  FriendRequestStatus = "accepted"
+	FriendRequestStatusDeclined  FriendRequestStatus = "declined"
+	FriendRequestStatusCancelled FriendRequestStatus = "cancelled"
+)
+
+func (e *FriendRequestStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FriendRequestStatus(s)
+	case string:
+		*e = FriendRequestStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FriendRequestStatus: %T", src)
+	}
+	return nil
+}
+
+type NullFriendRequestStatus struct {
+	FriendRequestStatus FriendRequestStatus
+	Valid               bool // Valid is true if FriendRequestStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFriendRequestStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.FriendRequestStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FriendRequestStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFriendRequestStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FriendRequestStatus), nil
+}
+
 type MccChangeAction string
 
 const (
@@ -689,6 +733,38 @@ type CategoryOffer struct {
 	BankCategoryID      *int64
 	// Per-offer КБ cap for the period (ВТБ «Кешбэк до N ₽» rows); null = tier cap applies; static display, no tracking
 	CapValue *decimal.Decimal
+}
+
+type FriendCashbackShare struct {
+	BankClientID int64
+	FriendshipID int64
+	CreatedAt    time.Time
+}
+
+type FriendInvite struct {
+	ID              uuid.UUID
+	CreatedByUserID uuid.UUID
+	TokenHash       []byte
+	CreatedAt       time.Time
+	ExpiresAt       time.Time
+	ClaimedAt       *time.Time
+	ClaimedByUserID *uuid.UUID
+}
+
+type FriendRequest struct {
+	ID          int64
+	FromUserID  uuid.UUID
+	ToUserID    uuid.UUID
+	Status      FriendRequestStatus
+	CreatedAt   time.Time
+	RespondedAt *time.Time
+}
+
+type Friendship struct {
+	ID        int64
+	UserLo    uuid.UUID
+	UserHi    uuid.UUID
+	CreatedAt time.Time
 }
 
 type Mcc struct {
