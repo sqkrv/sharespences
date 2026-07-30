@@ -228,17 +228,26 @@ func registerAuth(api huma.API, sm *scs.SessionManager, svc *auth.Service) {
 		Path: "/api/v1/auth/register", Summary: "Register (and sign in)", Tags: []string{"auth"},
 		DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, in *struct {
+		// The identity fields are normalized before validation (case folded,
+		// whitespace trimmed), so the schema carries loose bounds as a body
+		// guard only — auth's domain owns the real rule and its Russian
+		// wording. Tighter bounds here would reject values that normalize to
+		// something perfectly valid.
 		Body struct {
-			Username    string `json:"username" minLength:"1"`
-			DisplayName string `json:"display_name" minLength:"1"`
+			Username    string `json:"username" minLength:"1" maxLength:"64" doc:"3–32 символа: строчные латинские буквы и цифры, «.» и «_» внутри, начинается с буквы"`
+			DisplayName string `json:"display_name" minLength:"1" maxLength:"256" doc:"отображаемое имя, до 64 символов"`
 			Email       string `json:"email" format:"email"`
 			Password    string `json:"password" minLength:"8"`
 		}
 	}) (*struct{ Body UserDTO }, error) {
 		u, err := svc.Register(ctx, in.Body.Username, in.Body.DisplayName, in.Body.Email, in.Body.Password)
 		if err != nil {
-			if errors.Is(err, auth.ErrEmailTaken) {
+			switch {
+			case errors.Is(err, auth.ErrEmailTaken):
 				return nil, huma.Error409Conflict("почта или имя пользователя уже заняты")
+			case errors.Is(err, auth.ErrUsernameFormat), errors.Is(err, auth.ErrUsernameReserved),
+				errors.Is(err, auth.ErrDisplayNameLen):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
 			}
 			return nil, err
 		}

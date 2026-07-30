@@ -79,7 +79,18 @@ export default function Login() {
           }}
         >
           <Field label="Email">
-            <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+            {/* Case is folded server-side; this only stops the mobile keyboard
+                from capitalizing an address the user then has to fix. */}
+            <Input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+            />
           </Field>
           <Field label="Пароль">
             <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />

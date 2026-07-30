@@ -132,6 +132,22 @@ export function opensStripParts(day: number, now = new Date()): { text: string; 
 
 export const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 
+// Логин rules, mirrored from internal/auth/domain.go for instant feedback in
+// the fields. The server normalizes and validates independently and stays
+// authoritative — this side exists so a typo is caught before a round trip.
+export const USERNAME_PATTERN = "^[a-z][a-z0-9]*([._][a-z0-9]+)*$";
+export const USERNAME_MIN = 3;
+export const USERNAME_MAX = 32;
+export const USERNAME_HINT =
+  "3–32 символа: строчные латинские буквы и цифры, «.» и «_» внутри, начинается с буквы";
+
+// normalizeUsername matches the backend normalizer: trim, drop one leading «@»
+// (every screen renders the login as «@anna», so that prefix travels with it
+// when someone copies or dictates it), lowercase.
+export function normalizeUsername(s: string): string {
+  return s.trim().replace(/^@/, "").toLowerCase();
+}
+
 // Mid-month ISO — the ?date= value the overview API samples a month by.
 export function midMonthISO(year: number, month0: number): string {
   return `${year}-${pad2(month0 + 1)}-15`;

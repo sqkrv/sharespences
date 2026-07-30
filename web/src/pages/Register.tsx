@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import { Btn, Card, Field, Input, ErrMsg, validityProps } from "../components/ui";
+import { USERNAME_HINT, USERNAME_MAX, USERNAME_MIN, USERNAME_PATTERN } from "../lib";
 import { BrandMark, LegalFooter } from "./Login";
 import DevChip from "../dev/DevChip";
 
@@ -14,6 +15,11 @@ export default function Register() {
   const from = (location.state as { from?: string } | null)?.from ?? "/";
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
+  // The логин field lowercases as it is typed rather than rejecting capitals:
+  // the server folds case anyway, and mobile keyboards capitalize the first
+  // letter — a field stricter than the server would fail on its own default.
+  const setUsername = (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, username: e.target.value.toLowerCase() }));
 
   const register = useMutation({
     mutationFn: async () => unwrap(await api.POST("/api/v1/auth/register", { body: form })),
@@ -36,10 +42,25 @@ export default function Register() {
           }}
         >
           <Field label="Логин">
-            <Input required value={form.username} onChange={set("username")} autoComplete="username" />
+            <Input
+              required
+              value={form.username}
+              onChange={setUsername}
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              minLength={USERNAME_MIN}
+              maxLength={USERNAME_MAX}
+              pattern={USERNAME_PATTERN}
+              // validityProps turns a pattern miss into this title (the rule
+              // means nothing to the user without its explanation).
+              title={USERNAME_HINT}
+            />
+            <p className="mt-1 text-[11px] font-medium text-tx4">{USERNAME_HINT}. По нему друзья найдут вас.</p>
           </Field>
           <Field label="Имя">
-            <Input required value={form.display_name} onChange={set("display_name")} />
+            <Input required maxLength={64} value={form.display_name} onChange={set("display_name")} />
           </Field>
           <Field label="Email">
             <Input type="email" required value={form.email} onChange={set("email")} autoComplete="email" />

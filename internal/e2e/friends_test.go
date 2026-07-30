@@ -114,11 +114,83 @@ func TestFriendsE2E(t *testing.T) {
 		"username": "dima", "display_name": "Дима", "email": "dima@example.com", "password": "correct horse",
 	}, nil, http.StatusCreated)
 
-	// --- Step 1: search is exact-only, case-insensitive, minimal fields ---
+	// The login rule is enforced at registration (internal/auth/domain.go). It
+	// matters here rather than in the auth suite because friend search matches
+	// the login and nothing else: a rule this module can't rely on is a заявка
+	// that reaches the wrong account.
+	rules := newClient(t, srv.URL)
+	// The email is deliberately independent of the username: derived from it,
+	// «ivan petrov» would fail the email format first and the case would pass
+	// for the wrong reason.
+	for i, c := range []struct {
+		username string
+		want     int
+		why      string
+	}{
+		{"anna", http.StatusConflict, "already taken"},
+		{"ANNA", http.StatusConflict, "a case variant is the same login now"},
+		{" anna ", http.StatusConflict, "whitespace is not part of a login"},
+		{"an", http.StatusUnprocessableEntity, "shorter than 3"},
+		{"1anna", http.StatusUnprocessableEntity, "leading digit"},
+		{"_anna", http.StatusUnprocessableEntity, "leading separator"},
+		{"nina.", http.StatusUnprocessableEntity, "trailing separator"},
+		{"ivan..petrov", http.StatusUnprocessableEntity, "doubled separator"},
+		{"ivan._petrov", http.StatusUnprocessableEntity, "adjacent separators"},
+		{"ivan-petrov", http.StatusUnprocessableEntity, "hyphen is not a separator"},
+		{"ivan petrov", http.StatusUnprocessableEntity, "space"},
+		{"аnna", http.StatusUnprocessableEntity, "Cyrillic homoglyph"},
+		{"admin", http.StatusUnprocessableEntity, "reserved"},
+	} {
+		got := rules.do("POST", "/api/v1/auth/register", map[string]any{
+			"username": c.username, "display_name": "Тест",
+			"email": "rule" + itoa(int64(i)) + "@example.com", "password": "correct horse",
+		}, nil)
+		if got != c.want {
+			t.Fatalf("register %q: status %d, want %d (%s)", c.username, got, c.want, c.why)
+		}
+	}
+	// An email differing only in case is the same account too — registering it
+	// used to succeed and then fail to sign in.
+	if got := rules.do("POST", "/api/v1/auth/register", map[string]any{
+		"username": "nina", "display_name": "Нина",
+		"email": "Anna@Example.com", "password": "correct horse",
+	}, nil); got != http.StatusConflict {
+		t.Fatalf("register with a case-variant email: status %d, want 409", got)
+	}
+	// The forgiving half of the same rule: what a person pastes off a screen
+	// («@nina») or types with a stray newline is normalized, not rejected.
+	var nina struct {
+		Username    string `json:"username"`
+		DisplayName string `json:"display_name"`
+	}
+	rules.must("POST", "/api/v1/auth/register", map[string]any{
+		"username": " @Nina ", "display_name": "  Нина \n Петрова  ",
+		"email": " NINA@example.com ", "password": "correct horse",
+	}, &nina, http.StatusCreated)
+	if nina.Username != "nina" || nina.DisplayName != "Нина Петрова" {
+		t.Fatalf("normalized registration = %+v, want nina / «Нина Петрова»", nina)
+	}
+	// …and the folded email is the one that signs in.
+	rules.must("POST", "/api/v1/auth/login", map[string]any{
+		"email": "Nina@Example.com", "password": "correct horse",
+	}, nil, http.StatusOK)
+
+	// --- Step 1: search is exact-only, insensitive to case and «@» ---
+	// Anna registered as «Anna» and is stored as «anna»: the login is folded on
+	// save, so no case variant can be a second account and search needs no
+	// tiebreak (00016_username_rules.sql).
 	var found foundUserJSON
 	boris.must("GET", "/api/v1/friends/search?username=anna", nil, &found, http.StatusOK)
-	if found.Username != "Anna" || found.UserID != annaMe.ID {
-		t.Fatalf("case-insensitive search: got %+v", found)
+	if found.Username != "anna" || found.UserID != annaMe.ID {
+		t.Fatalf("search: got %+v", found)
+	}
+	// Every screen renders «@anna», so that is what gets copied and dictated.
+	for _, q := range []string{"ANNA", "Anna", "%40anna", "%20anna%20"} {
+		var hit foundUserJSON
+		boris.must("GET", "/api/v1/friends/search?username="+q, nil, &hit, http.StatusOK)
+		if hit.UserID != annaMe.ID {
+			t.Fatalf("search %q found %+v, want anna", q, hit)
+		}
 	}
 	if got := boris.do("GET", "/api/v1/friends/search?username=ann", nil, nil); got != http.StatusNotFound {
 		t.Fatalf("substring search: status %d, want 404", got)
@@ -145,8 +217,8 @@ func TestFriendsE2E(t *testing.T) {
 	// Decline quietly removes the pending row from both lists.
 	var borisReqs requestsJSON
 	boris.must("GET", "/api/v1/friends/requests", nil, &borisReqs, http.StatusOK)
-	if len(borisReqs.Incoming) != 1 || borisReqs.Incoming[0].Username != "Anna" {
-		t.Fatalf("boris incoming = %+v, want one from Anna", borisReqs)
+	if len(borisReqs.Incoming) != 1 || borisReqs.Incoming[0].Username != "anna" {
+		t.Fatalf("boris incoming = %+v, want one from anna", borisReqs)
 	}
 	boris.must("POST", "/api/v1/friends/requests/"+itoa(borisReqs.Incoming[0].ID)+"/decline", nil, nil, http.StatusNoContent)
 	var annaReqs requestsJSON
@@ -170,8 +242,8 @@ func TestFriendsE2E(t *testing.T) {
 	if len(annaFriends) != 1 || annaFriends[0].Username != "boris" {
 		t.Fatalf("anna friends = %+v, want [boris]", annaFriends)
 	}
-	if len(borisFriends) != 1 || borisFriends[0].Username != "Anna" {
-		t.Fatalf("boris friends = %+v, want [Anna]", borisFriends)
+	if len(borisFriends) != 1 || borisFriends[0].Username != "anna" {
+		t.Fatalf("boris friends = %+v, want [anna]", borisFriends)
 	}
 	// Request to an existing friend → 409.
 	if got := anna.do("POST", "/api/v1/friends/requests", map[string]any{"username": "boris"}, nil); got != http.StatusConflict {
@@ -235,13 +307,13 @@ func TestFriendsE2E(t *testing.T) {
 	}
 	var inviter foundUserJSON
 	carl.must("POST", "/api/v1/friends/invites/claim", map[string]any{"token": inv.Token}, &inviter, http.StatusOK)
-	if inviter.Username != "Anna" {
-		t.Fatalf("claim response names %q, want Anna", inviter.Username)
+	if inviter.Username != "anna" {
+		t.Fatalf("claim response names %q, want anna", inviter.Username)
 	}
 	var carlFriends []friendJSON
 	carl.must("GET", "/api/v1/friends", nil, &carlFriends, http.StatusOK)
 	if len(carlFriends) != 2 {
-		t.Fatalf("carl friends = %+v, want boris + Anna", carlFriends)
+		t.Fatalf("carl friends = %+v, want boris + anna", carlFriends)
 	}
 	if got := boris.do("POST", "/api/v1/friends/invites/claim", map[string]any{"token": inv.Token}, nil); got != http.StatusConflict {
 		t.Fatalf("re-claim: status %d, want 409", got)
@@ -295,8 +367,8 @@ func TestFriendsE2E(t *testing.T) {
 	anna.must("DELETE", "/api/v1/friends/"+borisMe.ID, nil, nil, http.StatusNoContent)
 	boris.must("GET", "/api/v1/friends", nil, &borisFriends, http.StatusOK)
 	for _, f := range borisFriends {
-		if f.Username == "Anna" {
-			t.Fatal("boris still lists Anna after unfriend")
+		if f.Username == "anna" {
+			t.Fatal("boris still lists anna after unfriend")
 		}
 	}
 	// The graph is symmetric again: a fresh заявка works.
@@ -425,7 +497,7 @@ func TestFriendsE2E(t *testing.T) {
 	// --- Default nothing shared: boris sees friend anna with zero clients ---
 	var browse friendsBrowseJSON
 	boris.must("GET", "/api/v1/cashback/friends", nil, &browse, http.StatusOK)
-	annaEntry := browse.find(t, "Anna")
+	annaEntry := browse.find(t, "anna")
 	if len(annaEntry.Clients) != 0 {
 		t.Fatalf("before any grant, anna's clients = %+v, want none", annaEntry.Clients)
 	}
@@ -483,7 +555,7 @@ func TestFriendsE2E(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &browse); err != nil {
 		t.Fatal(err)
 	}
-	annaEntry = browse.find(t, "Anna")
+	annaEntry = browse.find(t, "anna")
 	if len(annaEntry.Clients) != 1 || annaEntry.Clients[0].BankClientID != annaOwn.ID {
 		t.Fatalf("granted clients = %+v, want just the own Альфа-Банк client", annaEntry.Clients)
 	}
@@ -608,7 +680,7 @@ func TestFriendsE2E(t *testing.T) {
 	}
 	boris.must("GET", "/api/v1/cashback/friends", nil, &browse, http.StatusOK)
 	for _, f := range browse.Friends {
-		if f.Username == "Anna" {
+		if f.Username == "anna" {
 			t.Fatal("boris still browses anna after unfriend")
 		}
 	}
@@ -616,7 +688,7 @@ func TestFriendsE2E(t *testing.T) {
 	anna.must("GET", "/api/v1/friends/requests", nil, &annaReqs, http.StatusOK)
 	anna.must("POST", "/api/v1/friends/requests/"+itoa(annaReqs.Incoming[0].ID)+"/accept", nil, nil, http.StatusNoContent)
 	boris.must("GET", "/api/v1/cashback/friends", nil, &browse, http.StatusOK)
-	if got := browse.find(t, "Anna"); len(got.Clients) != 0 {
+	if got := browse.find(t, "anna"); len(got.Clients) != 0 {
 		t.Fatalf("re-friending resurrected grants: %+v", got.Clients)
 	}
 

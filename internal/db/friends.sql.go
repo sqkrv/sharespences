@@ -303,13 +303,11 @@ func (q *Queries) GetPendingRequestBetween(ctx context.Context, arg GetPendingRe
 	return i, err
 }
 
-const getUserByUsernameCI = `-- name: GetUserByUsernameCI :one
+const getUserByUsername = `-- name: GetUserByUsername :one
 
 select id, username, display_name, email, created_at, telegram_id, password_hash
 from "user"
-where lower(username) = lower($1)
-order by (username = $1) desc
-limit 1
+where username = $1
 `
 
 // Friends module queries. The module owns friendship / friend_request /
@@ -317,11 +315,12 @@ limit 1
 // read-only reference reads (ADR-0002 seam). The shared-picture read path
 // stays in cashback.sql (cashback is the only reader of cashback tables) —
 // this file only resolves WHICH clients are visible to whom.
-// Exact match, case-insensitive (user_username_lower_idx). username is
-// unique only case-sensitively, so two rows can differ by case alone —
-// the exact-case row wins then.
-func (q *Queries) GetUserByUsernameCI(ctx context.Context, username string) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByUsernameCI, username)
+// Exact match on the canonical form: usernames are stored lowercase and the
+// caller normalizes its input the same way (00016_username_rules.sql), so the
+// unique(username) constraint makes this unambiguous by construction — no
+// lower() wrapper, no tiebreak between case variants.
+func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByUsername, username)
 	var i User
 	err := row.Scan(
 		&i.ID,

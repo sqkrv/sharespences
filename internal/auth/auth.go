@@ -73,7 +73,18 @@ type Service struct {
 	Q *db.Queries
 }
 
+// Register normalizes the identity fields before storing them (see domain.go):
+// what lands in the database is the canonical form, which is what makes friend
+// search a plain equality match.
 func (s *Service) Register(ctx context.Context, username, displayName, email, password string) (db.User, error) {
+	username = NormalizeUsername(username)
+	if err := ValidateUsername(username); err != nil {
+		return db.User{}, err
+	}
+	displayName = NormalizeDisplayName(displayName)
+	if err := ValidateDisplayName(displayName); err != nil {
+		return db.User{}, err
+	}
 	hash, err := HashPassword(password)
 	if err != nil {
 		return db.User{}, err
@@ -81,7 +92,7 @@ func (s *Service) Register(ctx context.Context, username, displayName, email, pa
 	u, err := s.Q.CreateUser(ctx, db.CreateUserParams{
 		Username:     username,
 		DisplayName:  displayName,
-		Email:        email,
+		Email:        NormalizeEmail(email),
 		PasswordHash: &hash,
 	})
 	if err != nil {
@@ -94,7 +105,7 @@ func (s *Service) Register(ctx context.Context, username, displayName, email, pa
 }
 
 func (s *Service) Login(ctx context.Context, email, password string) (db.User, error) {
-	u, err := s.Q.GetUserByEmail(ctx, email)
+	u, err := s.Q.GetUserByEmail(ctx, NormalizeEmail(email))
 	if err != nil || u.PasswordHash == nil || !VerifyPassword(password, *u.PasswordHash) {
 		return db.User{}, ErrInvalidCredentials
 	}
