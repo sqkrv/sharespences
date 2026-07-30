@@ -131,6 +131,16 @@ func (r DateRange) Contains(t time.Time) bool {
 	return !d.Before(dateOnly(r.Start)) && !d.After(dateOnly(r.End))
 }
 
+// FriendShareWindow bounds what a granted friend can read (friends-sharing
+// invariant 8): periods overlapping [today .. the end of next month] — the
+// current picture plus the next-month coordination window (menus are
+// entered around the 25th), never history. Always computed from server
+// time; a request's date can narrow the friend view, not widen it.
+func FriendShareWindow(now time.Time) DateRange {
+	endOfNext := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 2, -1)
+	return DateRange{Start: dateOnly(now), End: endOfNext}
+}
+
 // Overlaps reports whether two inclusive ranges share at least one day.
 // Overlap is computed on date ranges regardless of period kind, so a МКБ
 // quarter collides with an Альфа-Банк month (S5).
@@ -321,6 +331,13 @@ type LookupEntry struct {
 	CapScope       CapScope
 	OfferCapValue  *decimal.Decimal // per-offer cap (ВТБ «Кешбэк до N ₽» rows); wins over the tier cap in display
 	PointsLabel    string           // 'Баллы Плюс', 'баллы МКБ'; empty for rubles
+	// FriendName/FriendUsername mark a friend's shared card
+	// (docs/specs/friends-sharing.md); empty = the viewer's own card. Friend
+	// entries rank alongside own ones but never enter Available or the
+	// fallback, and their cap fields are cleared before they get here
+	// (invariant 4 — caps never serialize to a viewer).
+	FriendName     string
+	FriendUsername string
 }
 
 // MidPeriodAddPolicy mirrors cashback_program.mid_period_add (2026-07-16):
@@ -492,6 +509,11 @@ func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult 
 			}
 			if c := cmpPercentDesc(a.Percent, b.Percent); c != 0 {
 				return c < 0
+			}
+			// On equal percent the own card wins — the app never sends the
+			// user to a friend for nothing (friends-sharing invariant 7).
+			if ownA, ownB := a.FriendName == "", b.FriendName == ""; ownA != ownB {
+				return ownA
 			}
 			if a.BankName != b.BankName {
 				return a.BankName < b.BankName

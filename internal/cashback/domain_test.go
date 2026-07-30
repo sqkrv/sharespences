@@ -779,3 +779,64 @@ func TestSuggestCanonical(t *testing.T) {
 		})
 	}
 }
+
+// TestRankActiveSelectionsWithFriends covers the friends-sharing merge
+// (FR-S4): friend entries rank by percent alongside own ones, and on equal
+// percent the own card wins — the app never sends the user to a friend for
+// nothing (friends-sharing invariant 7).
+func TestRankActiveSelectionsWithFriends(t *testing.T) {
+	entries := []LookupEntry{
+		{ClientID: 1, BankName: "ВТБ", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: 2, BankName: "Альфа-Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, FriendName: "Стас", FriendUsername: "stas"},
+		{ClientID: 3, BankName: "Ozon Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, FriendName: "Стас", FriendUsername: "stas"},
+	}
+
+	got := RankActiveSelections(Date(2026, time.July, 15), entries)
+	if len(got.Ranked) != 3 {
+		t.Fatalf("Ranked has %d entries, want 3", len(got.Ranked))
+	}
+	// The friend's 7% beats the own 5% — a better answer is never buried.
+	if got.Ranked[0].FriendName != "Стас" || got.Ranked[0].BankName != "Альфа-Банк" {
+		t.Errorf("Ranked[0] = %s/%q, want the friend's 7%% Альфа-Банк first", got.Ranked[0].BankName, got.Ranked[0].FriendName)
+	}
+	// 5% tie: own ВТБ before the friend's Ozon Банк, even though «Ozon Банк»
+	// sorts before «ВТБ» by name — own-first outranks the bank-name order.
+	if got.Ranked[1].FriendName != "" || got.Ranked[1].BankName != "ВТБ" {
+		t.Errorf("Ranked[1] = %s/%q, want the own 5%% card on the tie", got.Ranked[1].BankName, got.Ranked[1].FriendName)
+	}
+	if got.Ranked[2].FriendName != "Стас" {
+		t.Errorf("Ranked[2].FriendName = %q, want the friend's 5%% card last", got.Ranked[2].FriendName)
+	}
+}
+
+// TestFriendShareWindow covers friends-sharing invariant 8: a granted
+// friend reads periods overlapping [today .. the end of next month] — the
+// current picture plus the next-month coordination window, never history.
+func TestFriendShareWindow(t *testing.T) {
+	cases := []struct {
+		name      string
+		now       time.Time
+		wantStart time.Time
+		wantEnd   time.Time
+	}{
+		{"mid-month", Date(2026, time.July, 15), Date(2026, time.July, 15), Date(2026, time.August, 31)},
+		{"year boundary", Date(2026, time.December, 31), Date(2026, time.December, 31), Date(2027, time.January, 31)},
+		{"into a leap February", Date(2028, time.January, 1), Date(2028, time.January, 1), Date(2028, time.February, 29)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FriendShareWindow(tc.now)
+			if !got.Start.Equal(tc.wantStart) || !got.End.Equal(tc.wantEnd) {
+				t.Fatalf("FriendShareWindow(%s) = [%s .. %s], want [%s .. %s]",
+					tc.now.Format("2006-01-02"), got.Start.Format("2006-01-02"), got.End.Format("2006-01-02"),
+					tc.wantStart.Format("2006-01-02"), tc.wantEnd.Format("2006-01-02"))
+			}
+		})
+	}
+	// The window must never reach into the past: a period that ended
+	// yesterday is history.
+	w := FriendShareWindow(Date(2026, time.August, 1))
+	if w.Overlaps(DateRange{Start: Date(2026, time.July, 1), End: Date(2026, time.July, 31)}) {
+		t.Fatal("window overlaps last month")
+	}
+}

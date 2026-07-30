@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { api, unwrap, ApiError } from "./api/client";
 import { clearAllRecognitions } from "./recognition";
 import { Spinner, ErrMsg } from "./components/ui";
@@ -15,13 +15,16 @@ export function useMe() {
 }
 
 // RequireAuth gates the app shell: 401 → /login (the session cookie is
-// HttpOnly; the API answer is the only source of truth).
+// HttpOnly; the API answer is the only source of truth). The interrupted
+// location rides along as router state — in memory only, never storage —
+// so an invite link (/friends/join/:token) survives the login round-trip.
 export function RequireAuth({ children }: { children: ReactNode }) {
   const me = useMe();
+  const location = useLocation();
   if (me.isPending) return <Spinner />;
   if (me.isError) {
     if (me.error instanceof ApiError && me.error.status === 401) {
-      return <Navigate to="/login" replace />;
+      return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
     }
     return <ErrMsg error={me.error} />;
   }

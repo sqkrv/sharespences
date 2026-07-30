@@ -45,6 +45,11 @@ type Service struct {
 	// Vision is the screenshot recognizer's model backend; nil = the
 	// feature is off and recognition endpoints answer 503.
 	Vision vision.Backend
+	// ListSharedWithMe resolves the viewer's friends and their granted
+	// client ids — injected from the friends module at assembly (ADR-0002
+	// seam, same idiom as the attachment funcs). Nil = the friends feature
+	// is absent; friend views are empty, lookup stays personal.
+	ListSharedWithMe func(ctx context.Context, viewerID uuid.UUID) ([]SharedFriend, error)
 
 	recognitions recognitionStore
 }
@@ -904,6 +909,13 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 		}
 		entries = append(entries, entryOf(o))
 	}
+	// Friends' shared selections rank alongside own cards (FR-S4); they
+	// never reach Available or the fallback below — both stay personal.
+	friendEntries, err := s.friendLookupEntries(ctx, userID, cat.ID)
+	if err != nil {
+		return LookupResultView{}, err
+	}
+	entries = append(entries, friendEntries...)
 	ranked := RankActiveSelections(onDate, entries)
 
 	// S3b «Можно выбрать»: menu rows of this category sitting in an active

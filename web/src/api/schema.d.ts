@@ -282,6 +282,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cashback/friends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Кешбек друзей: shared clients' window (current + next month) */
+        get: operations["cashback-friends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cashback/helper-context": {
         parameters: {
             query?: never;
@@ -575,6 +592,196 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/friends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List friends */
+        get: operations["friends-list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/friends/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List live invite links */
+        get: operations["friends-invite-list"];
+        put?: never;
+        /** Create a one-shot invite link */
+        post: operations["friends-invite-create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/friends/invites/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim an invite link */
+        post: operations["friends-invite-claim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/friends/invites/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke an invite link */
+        delete: operations["friends-invite-delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/friends/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pending friend requests (incoming + outgoing) */
+        get: operations["friends-request-list"];
+        put?: never;
+        /** Send a friend request */
+        post: operations["friends-request-create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/friends/requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel an outgoing friend request */
+        delete: operations["friends-request-cancel"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/friends/requests/{id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept a friend request */
+        post: operations["friends-request-accept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/friends/requests/{id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline a friend request */
+        post: operations["friends-request-decline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/friends/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Find a user by exact username */
+        get: operations["friends-search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/friends/sharing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My grants: which friend sees which bank client */
+        get: operations["friends-sharing-list"];
+        /** Grant or revoke a friend's view of one bank client */
+        put: operations["friends-sharing-set"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/friends/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a friend (revokes shares both ways) */
+        delete: operations["friends-remove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mcc/changes": {
         parameters: {
             query?: never;
@@ -712,6 +919,9 @@ export interface components {
             cap_value?: string;
             client_label: string;
             currency_kind: string;
+            /** @description карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда */
+            friend_name?: string;
+            friend_username?: string;
             holder_label?: string;
             kind: string;
             /** @description per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap */
@@ -922,6 +1132,15 @@ export interface components {
             offer_period_id: number;
             percent?: string;
             raw_title: string;
+        };
+        "Cashback-friendsResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Cashback-friendsResponse.json
+             */
+            readonly $schema?: string;
+            friends: components["schemas"]["FriendCashbackDTO"][] | null;
         };
         "Cashback-helper-contextResponse": {
             /**
@@ -1228,6 +1447,122 @@ export interface components {
             /** Format: int64 */
             Size: number;
         };
+        FoundUserDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/FoundUserDTO.json
+             */
+            readonly $schema?: string;
+            display_name: string;
+            user_id: string;
+            username: string;
+        };
+        FriendCashbackDTO: {
+            clients: components["schemas"]["FriendSharedClientDTO"][] | null;
+            display_name: string;
+            user_id: string;
+            username: string;
+        };
+        FriendDTO: {
+            display_name: string;
+            /** Format: date-time */
+            since: string;
+            user_id: string;
+            username: string;
+        };
+        FriendOfferDTO: {
+            currency_kind: string;
+            kind: string;
+            percent?: string;
+            points_label?: string;
+            raw_title: string;
+        };
+        FriendPeriodDTO: {
+            /** @description барабан/спец — granted, not chosen */
+            granted: components["schemas"]["FriendOfferDTO"][] | null;
+            /** @description unselected rows — «ты можешь выбрать X» */
+            menu: components["schemas"]["FriendOfferDTO"][] | null;
+            period_end: string;
+            period_start: string;
+            selected: components["schemas"]["FriendOfferDTO"][] | null;
+        };
+        FriendSharedClientDTO: {
+            /** Format: int64 */
+            bank_client_id: number;
+            bank_name: string;
+            holder_label?: string;
+            /** @description periods in the shared window [today .. конец следующего месяца]; empty — ничего не внесено */
+            periods: components["schemas"]["FriendPeriodDTO"][] | null;
+        };
+        "Friends-invite-claimRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Friends-invite-claimRequest.json
+             */
+            readonly $schema?: string;
+            token: string;
+        };
+        "Friends-invite-createResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Friends-invite-createResponse.json
+             */
+            readonly $schema?: string;
+            /** Format: date-time */
+            expires_at: string;
+            id: string;
+            /** @description показывается только здесь — хранится лишь хэш */
+            token: string;
+            /** @description путь ссылки-приглашения; хост добавляет клиент */
+            url: string;
+        };
+        "Friends-request-createRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Friends-request-createRequest.json
+             */
+            readonly $schema?: string;
+            username: string;
+        };
+        "Friends-request-createResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Friends-request-createResponse.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description accepted — встречная заявка уже ждала, вы сразу друзья
+             * @enum {string}
+             */
+            status: "pending" | "accepted";
+        };
+        "Friends-request-listResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Friends-request-listResponse.json
+             */
+            readonly $schema?: string;
+            incoming: components["schemas"]["RequestDTO"][] | null;
+            outgoing: components["schemas"]["RequestDTO"][] | null;
+        };
+        "Friends-sharing-setRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Friends-sharing-setRequest.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            bank_client_id: number;
+            friend_user_id: string;
+            shared: boolean;
+        };
         HelperRowDTO: {
             /** Format: int64 */
             category_offer_id: number;
@@ -1238,6 +1573,13 @@ export interface components {
             raw_title: string;
             selected: boolean;
         };
+        InviteDTO: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            id: string;
+        };
         LookupEntryDTO: {
             /** Format: int64 */
             bank_client_id: number;
@@ -1247,6 +1589,9 @@ export interface components {
             cap_value?: string;
             client_label: string;
             currency_kind: string;
+            /** @description карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда */
+            friend_name?: string;
+            friend_username?: string;
             holder_label?: string;
             kind: string;
             /** @description per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap */
@@ -1503,6 +1848,14 @@ export interface components {
             review_notes?: string[] | null;
             source_images: number[] | null;
         };
+        RequestDTO: {
+            /** Format: date-time */
+            created_at: string;
+            display_name: string;
+            /** Format: int64 */
+            id: number;
+            username: string;
+        };
         ResolveEntryDTO: {
             /** Format: int64 */
             bank_category_id: number;
@@ -1516,6 +1869,11 @@ export interface components {
             kind: string;
             note?: string;
             title: string;
+        };
+        SharingDTO: {
+            /** Format: int64 */
+            bank_client_id: number;
+            friend_user_id: string;
         };
         SlotCandidateDTO: {
             /** Format: int64 */
@@ -2294,6 +2652,35 @@ export interface operations {
             };
         };
     };
+    "cashback-friends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cashback-friendsResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "cashback-helper-context": {
         parameters: {
             query: {
@@ -2944,6 +3331,424 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TierDTO"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-invite-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-invite-create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Friends-invite-createResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-invite-claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Friends-invite-claimRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FoundUserDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-invite-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-request-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Friends-request-listResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-request-create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Friends-request-createRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Friends-request-createResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-request-cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-request-accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-request-decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-search": {
+        parameters: {
+            query?: {
+                username?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FoundUserDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-sharing-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-sharing-set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Friends-sharing-setRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

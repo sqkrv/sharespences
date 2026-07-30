@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import { Btn, Card, Field, Input, ErrMsg } from "../components/ui";
 import DevChip from "../dev/DevChip";
@@ -54,12 +54,16 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const qc = useQueryClient();
   const navigate = useNavigate();
+  // RequireAuth parked the interrupted location here (an invite link must
+  // survive the login round-trip).
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from ?? "/";
 
   const login = useMutation({
     mutationFn: async () => unwrap(await api.POST("/api/v1/auth/login", { body: { email, password } })),
     onSuccess: (user) => {
       qc.setQueryData(["me"], user);
-      navigate("/");
+      navigate(from, { replace: true });
     },
   });
 
@@ -86,7 +90,7 @@ export default function Login() {
           <ErrMsg error={login.error} />
           <p className="text-center text-sm font-medium text-tx3">
             Нет аккаунта?{" "}
-            <Link className="font-semibold text-accl" to="/register">
+            <Link className="font-semibold text-accl" to="/register" state={location.state}>
               Регистрация
             </Link>
           </p>

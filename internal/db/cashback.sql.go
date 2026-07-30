@@ -930,6 +930,122 @@ func (q *Queries) ListOfferPeriodsForUser(ctx context.Context, userID uuid.UUID)
 	return items, nil
 }
 
+const listOffersForClients = `-- name: ListOffersForClients :many
+select co.id                     as category_offer_id,
+       co.raw_title,
+       co.canonical_category_id,
+       co.percent,
+       co.kind,
+       co.cap_value              as offer_cap_value,
+       op.id                     as offer_period_id,
+       op.bank_client_id,
+       op.period_start,
+       op.period_end,
+       op.max_categories_override,
+       cl.label                  as holder_label,
+       b.name                    as bank_name,
+       pt.cap_value,
+       pt.cap_scope              as tier_cap_scope,
+       pt.cap_per_category,
+       pt.max_categories,
+       cp.currency_kind          as program_currency_kind,
+       cp.points_label,
+       coalesce((select cpb.mid_period_add
+                 from cashback_program cpb
+                 where cpb.bank_id = cl.bank_id
+                 limit 1), 'unknown')::cashback_mid_period_add as mid_period_add,
+       coalesce((select cpb.activation
+                 from cashback_program cpb
+                 where cpb.bank_id = cl.bank_id
+                 limit 1), 'unknown')::cashback_activation     as activation,
+       (s.id is not null)::bool  as selected,
+       s.selected_at
+from category_offer co
+         join offer_period op on op.id = co.offer_period_id
+         join bank_client cl on cl.id = op.bank_client_id
+         join bank b on b.id = cl.bank_id
+         left join selection s on s.category_offer_id = co.id
+         left join program_tier pt on pt.id = cl.program_tier_id
+         left join cashback_program cp on cp.id = pt.program_id
+where op.bank_client_id = any ($1::bigint[])
+`
+
+type ListOffersForClientsRow struct {
+	CategoryOfferID       int64
+	RawTitle              string
+	CanonicalCategoryID   *int64
+	Percent               *decimal.Decimal
+	Kind                  CashbackOfferKind
+	OfferCapValue         *decimal.Decimal
+	OfferPeriodID         int64
+	BankClientID          int64
+	PeriodStart           time.Time
+	PeriodEnd             time.Time
+	MaxCategoriesOverride *int32
+	HolderLabel           *string
+	BankName              string
+	CapValue              *decimal.Decimal
+	TierCapScope          NullCashbackCapScope
+	CapPerCategory        *decimal.Decimal
+	MaxCategories         *int32
+	ProgramCurrencyKind   NullCashbackCurrencyKind
+	PointsLabel           *string
+	MidPeriodAdd          CashbackMidPeriodAdd
+	Activation            CashbackActivation
+	Selected              bool
+	SelectedAt            *time.Time
+}
+
+// ListOffersForClients is ListUserOffers keyed by explicit client ids
+// instead of the owner — the friends-sharing read path
+// (docs/specs/friends-sharing.md). The row shape is kept identical on
+// purpose: entryOf and the period filters reuse verbatim. The caller is
+// responsible for passing only GRANTED client ids (the friends module
+// resolves them); this module stays the only reader of cashback tables.
+func (q *Queries) ListOffersForClients(ctx context.Context, clientIds []int64) ([]ListOffersForClientsRow, error) {
+	rows, err := q.db.Query(ctx, listOffersForClients, clientIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOffersForClientsRow
+	for rows.Next() {
+		var i ListOffersForClientsRow
+		if err := rows.Scan(
+			&i.CategoryOfferID,
+			&i.RawTitle,
+			&i.CanonicalCategoryID,
+			&i.Percent,
+			&i.Kind,
+			&i.OfferCapValue,
+			&i.OfferPeriodID,
+			&i.BankClientID,
+			&i.PeriodStart,
+			&i.PeriodEnd,
+			&i.MaxCategoriesOverride,
+			&i.HolderLabel,
+			&i.BankName,
+			&i.CapValue,
+			&i.TierCapScope,
+			&i.CapPerCategory,
+			&i.MaxCategories,
+			&i.ProgramCurrencyKind,
+			&i.PointsLabel,
+			&i.MidPeriodAdd,
+			&i.Activation,
+			&i.Selected,
+			&i.SelectedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOffersForPeriod = `-- name: ListOffersForPeriod :many
 select co.id, co.offer_period_id, co.raw_title, co.canonical_category_id, co.percent, co.kind, co.notes, co.bank_category_id, co.cap_value, s.id as selection_id, s.selected_at
 from category_offer co

@@ -33,6 +33,14 @@ function verdictNote(e: AvailableEntry): string {
 
 const ACTIONABLE = new Set(["free", "paid", "unknown"]);
 
+// «Карты друзей» in the ranking (friends-sharing FR-S4) — persisted under
+// the policy-listed lookup-friends key (privacy.html §3.2). Default on:
+// the shared card is the feature's whole point.
+const FRIENDS_KEY = "lookup-friends";
+function initWithFriends(): boolean {
+  return localStorage.getItem(FRIENDS_KEY) !== "off";
+}
+
 type Mode = "near" | "search" | "cat";
 
 // The design's map placeholder: striped blocks, two «roads», pulsing dot.
@@ -334,6 +342,11 @@ function OtherCardRow({ e }: { e: LookupEntry }) {
         <p className="text-[13px] font-semibold">
           {e.bank_name}
           {e.holder_label && <span className="font-medium text-tx4"> · {e.holder_label}</span>}
+          {e.friend_name && (
+            <span className="ml-1.5 rounded bg-acc/15 px-1 py-[1px] text-[9px] font-bold text-accl">
+              друг · {e.friend_name}
+            </span>
+          )}
           <KindBadge kind={e.kind} />
         </p>
         <p className="text-[10px] font-medium text-tx4">
@@ -357,6 +370,11 @@ export default function Lookup() {
   const [mode, setMode] = useState<Mode>("cat");
   const [slug, setSlug] = useState(preselect);
   const [showAll, setShowAll] = useState(false);
+  const [withFriends, setWithFriendsState] = useState(initWithFriends);
+  const setWithFriends = (v: boolean) => {
+    setWithFriendsState(v);
+    localStorage.setItem(FRIENDS_KEY, v ? "on" : "off");
+  };
 
   // Categories with active selections come first — those are the answers
   // the ones actually tapped mid-month (design 06 shows the common ones).
@@ -404,8 +422,11 @@ export default function Lookup() {
   const mustShow = slug !== "" && cats.findIndex((c) => c.slug === slug) >= 8;
   const shown = showAll || mustShow ? cats : cats.slice(0, 8);
   const selectedCat = cats.find((c) => c.slug === slug);
-  const best = (lookup.data?.ranked ?? [])[0];
-  const others = (lookup.data?.ranked ?? []).slice(1);
+  const rankedAll = lookup.data?.ranked ?? [];
+  const hasFriendCards = rankedAll.some((e) => e.friend_name);
+  const ranked = withFriends ? rankedAll : rankedAll.filter((e) => !e.friend_name);
+  const best = ranked[0];
+  const others = ranked.slice(1);
   // The client's plastics — any of them pays with the shared selection.
   const cardChipsOf = (e: LookupEntry) =>
     (cards.data ?? [])
@@ -479,6 +500,26 @@ export default function Lookup() {
               {lookup.isError && <ErrMsg error={lookup.error} />}
               {lookup.data && (
                 <>
+                  {hasFriendCards && (
+                    <button
+                      type="button"
+                      data-sid="CB-04.h"
+                      onClick={() => setWithFriends(!withFriends)}
+                      className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-[12px] font-semibold transition ${
+                        withFriends ? "border-acc/40 bg-acc/10 text-accl" : "border-brd2 bg-srf2 text-tx3"
+                      }`}
+                    >
+                      Карты друзей в подборе
+                      <span className={`h-5 w-9 flex-none rounded-full p-0.5 transition ${withFriends ? "bg-acc" : "bg-inset"}`}>
+                        <span className={`block h-4 w-4 rounded-full bg-white transition ${withFriends ? "translate-x-4" : ""}`} />
+                      </span>
+                    </button>
+                  )}
+                  {ranked.length === 0 && rankedAll.length > 0 && (
+                    <Card className="p-4 text-center">
+                      <p className="text-sm font-medium text-tx3">Остались только карты друзей — включи их в подбор выше.</p>
+                    </Card>
+                  )}
                   {lookup.data.message ? (
                     <Card className="space-y-1.5 p-4 text-center">
                       <p className="text-sm font-semibold text-tx2">{lookup.data.message}</p>
@@ -497,6 +538,11 @@ export default function Lookup() {
                           <div className="mt-3 flex items-end justify-between">
                             <div className="min-w-0">
                               <p className="text-[22px] leading-none font-extrabold tracking-tight">{best.bank_name}</p>
+                              {best.friend_name && (
+                                <span className="mt-1.5 mr-1 inline-flex rounded-[8px] bg-white/20 px-2 py-0.5 text-[10px] font-bold">
+                                  карта друга · {best.friend_name}
+                                </span>
+                              )}
                               {best.kind === "super" && (
                                 <span className="mt-1.5 inline-flex rounded-[8px] bg-white/20 px-2 py-0.5 text-[10px] font-bold">барабан · суммируется</span>
                               )}
@@ -504,7 +550,9 @@ export default function Lookup() {
                                 <span className="mt-1.5 inline-flex rounded-[8px] bg-white/20 px-2 py-0.5 text-[10px] font-bold">спец · {specialNote(best)}</span>
                               )}
                               <p className="mt-1.5 text-[11px] font-semibold text-white/85">
-                                {[best.holder_label, cardChipsOf(best) || "любая карта"].filter(Boolean).join(" · ")}
+                                {best.friend_name
+                                  ? [best.holder_label, `попроси оплатить — @${best.friend_username}`].filter(Boolean).join(" · ")
+                                  : [best.holder_label, cardChipsOf(best) || "любая карта"].filter(Boolean).join(" · ")}
                               </p>
                               {capNote(best) && (
                                 <span className="mt-2.5 inline-flex rounded-[10px] bg-white/20 px-2.5 py-1 text-[10.5px] font-bold">{capNote(best)}</span>

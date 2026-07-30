@@ -319,6 +319,51 @@ from category_offer co
          left join cashback_program cp on cp.id = pt.program_id
 where cl.user_id = $1;
 
+-- ListOffersForClients is ListUserOffers keyed by explicit client ids
+-- instead of the owner — the friends-sharing read path
+-- (docs/specs/friends-sharing.md). The row shape is kept identical on
+-- purpose: entryOf and the period filters reuse verbatim. The caller is
+-- responsible for passing only GRANTED client ids (the friends module
+-- resolves them); this module stays the only reader of cashback tables.
+-- name: ListOffersForClients :many
+select co.id                     as category_offer_id,
+       co.raw_title,
+       co.canonical_category_id,
+       co.percent,
+       co.kind,
+       co.cap_value              as offer_cap_value,
+       op.id                     as offer_period_id,
+       op.bank_client_id,
+       op.period_start,
+       op.period_end,
+       op.max_categories_override,
+       cl.label                  as holder_label,
+       b.name                    as bank_name,
+       pt.cap_value,
+       pt.cap_scope              as tier_cap_scope,
+       pt.cap_per_category,
+       pt.max_categories,
+       cp.currency_kind          as program_currency_kind,
+       cp.points_label,
+       coalesce((select cpb.mid_period_add
+                 from cashback_program cpb
+                 where cpb.bank_id = cl.bank_id
+                 limit 1), 'unknown')::cashback_mid_period_add as mid_period_add,
+       coalesce((select cpb.activation
+                 from cashback_program cpb
+                 where cpb.bank_id = cl.bank_id
+                 limit 1), 'unknown')::cashback_activation     as activation,
+       (s.id is not null)::bool  as selected,
+       s.selected_at
+from category_offer co
+         join offer_period op on op.id = co.offer_period_id
+         join bank_client cl on cl.id = op.bank_client_id
+         join bank b on b.id = cl.bank_id
+         left join selection s on s.category_offer_id = co.id
+         left join program_tier pt on pt.id = cl.program_tier_id
+         left join cashback_program cp on cp.id = pt.program_id
+where op.bank_client_id = any (sqlc.arg(client_ids)::bigint[]);
+
 -- name: CreatePartnerOffer :one
 insert into partner_offer (user_id, bank_id, bank_client_id, merchant_title, percent,
                            valid_from, valid_to, cap_value, notes)
