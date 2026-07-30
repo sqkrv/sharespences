@@ -899,10 +899,12 @@ export interface components {
              * @example https://example.com/schemas/Auth-registerRequest.json
              */
             readonly $schema?: string;
+            /** @description отображаемое имя, до 64 символов */
             display_name: string;
             /** Format: email */
             email: string;
             password: string;
+            /** @description 3–32 символа: строчные латинские буквы и цифры, «.» и «_» внутри, начинается с буквы */
             username: string;
         };
         AvailableEntryDTO: {

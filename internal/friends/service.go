@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/sqkrv/sharespences/internal/auth"
 	"github.com/sqkrv/sharespences/internal/db"
 )
 
@@ -29,9 +30,12 @@ type RequestOutcome struct {
 	Request  *db.FriendRequest
 }
 
-// Search resolves an exact username (case-insensitive; exact case wins).
+// Search resolves an exact username. The input goes through the same
+// normalizer registration used (case folded, «@» prefix stripped — the login is
+// rendered as «@anna» everywhere, so that is what people paste), which reduces
+// the match to plain equality against the stored canonical form.
 func (s *Service) Search(ctx context.Context, username string) (db.User, error) {
-	u, err := s.Q.GetUserByUsernameCI(ctx, username)
+	u, err := s.Q.GetUserByUsername(ctx, auth.NormalizeUsername(username))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return db.User{}, ErrNotFound
 	}

@@ -4,15 +4,14 @@
 -- stays in cashback.sql (cashback is the only reader of cashback tables) —
 -- this file only resolves WHICH clients are visible to whom.
 
--- name: GetUserByUsernameCI :one
--- Exact match, case-insensitive (user_username_lower_idx). username is
--- unique only case-sensitively, so two rows can differ by case alone —
--- the exact-case row wins then.
+-- name: GetUserByUsername :one
+-- Exact match on the canonical form: usernames are stored lowercase and the
+-- caller normalizes its input the same way (00016_username_rules.sql), so the
+-- unique(username) constraint makes this unambiguous by construction — no
+-- lower() wrapper, no tiebreak between case variants.
 select *
 from "user"
-where lower(username) = lower(sqlc.arg(username))
-order by (username = sqlc.arg(username)) desc
-limit 1;
+where username = $1;
 
 -- name: CreateFriendship :one
 insert into friendship (user_lo, user_hi)

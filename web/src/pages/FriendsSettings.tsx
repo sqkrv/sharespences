@@ -5,6 +5,7 @@ import { api, unwrap, type Friend, type FriendRequest } from "../api/client";
 import { useMe } from "../auth";
 import { useClients, useInvalidateFriends } from "../hooks";
 import { BankBadge, Btn, Card, Empty, ErrMsg, Input, SegTabs, Spinner } from "../components/ui";
+import { USERNAME_MAX, normalizeUsername } from "../lib";
 
 // CB-07 «Друзья и шэринг» (docs/specs/friends-sharing.md FR-S1/S2/S3): the
 // graph management screen. Three cuts: друзья (per-friend grant toggles +
@@ -210,20 +211,26 @@ function RequestsCut() {
           onSubmit={(e) => {
             e.preventDefault();
             setNotice("");
-            setSubmitted(username.trim());
+            // Normalized client-side too, so «@Anna » and «anna» share one
+            // query key instead of caching the same hit under three of them.
+            setSubmitted(normalizeUsername(username));
           }}
         >
           <Input
             placeholder="логин целиком"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            maxLength={USERNAME_MAX + 1}
             required
           />
           <Btn type="submit" variant="soft" disabled={search.isFetching}>
             Найти
           </Btn>
         </form>
-        <p className="text-[10px] font-medium text-tx4">Поиск только по точному логину — по кусочку не найдёт.</p>
+        <p className="text-[10px] font-medium text-tx4">Поиск только по точному логину — по кусочку не найдёт. Регистр и «@» не важны.</p>
         {search.isError && <Empty>Никого не нашлось</Empty>}
         {search.data && (
           <div className="flex items-center gap-2.5 rounded-xl border border-acc/30 bg-acc/5 px-3 py-2.5">
