@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Program, type Tier } from "./api/client";
 
 // The running binary's version (ADR-0006). Public endpoint, and the value
@@ -99,4 +99,17 @@ export function usePeriods() {
     queryKey: ["periods"],
     queryFn: async () => unwrap(await api.GET("/api/v1/cashback/offer-periods")) ?? [],
   });
+}
+
+// One invalidation set for every friend-graph change: the graph, the
+// grants and both cashback views (browse + lookup) move together.
+export function useInvalidateFriends() {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: ["friends"] });
+    qc.invalidateQueries({ queryKey: ["friend-requests"] });
+    qc.invalidateQueries({ queryKey: ["friend-sharing"] });
+    qc.invalidateQueries({ queryKey: ["cashback-friends"] });
+    qc.invalidateQueries({ queryKey: ["lookup"] });
+  };
 }

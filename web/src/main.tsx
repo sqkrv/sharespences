@@ -15,6 +15,9 @@ import PeriodNew from "./pages/PeriodNew";
 import Period from "./pages/Period";
 import Lookup from "./pages/Lookup";
 import Partners from "./pages/Partners";
+import Friends from "./pages/Friends";
+import FriendsSettings from "./pages/FriendsSettings";
+import FriendJoin from "./pages/FriendJoin";
 import Services from "./pages/Services";
 import Stub from "./pages/Stub";
 import "./index.css";
@@ -70,6 +73,9 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/periods/:id" element={<Period />} />
             <Route path="/lookup" element={<Lookup />} />
             <Route path="/partners" element={<Partners />} />
+            <Route path="/friends" element={<Friends />} />
+            <Route path="/friends/settings" element={<FriendsSettings />} />
+            <Route path="/friends/join/:token" element={<FriendJoin />} />
             <Route path="/services" element={<Services />} />
             <Route path="/home" element={<Stub title="Главная" />} />
             <Route path="/groups" element={<Stub title="Группы" />} />

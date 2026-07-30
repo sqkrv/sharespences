@@ -16,6 +16,14 @@ export type PartnerOffer = Schemas["PartnerOfferDTO"];
 export type OfferPeriodItem = Schemas["OfferPeriodListItem"];
 export type RecognitionJob = Schemas["RecognitionJobDTO"];
 export type RecognitionDraft = Schemas["RecognitionDraftDTO"];
+export type Friend = Schemas["FriendDTO"];
+export type FoundUser = Schemas["FoundUserDTO"];
+export type FriendRequest = Schemas["RequestDTO"];
+export type FriendInvite = Schemas["InviteDTO"];
+export type FriendSharing = Schemas["SharingDTO"];
+export type FriendCashback = Schemas["FriendCashbackDTO"];
+export type FriendSharedClient = Schemas["FriendSharedClientDTO"];
+export type FriendOffer = Schemas["FriendOfferDTO"];
 
 // huma error body (ErrorModel)
 type ErrorBody = { title?: string; detail?: string; errors?: { message?: string; location?: string }[] };

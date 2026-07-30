@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import { Btn, Card, Field, Input, ErrMsg, validityProps } from "../components/ui";
 import { BrandMark, LegalFooter } from "./Login";
@@ -10,6 +10,8 @@ export default function Register() {
   const [form, setForm] = useState({ username: "", display_name: "", email: "", password: "" });
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from ?? "/";
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -18,7 +20,7 @@ export default function Register() {
     onSuccess: (user) => {
       // Registration signs in (server sets the session cookie).
       qc.setQueryData(["me"], user);
-      navigate("/");
+      navigate(from, { replace: true });
     },
   });
 
@@ -80,7 +82,7 @@ export default function Register() {
           <ErrMsg error={register.error} />
           <p className="text-center text-sm font-medium text-tx3">
             Уже есть аккаунт?{" "}
-            <Link className="font-semibold text-accl" to="/login">
+            <Link className="font-semibold text-accl" to="/login" state={location.state}>
               Войти
             </Link>
           </p>
