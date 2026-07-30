@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, unwrap, type Friend, type FriendRequest } from "../api/client";
+import { useMe } from "../auth";
 import { useClients, useInvalidateFriends } from "../hooks";
 import { BankBadge, Btn, Card, Empty, ErrMsg, Input, SegTabs, Spinner } from "../components/ui";
 
@@ -150,6 +151,7 @@ function FriendsCut() {
 function RequestsCut() {
   const [username, setUsername] = useState("");
   const [submitted, setSubmitted] = useState("");
+  const me = useMe();
   const invalidate = useInvalidateFriends();
 
   const requests = useQuery({
@@ -230,14 +232,20 @@ function RequestsCut() {
                 {search.data.display_name} <span className="font-medium text-tx4">@{search.data.username}</span>
               </p>
             </div>
-            <Btn
-              variant="soft"
-              className="!px-2.5 !py-1.5 text-xs"
-              disabled={send.isPending}
-              onClick={() => send.mutate(search.data.username)}
-            >
-              Отправить заявку
-            </Btn>
+            {search.data.user_id === me.data?.id ? (
+              // Finding yourself is a dead end only if the button pretends
+              // otherwise — the API would refuse the заявка anyway (422).
+              <span className="rounded-lg bg-inset px-2 py-1 text-[11px] font-semibold text-tx3">это ты</span>
+            ) : (
+              <Btn
+                variant="soft"
+                className="!px-2.5 !py-1.5 text-xs"
+                disabled={send.isPending}
+                onClick={() => send.mutate(search.data.username)}
+              >
+                Отправить заявку
+              </Btn>
+            )}
           </div>
         )}
         <ErrMsg error={send.error} />
@@ -340,10 +348,11 @@ function InvitesCut() {
     <div className="space-y-3" data-sid="CB-07.c">
       <Card className="space-y-2.5 p-4">
         <p className="text-[12px] font-medium text-tx3">
-          Одноразовая ссылка: отправь её в любом мессенджере — кто откроет, тот и станет другом. Действует 7 дней.
+          Одноразовая ссылка: отправь её в любом мессенджере — кто откроет, тот и станет другом. Действует 7
+          дней, живая всегда одна. Потерял ссылку? Просто создай новую — старая перестанет работать.
         </p>
         <Btn className="w-full" disabled={create.isPending} onClick={() => create.mutate()}>
-          Создать ссылку
+          {(invites.data ?? []).length > 0 ? "Создать новую ссылку" : "Создать ссылку"}
         </Btn>
         <ErrMsg error={create.error} />
         {fresh && (
@@ -371,14 +380,21 @@ function InvitesCut() {
       {invites.data &&
         (invites.data.length > 0 ? (
           <div className="space-y-1.5">
-            <p className="mx-0.5 text-[11px] font-semibold text-tx3">Активные приглашения</p>
+            <p className="mx-0.5 text-[11px] font-semibold text-tx3">Живая ссылка</p>
             {invites.data.map((inv) => (
               <div key={inv.id} className="flex items-center gap-2.5 rounded-xl border border-brd bg-srf px-3 py-2.5">
                 <div className="min-w-0 flex-1">
                   <p className="text-[12px] font-semibold text-tx2">
-                    до {new Date(inv.expires_at).toLocaleDateString("ru-RU")}
+                    создана{" "}
+                    {new Date(inv.created_at).toLocaleString("ru-RU", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}{" "}
+                    · до {new Date(inv.expires_at).toLocaleDateString("ru-RU")}
                   </p>
-                  <p className="text-[10px] font-medium text-tx4">ссылку можно увидеть только при создании</p>
+                  <p className="text-[10px] font-medium text-tx4">потерял? создай новую — эта отзовётся сама</p>
                 </div>
                 <Btn
                   variant="danger"
@@ -393,7 +409,7 @@ function InvitesCut() {
             <ErrMsg error={revoke.error} />
           </div>
         ) : (
-          <Empty>Активных приглашений нет</Empty>
+          <Empty>Живой ссылки нет</Empty>
         ))}
     </div>
   );

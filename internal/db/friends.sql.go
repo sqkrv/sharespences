@@ -218,6 +218,20 @@ func (q *Queries) DeleteShare(ctx context.Context, arg DeleteShareParams) (int64
 	return result.RowsAffected(), nil
 }
 
+const deleteUnclaimedInvitesForUser = `-- name: DeleteUnclaimedInvitesForUser :exec
+delete
+from friend_invite
+where created_by_user_id = $1
+  and claimed_at is null
+`
+
+// One live invite per user: creating a new link revokes the previous
+// unclaimed one (claimed rows stay — they are friendship history).
+func (q *Queries) DeleteUnclaimedInvitesForUser(ctx context.Context, createdByUserID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUnclaimedInvitesForUser, createdByUserID)
+	return err
+}
+
 const getFriendshipByPair = `-- name: GetFriendshipByPair :one
 select id, user_lo, user_hi, created_at
 from friendship

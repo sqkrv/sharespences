@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMe, useLogout } from "../auth";
 import { useTheme, type ThemeSetting } from "../theme";
 import { useInstallPrompt } from "../pwa";
@@ -21,6 +22,7 @@ const buildLabel = Number.isNaN(built.getTime())
 export default function Services() {
   const me = useMe();
   const logout = useLogout();
+  const [loginCopied, setLoginCopied] = useState(false);
   const [setting, setSetting] = useTheme();
   const { isStandalone, isIOS, canInstall, install } = useInstallPrompt();
   const [dev, setDev] = useDevMode();
@@ -41,6 +43,26 @@ export default function Services() {
         <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Аккаунт</p>
         <p className="mt-2 text-base font-bold">{me.data?.display_name}</p>
         <p className="text-sm font-medium text-tx3">{me.data?.email}</p>
+        {/* The login is how friends find you (CB-07 searches the exact
+            login and nothing else) — this is its one visible home. */}
+        {me.data?.username && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="rounded-lg bg-inset px-2 py-1 font-mono text-[12.5px] font-semibold text-tx2">
+              @{me.data.username}
+            </span>
+            <button
+              type="button"
+              className="text-[11px] font-semibold text-accl"
+              onClick={async () => {
+                await navigator.clipboard.writeText(me.data!.username);
+                setLoginCopied(true);
+              }}
+            >
+              {loginCopied ? "Скопировано ✓" : "Скопировать"}
+            </button>
+          </div>
+        )}
+        <p className="mt-1 text-[10px] font-medium text-tx4">По логину друзья находят тебя в кешбеке.</p>
         <Btn variant="danger" className="mt-4" onClick={() => logout.mutate()}>
           Выйти
         </Btn>

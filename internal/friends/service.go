@@ -158,16 +158,32 @@ func (s *Service) Unfriend(ctx context.Context, userID, otherID uuid.UUID) error
 }
 
 // CreateInvite mints a one-shot invite link. The plaintext token is
-// returned exactly once; only its hash is stored (invariant 5).
+// returned exactly once; only its hash is stored (invariant 5). One live
+// invite per user: the previous unclaimed link is revoked in the same
+// transaction — «потерял ссылку → создай новую» is the whole recovery
+// story, so the old one must die the moment the new one exists.
 func (s *Service) CreateInvite(ctx context.Context, userID uuid.UUID) (db.FriendInvite, string, error) {
 	token, hash, err := NewInviteToken()
 	if err != nil {
 		return db.FriendInvite{}, "", err
 	}
-	inv, err := s.Q.CreateFriendInvite(ctx, db.CreateFriendInviteParams{
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return db.FriendInvite{}, "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.Q.WithTx(tx)
+
+	if err := q.DeleteUnclaimedInvitesForUser(ctx, userID); err != nil {
+		return db.FriendInvite{}, "", err
+	}
+	inv, err := q.CreateFriendInvite(ctx, db.CreateFriendInviteParams{
 		CreatedByUserID: userID, TokenHash: hash, ExpiresAt: time.Now().Add(InviteTTL),
 	})
 	if err != nil {
+		return db.FriendInvite{}, "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return db.FriendInvite{}, "", err
 	}
 	return inv, token, nil

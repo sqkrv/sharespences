@@ -87,6 +87,14 @@ where id = $1
   and from_user_id = $2
   and status = 'pending';
 
+-- One live invite per user: creating a new link revokes the previous
+-- unclaimed one (claimed rows stay — they are friendship history).
+-- name: DeleteUnclaimedInvitesForUser :exec
+delete
+from friend_invite
+where created_by_user_id = $1
+  and claimed_at is null;
+
 -- name: CreateFriendInvite :one
 insert into friend_invite (created_by_user_id, token_hash, expires_at)
 values ($1, $2, $3)

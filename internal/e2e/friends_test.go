@@ -276,6 +276,21 @@ func TestFriendsE2E(t *testing.T) {
 		t.Fatalf("revoked claim: status %d, want 404", got)
 	}
 
+	// One live invite per user: creating a new link revokes the previous
+	// unclaimed one.
+	var inv4, inv5 inviteCreatedJSON
+	anna.must("POST", "/api/v1/friends/invites", nil, &inv4, http.StatusCreated)
+	anna.must("POST", "/api/v1/friends/invites", nil, &inv5, http.StatusCreated)
+	if got := dima.do("POST", "/api/v1/friends/invites/claim", map[string]any{"token": inv4.Token}, nil); got != http.StatusNotFound {
+		t.Fatalf("superseded claim: status %d, want 404", got)
+	}
+	live = nil
+	anna.must("GET", "/api/v1/friends/invites", nil, &live, http.StatusOK)
+	if len(live) != 1 || live[0].ID != inv5.ID {
+		t.Fatalf("live invites after re-create = %+v, want just the newest", live)
+	}
+	anna.must("DELETE", "/api/v1/friends/invites/"+inv5.ID, nil, nil, http.StatusNoContent)
+
 	// --- Step 5: unfriend ---
 	anna.must("DELETE", "/api/v1/friends/"+borisMe.ID, nil, nil, http.StatusNoContent)
 	boris.must("GET", "/api/v1/friends", nil, &borisFriends, http.StatusOK)
