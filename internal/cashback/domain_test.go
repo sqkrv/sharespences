@@ -779,3 +779,32 @@ func TestSuggestCanonical(t *testing.T) {
 		})
 	}
 }
+
+// TestRankActiveSelectionsWithFriends covers the friends-sharing merge
+// (FR-S4): friend entries rank by percent alongside own ones, and on equal
+// percent the own card wins — the app never sends the user to a friend for
+// nothing (friends-sharing invariant 7).
+func TestRankActiveSelectionsWithFriends(t *testing.T) {
+	entries := []LookupEntry{
+		{ClientID: 1, BankName: "ВТБ", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: 2, BankName: "Альфа-Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, FriendName: "Стас", FriendUsername: "stas"},
+		{ClientID: 3, BankName: "Ozon Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, FriendName: "Стас", FriendUsername: "stas"},
+	}
+
+	got := RankActiveSelections(Date(2026, time.July, 15), entries)
+	if len(got.Ranked) != 3 {
+		t.Fatalf("Ranked has %d entries, want 3", len(got.Ranked))
+	}
+	// The friend's 7% beats the own 5% — a better answer is never buried.
+	if got.Ranked[0].FriendName != "Стас" || got.Ranked[0].BankName != "Альфа-Банк" {
+		t.Errorf("Ranked[0] = %s/%q, want the friend's 7%% Альфа-Банк first", got.Ranked[0].BankName, got.Ranked[0].FriendName)
+	}
+	// 5% tie: own ВТБ before the friend's Ozon Банк, even though «Ozon Банк»
+	// sorts before «ВТБ» by name — own-first outranks the bank-name order.
+	if got.Ranked[1].FriendName != "" || got.Ranked[1].BankName != "ВТБ" {
+		t.Errorf("Ranked[1] = %s/%q, want the own 5%% card on the tie", got.Ranked[1].BankName, got.Ranked[1].FriendName)
+	}
+	if got.Ranked[2].FriendName != "Стас" {
+		t.Errorf("Ranked[2].FriendName = %q, want the friend's 5%% card last", got.Ranked[2].FriendName)
+	}
+}

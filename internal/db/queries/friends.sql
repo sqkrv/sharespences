@@ -138,7 +138,7 @@ where bank_client_id = $1
 -- Grants the user has issued: which of their clients each friend sees.
 select s.bank_client_id,
        f.id                                                       as friendship_id,
-       case when f.user_lo = sqlc.arg(owner_id) then f.user_hi else f.user_lo end as friend_user_id
+       (case when f.user_lo = sqlc.arg(owner_id) then f.user_hi else f.user_lo end)::uuid as friend_user_id
 from friend_cashback_share s
          join friendship f on f.id = s.friendship_id
          join bank_client cl on cl.id = s.bank_client_id

@@ -243,6 +243,72 @@ func (s *Service) ClaimInvite(ctx context.Context, userID uuid.UUID, token strin
 	return s.Q.GetUserByID(ctx, inv.CreatedByUserID)
 }
 
+// SetSharing toggles one grant: friendUserID sees (or stops seeing)
+// bankClientID. Idempotent both ways. A client that isn't the caller's and
+// a user that isn't their friend answer the same ErrNotFound — no probe
+// signal (invariant 1).
+func (s *Service) SetSharing(ctx context.Context, userID uuid.UUID, bankClientID int64, friendUserID uuid.UUID, shared bool) error {
+	if _, err := s.Q.GetBankClientForUser(ctx, db.GetBankClientForUserParams{ID: bankClientID, UserID: userID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	lo, hi := CanonPair(userID, friendUserID)
+	f, err := s.Q.GetFriendshipByPair(ctx, db.GetFriendshipByPairParams{UserLo: lo, UserHi: hi})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if shared {
+		return s.Q.CreateShare(ctx, db.CreateShareParams{BankClientID: bankClientID, FriendshipID: f.ID})
+	}
+	_, err = s.Q.DeleteShare(ctx, db.DeleteShareParams{BankClientID: bankClientID, FriendshipID: f.ID})
+	return err
+}
+
+// ListSharing returns the grants the user has issued.
+func (s *Service) ListSharing(ctx context.Context, userID uuid.UUID) ([]db.ListSharesForOwnerRow, error) {
+	return s.Q.ListSharesForOwner(ctx, userID)
+}
+
+// SharedFriendView is one friend with the client ids they granted the
+// viewer (possibly none). The cashback module receives this via a function
+// value injected at assembly — never a package import (ADR-0002).
+type SharedFriendView struct {
+	UserID        uuid.UUID
+	Username      string
+	DisplayName   string
+	BankClientIDs []int64
+}
+
+// SharedWithMe resolves every friend of the viewer plus what each one
+// currently shares.
+func (s *Service) SharedWithMe(ctx context.Context, viewerID uuid.UUID) ([]SharedFriendView, error) {
+	friendRows, err := s.Q.ListFriendsForUser(ctx, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	shareRows, err := s.Q.ListSharedWithViewer(ctx, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	clientsByOwner := make(map[uuid.UUID][]int64)
+	for _, r := range shareRows {
+		clientsByOwner[r.OwnerUserID] = append(clientsByOwner[r.OwnerUserID], r.BankClientID)
+	}
+	out := make([]SharedFriendView, len(friendRows))
+	for i, f := range friendRows {
+		out[i] = SharedFriendView{
+			UserID: f.UserID, Username: f.Username, DisplayName: f.DisplayName,
+			BankClientIDs: clientsByOwner[f.UserID],
+		}
+	}
+	return out, nil
+}
+
 func isPgCode(err error, code string) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == code

@@ -282,6 +282,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cashback/friends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Кешбек друзей: shared clients' current picture */
+        get: operations["cashback-friends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cashback/helper-context": {
         parameters: {
             query?: never;
@@ -730,6 +747,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/friends/sharing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My grants: which friend sees which bank client */
+        get: operations["friends-sharing-list"];
+        /** Grant or revoke a friend's view of one bank client */
+        put: operations["friends-sharing-set"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/friends/{userId}": {
         parameters: {
             query?: never;
@@ -884,6 +919,9 @@ export interface components {
             cap_value?: string;
             client_label: string;
             currency_kind: string;
+            /** @description карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда */
+            friend_name?: string;
+            friend_username?: string;
             holder_label?: string;
             kind: string;
             /** @description per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap */
@@ -1094,6 +1132,15 @@ export interface components {
             offer_period_id: number;
             percent?: string;
             raw_title: string;
+        };
+        "Cashback-friendsResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Cashback-friendsResponse.json
+             */
+            readonly $schema?: string;
+            friends: components["schemas"]["FriendCashbackDTO"][] | null;
         };
         "Cashback-helper-contextResponse": {
             /**
@@ -1411,12 +1458,39 @@ export interface components {
             user_id: string;
             username: string;
         };
+        FriendCashbackDTO: {
+            clients: components["schemas"]["FriendSharedClientDTO"][] | null;
+            display_name: string;
+            user_id: string;
+            username: string;
+        };
         FriendDTO: {
             display_name: string;
             /** Format: date-time */
             since: string;
             user_id: string;
             username: string;
+        };
+        FriendOfferDTO: {
+            currency_kind: string;
+            kind: string;
+            percent?: string;
+            points_label?: string;
+            raw_title: string;
+        };
+        FriendSharedClientDTO: {
+            /** Format: int64 */
+            bank_client_id: number;
+            bank_name: string;
+            /** @description барабан/спец — granted, not chosen */
+            granted: components["schemas"]["FriendOfferDTO"][] | null;
+            holder_label?: string;
+            /** @description unselected rows — «ты можешь выбрать X» */
+            menu: components["schemas"]["FriendOfferDTO"][] | null;
+            period_end?: string;
+            /** @description absent — нет периода на эту дату */
+            period_start?: string;
+            selected: components["schemas"]["FriendOfferDTO"][] | null;
         };
         "Friends-invite-claimRequest": {
             /**
@@ -1474,6 +1548,18 @@ export interface components {
             incoming: components["schemas"]["RequestDTO"][] | null;
             outgoing: components["schemas"]["RequestDTO"][] | null;
         };
+        "Friends-sharing-setRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Friends-sharing-setRequest.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            bank_client_id: number;
+            friend_user_id: string;
+            shared: boolean;
+        };
         HelperRowDTO: {
             /** Format: int64 */
             category_offer_id: number;
@@ -1500,6 +1586,9 @@ export interface components {
             cap_value?: string;
             client_label: string;
             currency_kind: string;
+            /** @description карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда */
+            friend_name?: string;
+            friend_username?: string;
             holder_label?: string;
             kind: string;
             /** @description per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap */
@@ -1777,6 +1866,11 @@ export interface components {
             kind: string;
             note?: string;
             title: string;
+        };
+        SharingDTO: {
+            /** Format: int64 */
+            bank_client_id: number;
+            friend_user_id: string;
         };
         SlotCandidateDTO: {
             /** Format: int64 */
@@ -2543,6 +2637,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-friends": {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM-DD; defaults to today */
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cashback-friendsResponse"];
+                };
             };
             /** @description Error */
             default: {
@@ -3534,6 +3660,66 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["FoundUserDTO"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-sharing-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "friends-sharing-set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Friends-sharing-setRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

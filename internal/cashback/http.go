@@ -235,6 +235,8 @@ type LookupEntryDTO struct {
 	OfferCapValue  *string `json:"offer_cap_value,omitempty" doc:"per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap"`
 	PeriodStart    string  `json:"period_start"`
 	PeriodEnd      string  `json:"period_end"`
+	FriendName     string  `json:"friend_name,omitempty" doc:"карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда"`
+	FriendUsername string  `json:"friend_username,omitempty"`
 }
 
 func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
@@ -246,6 +248,7 @@ func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 		CapScope: string(e.CapScope), OfferCapValue: decToStr(e.OfferCapValue),
 		PeriodStart: e.Period.Start.Format("2006-01-02"),
 		PeriodEnd:   e.Period.End.Format("2006-01-02"),
+		FriendName:  e.FriendName, FriendUsername: e.FriendUsername,
 	}
 }
 
@@ -1269,4 +1272,97 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		return &struct{ Body RecognitionJobDTO }{job}, nil
 	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-friends", Method: http.MethodGet,
+		Path: "/api/v1/cashback/friends", Summary: "Кешбек друзей: shared clients' current picture", Tags: []string{"cashback"},
+	}, func(ctx context.Context, in *struct {
+		Date string `query:"date" doc:"YYYY-MM-DD; defaults to today"`
+	}) (*struct {
+		Body struct {
+			Friends []FriendCashbackDTO `json:"friends"`
+		}
+	}, error) {
+		onDate := time.Now()
+		if in.Date != "" {
+			d, err := parseDate(in.Date, "date")
+			if err != nil {
+				return nil, err
+			}
+			onDate = d
+		}
+		views, err := s.FriendsOffers(ctx, auth.UserID(ctx), onDate)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		out := &struct {
+			Body struct {
+				Friends []FriendCashbackDTO `json:"friends"`
+			}
+		}{}
+		out.Body.Friends = make([]FriendCashbackDTO, len(views))
+		for i, v := range views {
+			out.Body.Friends[i] = friendCashbackDTO(v)
+		}
+		return out, nil
+	})
+}
+
+// FriendOfferDTO is one row of a friend's shared picture. Deliberately no
+// cap/limit fields — «лимиты не передаются» is a published-policy statement
+// (friends-sharing invariant 4), enforced by shape, not filtering.
+type FriendOfferDTO struct {
+	RawTitle     string  `json:"raw_title"`
+	Percent      *string `json:"percent,omitempty"`
+	Kind         string  `json:"kind"` // regular | super | special — the UI golds барабан/спец
+	CurrencyKind string  `json:"currency_kind"`
+	PointsLabel  string  `json:"points_label,omitempty"`
+}
+
+type FriendSharedClientDTO struct {
+	BankClientID int64            `json:"bank_client_id"`
+	BankName     string           `json:"bank_name"`
+	HolderLabel  string           `json:"holder_label,omitempty"`
+	PeriodStart  *string          `json:"period_start,omitempty" doc:"absent — нет периода на эту дату"`
+	PeriodEnd    *string          `json:"period_end,omitempty"`
+	Selected     []FriendOfferDTO `json:"selected"`
+	Granted      []FriendOfferDTO `json:"granted" doc:"барабан/спец — granted, not chosen"`
+	Menu         []FriendOfferDTO `json:"menu" doc:"unselected rows — «ты можешь выбрать X»"`
+}
+
+type FriendCashbackDTO struct {
+	UserID      uuid.UUID               `json:"user_id"`
+	Username    string                  `json:"username"`
+	DisplayName string                  `json:"display_name"`
+	Clients     []FriendSharedClientDTO `json:"clients"`
+}
+
+func friendCashbackDTO(v FriendView) FriendCashbackDTO {
+	out := FriendCashbackDTO{
+		UserID: v.UserID, Username: v.Username, DisplayName: v.DisplayName,
+		Clients: make([]FriendSharedClientDTO, len(v.Clients)),
+	}
+	offerDTOs := func(rows []FriendOfferView) []FriendOfferDTO {
+		dtos := make([]FriendOfferDTO, len(rows))
+		for i, r := range rows {
+			dtos[i] = FriendOfferDTO{
+				RawTitle: r.RawTitle, Percent: decToStr(r.Percent), Kind: string(r.Kind),
+				CurrencyKind: string(r.CurrencyKind), PointsLabel: r.PointsLabel,
+			}
+		}
+		return dtos
+	}
+	for i, c := range v.Clients {
+		dto := FriendSharedClientDTO{
+			BankClientID: c.BankClientID, BankName: c.BankName, HolderLabel: c.HolderLabel,
+			Selected: offerDTOs(c.Selected), Granted: offerDTOs(c.Granted), Menu: offerDTOs(c.Menu),
+		}
+		if c.Period != nil {
+			start := c.Period.Start.Format("2006-01-02")
+			end := c.Period.End.Format("2006-01-02")
+			dto.PeriodStart, dto.PeriodEnd = &start, &end
+		}
+		out.Clients[i] = dto
+	}
+	return out
 }

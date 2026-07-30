@@ -107,6 +107,13 @@ type InviteDTO struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+// SharingDTO is one issued grant; the UI joins it with bank-client-list and
+// friends-list for display.
+type SharingDTO struct {
+	BankClientID int64     `json:"bank_client_id"`
+	FriendUserID uuid.UUID `json:"friend_user_id"`
+}
+
 // RegisterHTTP mounts the friend-graph operations.
 func RegisterHTTP(api huma.API, s *Service) {
 	// Sized for a human adding friends, not a script walking usernames.
@@ -317,6 +324,38 @@ func RegisterHTTP(api huma.API, s *Service) {
 		ID uuid.UUID `path:"id"`
 	}) (*struct{}, error) {
 		if err := s.DeleteInvite(ctx, auth.UserID(ctx), in.ID); err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{}{}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "friends-sharing-list", Method: http.MethodGet,
+		Path: "/api/v1/friends/sharing", Summary: "My grants: which friend sees which bank client", Tags: []string{"friends"},
+	}, func(ctx context.Context, _ *struct{}) (*struct{ Body []SharingDTO }, error) {
+		rows, err := s.ListSharing(ctx, auth.UserID(ctx))
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		out := make([]SharingDTO, len(rows))
+		for i, r := range rows {
+			out[i] = SharingDTO{BankClientID: r.BankClientID, FriendUserID: r.FriendUserID}
+		}
+		return &struct{ Body []SharingDTO }{out}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "friends-sharing-set", Method: http.MethodPut,
+		Path: "/api/v1/friends/sharing", Summary: "Grant or revoke a friend's view of one bank client", Tags: []string{"friends"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		Body struct {
+			BankClientID int64     `json:"bank_client_id"`
+			FriendUserID uuid.UUID `json:"friend_user_id"`
+			Shared       bool      `json:"shared"`
+		}
+	}) (*struct{}, error) {
+		if err := s.SetSharing(ctx, auth.UserID(ctx), in.Body.BankClientID, in.Body.FriendUserID, in.Body.Shared); err != nil {
 			return nil, httpErr(err)
 		}
 		return &struct{}{}, nil

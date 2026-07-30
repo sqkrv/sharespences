@@ -514,7 +514,7 @@ func (q *Queries) ListSharedWithViewer(ctx context.Context, viewerID uuid.UUID) 
 const listSharesForOwner = `-- name: ListSharesForOwner :many
 select s.bank_client_id,
        f.id                                                       as friendship_id,
-       case when f.user_lo = $1 then f.user_hi else f.user_lo end as friend_user_id
+       (case when f.user_lo = $1 then f.user_hi else f.user_lo end)::uuid as friend_user_id
 from friend_cashback_share s
          join friendship f on f.id = s.friendship_id
          join bank_client cl on cl.id = s.bank_client_id
@@ -524,7 +524,7 @@ where cl.user_id = $1
 type ListSharesForOwnerRow struct {
 	BankClientID int64
 	FriendshipID int64
-	FriendUserID interface{}
+	FriendUserID uuid.UUID
 }
 
 // Grants the user has issued: which of their clients each friend sees.

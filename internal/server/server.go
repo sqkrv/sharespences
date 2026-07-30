@@ -117,6 +117,22 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 	cbSvc := &cashback.Service{Q: q, RemoveAttachmentFile: store.Remove, ReadAttachmentFile: store.Open, Vision: cfg.Vision}
 	mccSvc := &mcc.Service{Q: q}
 	frSvc := &friends.Service{Q: q, Pool: cfg.Pool}
+	// The one function value crossing the friends→cashback seam (ADR-0002:
+	// injected here at the composition root, never a package import).
+	cbSvc.ListSharedWithMe = func(ctx context.Context, viewerID uuid.UUID) ([]cashback.SharedFriend, error) {
+		rows, err := frSvc.SharedWithMe(ctx, viewerID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]cashback.SharedFriend, len(rows))
+		for i, r := range rows {
+			out[i] = cashback.SharedFriend{
+				UserID: r.UserID, Username: r.Username, DisplayName: r.DisplayName,
+				BankClientIDs: r.BankClientIDs,
+			}
+		}
+		return out, nil
+	}
 
 	registerVersion(api, apiVersion)
 	registerAuth(api, sm, authSvc)
