@@ -289,7 +289,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Кешбек друзей: shared clients' current picture */
+        /** Кешбек друзей: shared clients' window (current + next month) */
         get: operations["cashback-friends"];
         put?: never;
         post?: never;
@@ -1478,19 +1478,22 @@ export interface components {
             points_label?: string;
             raw_title: string;
         };
+        FriendPeriodDTO: {
+            /** @description барабан/спец — granted, not chosen */
+            granted: components["schemas"]["FriendOfferDTO"][] | null;
+            /** @description unselected rows — «ты можешь выбрать X» */
+            menu: components["schemas"]["FriendOfferDTO"][] | null;
+            period_end: string;
+            period_start: string;
+            selected: components["schemas"]["FriendOfferDTO"][] | null;
+        };
         FriendSharedClientDTO: {
             /** Format: int64 */
             bank_client_id: number;
             bank_name: string;
-            /** @description барабан/спец — granted, not chosen */
-            granted: components["schemas"]["FriendOfferDTO"][] | null;
             holder_label?: string;
-            /** @description unselected rows — «ты можешь выбрать X» */
-            menu: components["schemas"]["FriendOfferDTO"][] | null;
-            period_end?: string;
-            /** @description absent — нет периода на эту дату */
-            period_start?: string;
-            selected: components["schemas"]["FriendOfferDTO"][] | null;
+            /** @description periods in the shared window [today .. конец следующего месяца]; empty — ничего не внесено */
+            periods: components["schemas"]["FriendPeriodDTO"][] | null;
         };
         "Friends-invite-claimRequest": {
             /**
@@ -2651,10 +2654,7 @@ export interface operations {
     };
     "cashback-friends": {
         parameters: {
-            query?: {
-                /** @description YYYY-MM-DD; defaults to today */
-                date?: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;

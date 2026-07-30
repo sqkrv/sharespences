@@ -1275,23 +1275,16 @@ func RegisterHTTP(api huma.API, s *Service) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "cashback-friends", Method: http.MethodGet,
-		Path: "/api/v1/cashback/friends", Summary: "Кешбек друзей: shared clients' current picture", Tags: []string{"cashback"},
-	}, func(ctx context.Context, in *struct {
-		Date string `query:"date" doc:"YYYY-MM-DD; defaults to today"`
-	}) (*struct {
+		Path: "/api/v1/cashback/friends", Summary: "Кешбек друзей: shared clients' window (current + next month)", Tags: []string{"cashback"},
+		// No date parameter on purpose (invariant 8): the shared window is
+		// [today .. end of next month] from SERVER time — a caller-supplied
+		// date must never page a friend's history.
+	}, func(ctx context.Context, _ *struct{}) (*struct {
 		Body struct {
 			Friends []FriendCashbackDTO `json:"friends"`
 		}
 	}, error) {
-		onDate := time.Now()
-		if in.Date != "" {
-			d, err := parseDate(in.Date, "date")
-			if err != nil {
-				return nil, err
-			}
-			onDate = d
-		}
-		views, err := s.FriendsOffers(ctx, auth.UserID(ctx), onDate)
+		views, err := s.FriendsOffers(ctx, auth.UserID(ctx), time.Now())
 		if err != nil {
 			return nil, httpErr(err)
 		}
@@ -1319,15 +1312,21 @@ type FriendOfferDTO struct {
 	PointsLabel  string  `json:"points_label,omitempty"`
 }
 
+// FriendPeriodDTO is one period inside the shared window — the current one
+// and anything reaching into next month (invariant 8), earliest first.
+type FriendPeriodDTO struct {
+	PeriodStart string           `json:"period_start"`
+	PeriodEnd   string           `json:"period_end"`
+	Selected    []FriendOfferDTO `json:"selected"`
+	Granted     []FriendOfferDTO `json:"granted" doc:"барабан/спец — granted, not chosen"`
+	Menu        []FriendOfferDTO `json:"menu" doc:"unselected rows — «ты можешь выбрать X»"`
+}
+
 type FriendSharedClientDTO struct {
-	BankClientID int64            `json:"bank_client_id"`
-	BankName     string           `json:"bank_name"`
-	HolderLabel  string           `json:"holder_label,omitempty"`
-	PeriodStart  *string          `json:"period_start,omitempty" doc:"absent — нет периода на эту дату"`
-	PeriodEnd    *string          `json:"period_end,omitempty"`
-	Selected     []FriendOfferDTO `json:"selected"`
-	Granted      []FriendOfferDTO `json:"granted" doc:"барабан/спец — granted, not chosen"`
-	Menu         []FriendOfferDTO `json:"menu" doc:"unselected rows — «ты можешь выбрать X»"`
+	BankClientID int64             `json:"bank_client_id"`
+	BankName     string            `json:"bank_name"`
+	HolderLabel  string            `json:"holder_label,omitempty"`
+	Periods      []FriendPeriodDTO `json:"periods" doc:"periods in the shared window [today .. конец следующего месяца]; empty — ничего не внесено"`
 }
 
 type FriendCashbackDTO struct {
@@ -1355,12 +1354,14 @@ func friendCashbackDTO(v FriendView) FriendCashbackDTO {
 	for i, c := range v.Clients {
 		dto := FriendSharedClientDTO{
 			BankClientID: c.BankClientID, BankName: c.BankName, HolderLabel: c.HolderLabel,
-			Selected: offerDTOs(c.Selected), Granted: offerDTOs(c.Granted), Menu: offerDTOs(c.Menu),
+			Periods: make([]FriendPeriodDTO, len(c.Periods)),
 		}
-		if c.Period != nil {
-			start := c.Period.Start.Format("2006-01-02")
-			end := c.Period.End.Format("2006-01-02")
-			dto.PeriodStart, dto.PeriodEnd = &start, &end
+		for j, p := range c.Periods {
+			dto.Periods[j] = FriendPeriodDTO{
+				PeriodStart: p.Period.Start.Format("2006-01-02"),
+				PeriodEnd:   p.Period.End.Format("2006-01-02"),
+				Selected:    offerDTOs(p.Selected), Granted: offerDTOs(p.Granted), Menu: offerDTOs(p.Menu),
+			}
 		}
 		out.Clients[i] = dto
 	}

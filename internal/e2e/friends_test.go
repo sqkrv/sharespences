@@ -376,12 +376,16 @@ func TestFriendsE2E(t *testing.T) {
 	now := time.Now()
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
 	monthEnd := monthStart.AddDate(0, 1, -1)
-	period := func(c *client, clientID int64) int64 {
+	prevStart := monthStart.AddDate(0, -1, 0)
+	prevEnd := monthStart.AddDate(0, 0, -1)
+	nextStart := monthStart.AddDate(0, 1, 0)
+	nextEnd := monthStart.AddDate(0, 2, -1)
+	period := func(c *client, clientID int64, start, end time.Time) int64 {
 		var p periodJSON
 		c.must("POST", "/api/v1/cashback/offer-periods", map[string]any{
 			"bank_client_id": clientID,
-			"period_start":   monthStart.Format("2006-01-02"),
-			"period_end":     monthEnd.Format("2006-01-02"),
+			"period_start":   start.Format("2006-01-02"),
+			"period_end":     end.Format("2006-01-02"),
 		}, &p, http.StatusCreated)
 		return p.ID
 	}
@@ -394,18 +398,27 @@ func TestFriendsE2E(t *testing.T) {
 		c.must("POST", "/api/v1/cashback/category-offers", body, &o, http.StatusCreated)
 		return o.ID
 	}
-	sel := func(c *client, offerID int64) {
+	selAt := func(c *client, offerID int64, at time.Time) {
 		c.must("POST", "/api/v1/cashback/selections",
-			map[string]any{"category_offer_id": offerID, "selected_at": now.Format(time.RFC3339)}, nil, http.StatusCreated)
+			map[string]any{"category_offer_id": offerID, "selected_at": at.Format(time.RFC3339)}, nil, http.StatusCreated)
 	}
+	sel := func(c *client, offerID int64) { selAt(c, offerID, now) }
 
-	annaPeriod := period(anna, annaOwn.ID)
+	annaPeriod := period(anna, annaOwn.ID, monthStart, monthEnd)
 	annaSuper := addOffer(anna, annaPeriod, "Супермаркеты", "7", "regular", catID("supermarkets"))
 	sel(anna, annaSuper)
 	annaDrum := addOffer(anna, annaPeriod, "Барабан: Такси", "10", "super", catID("taxi"))
 	sel(anna, annaDrum)
 	addOffer(anna, annaPeriod, "Рестораны", "3", "regular", catID("restaurants"))
-	mamaPeriod := period(anna, annaMama.ID)
+	// History and the coordination window: last month must never reach a
+	// friend (invariant 8), next month must.
+	annaPast := period(anna, annaOwn.ID, prevStart, prevEnd)
+	pastOffer := addOffer(anna, annaPast, "Архивные Супермаркеты", "9", "regular", catID("supermarkets"))
+	selAt(anna, pastOffer, prevStart.AddDate(0, 0, 9))
+	annaNext := period(anna, annaOwn.ID, nextStart, nextEnd)
+	nextTaxi := addOffer(anna, annaNext, "Такси", "8", "regular", catID("taxi"))
+	selAt(anna, nextTaxi, nextStart)
+	mamaPeriod := period(anna, annaMama.ID, monthStart, monthEnd)
 	mamaPharm := addOffer(anna, mamaPeriod, "Аптеки", "5", "regular", catID("pharmacies"))
 	sel(anna, mamaPharm)
 
@@ -475,17 +488,33 @@ func TestFriendsE2E(t *testing.T) {
 		t.Fatalf("granted clients = %+v, want just the own Альфа-Банк client", annaEntry.Clients)
 	}
 	cl := annaEntry.Clients[0]
-	if cl.BankName != "Альфа-Банк" || cl.PeriodStart == nil {
-		t.Fatalf("client view = %+v, want Альфа-Банк with a current period", cl)
+	if cl.BankName != "Альфа-Банк" || len(cl.Periods) != 2 {
+		t.Fatalf("client view = %+v, want Альфа-Банк with exactly the current + next periods", cl)
 	}
-	if len(cl.Selected) != 1 || cl.Selected[0].RawTitle != "Супермаркеты" || *cl.Selected[0].Percent != "7" {
-		t.Fatalf("selected = %+v, want [Супермаркеты 7]", cl.Selected)
+	cur, next := cl.Periods[0], cl.Periods[1]
+	if cur.PeriodStart != monthStart.Format("2006-01-02") || next.PeriodStart != nextStart.Format("2006-01-02") {
+		t.Fatalf("period order = [%s, %s], want current then next", cur.PeriodStart, next.PeriodStart)
 	}
-	if len(cl.Granted) != 1 || cl.Granted[0].Kind != "super" {
-		t.Fatalf("granted = %+v, want the super барабан row", cl.Granted)
+	if len(cur.Selected) != 1 || cur.Selected[0].RawTitle != "Супермаркеты" || *cur.Selected[0].Percent != "7" {
+		t.Fatalf("current selected = %+v, want [Супермаркеты 7]", cur.Selected)
 	}
-	if len(cl.Menu) != 1 || cl.Menu[0].RawTitle != "Рестораны" {
-		t.Fatalf("menu = %+v, want the unselected Рестораны row", cl.Menu)
+	if len(cur.Granted) != 1 || cur.Granted[0].Kind != "super" {
+		t.Fatalf("current granted = %+v, want the super барабан row", cur.Granted)
+	}
+	if len(cur.Menu) != 1 || cur.Menu[0].RawTitle != "Рестораны" {
+		t.Fatalf("current menu = %+v, want the unselected Рестораны row", cur.Menu)
+	}
+	if len(next.Selected) != 1 || next.Selected[0].RawTitle != "Такси" {
+		t.Fatalf("next-month selected = %+v, want [Такси 8]", next.Selected)
+	}
+	// Invariant 8: last month is history — absent from the payload, and a
+	// date query cannot page back to it (the param is not part of the op).
+	if strings.Contains(raw, "Архивные") {
+		t.Fatalf("friend browse leaks history:\n%s", raw)
+	}
+	rawProbe := rawGet(t, boris, "/api/v1/cashback/friends?date="+prevStart.AddDate(0, 0, 9).Format("2006-01-02"))
+	if strings.Contains(rawProbe, "Архивные") {
+		t.Fatal("date query paged a friend's history")
 	}
 
 	// --- Direction independence: anna's view of boris stays empty ---
@@ -500,7 +529,7 @@ func TestFriendsE2E(t *testing.T) {
 	boris.must("POST", "/api/v1/bank-clients", map[string]any{
 		"bank_id": alfaProgram.BankID, "program_tier_id": smart.ID,
 	}, &borisClient, http.StatusCreated)
-	borisPeriod := period(boris, borisClient.ID)
+	borisPeriod := period(boris, borisClient.ID, monthStart, monthEnd)
 	borisSuper := addOffer(boris, borisPeriod, "Продукты", "5", "regular", catID("supermarkets"))
 	sel(boris, borisSuper)
 
@@ -544,6 +573,27 @@ func TestFriendsE2E(t *testing.T) {
 	boris.must("GET", "/api/v1/cashback/lookup?category=supermarkets", nil, &lookup, http.StatusOK)
 	if len(lookup.Fallback) != 0 {
 		t.Fatalf("fallback = %+v, want empty (friends' base rates stay personal)", lookup.Fallback)
+	}
+
+	// --- Invariant 8 in lookup: the date param picks a day WITHIN the
+	// shared window, never history ---
+	// Last month: anna's Архивные Супермаркеты 9% is selected there, but the
+	// window starts today — no friend entry, even with the date pointing in.
+	lookup = friendLookupJSON{}
+	boris.must("GET", "/api/v1/cashback/lookup?category=supermarkets&date="+prevStart.AddDate(0, 0, 9).Format("2006-01-02"),
+		nil, &lookup, http.StatusOK)
+	for _, e := range lookup.Ranked {
+		if e.FriendName != "" {
+			t.Fatalf("friend entry ranked in a past month: %+v", e)
+		}
+	}
+	// Next month: anna's Такси 8% (next period) is inside the window and
+	// ranks; her current-month барабан does not (its period ends first).
+	lookup = friendLookupJSON{}
+	boris.must("GET", "/api/v1/cashback/lookup?category=taxi&date="+nextStart.AddDate(0, 0, 9).Format("2006-01-02"),
+		nil, &lookup, http.StatusOK)
+	if len(lookup.Ranked) != 1 || lookup.Ranked[0].FriendName != "Аня" || *lookup.Ranked[0].Percent != "8" {
+		t.Fatalf("next-month lookup = %+v, want the friend's Такси 8%%", lookup.Ranked)
 	}
 
 	// --- Unfriend revokes the grants by cascade; re-friending resurrects
@@ -597,14 +647,19 @@ type friendBrowseOffer struct {
 	Kind     string  `json:"kind"`
 }
 
+type friendBrowsePeriod struct {
+	PeriodStart string              `json:"period_start"`
+	PeriodEnd   string              `json:"period_end"`
+	Selected    []friendBrowseOffer `json:"selected"`
+	Granted     []friendBrowseOffer `json:"granted"`
+	Menu        []friendBrowseOffer `json:"menu"`
+}
+
 type friendBrowseClient struct {
-	BankClientID int64               `json:"bank_client_id"`
-	BankName     string              `json:"bank_name"`
-	HolderLabel  string              `json:"holder_label"`
-	PeriodStart  *string             `json:"period_start"`
-	Selected     []friendBrowseOffer `json:"selected"`
-	Granted      []friendBrowseOffer `json:"granted"`
-	Menu         []friendBrowseOffer `json:"menu"`
+	BankClientID int64                `json:"bank_client_id"`
+	BankName     string               `json:"bank_name"`
+	HolderLabel  string               `json:"holder_label"`
+	Periods      []friendBrowsePeriod `json:"periods"`
 }
 
 type friendBrowseEntry struct {

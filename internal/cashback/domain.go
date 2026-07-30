@@ -131,6 +131,16 @@ func (r DateRange) Contains(t time.Time) bool {
 	return !d.Before(dateOnly(r.Start)) && !d.After(dateOnly(r.End))
 }
 
+// FriendShareWindow bounds what a granted friend can read (friends-sharing
+// invariant 8): periods overlapping [today .. the end of next month] — the
+// current picture plus the next-month coordination window (menus are
+// entered around the 25th), never history. Always computed from server
+// time; a request's date can narrow the friend view, not widen it.
+func FriendShareWindow(now time.Time) DateRange {
+	endOfNext := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 2, -1)
+	return DateRange{Start: dateOnly(now), End: endOfNext}
+}
+
 // Overlaps reports whether two inclusive ranges share at least one day.
 // Overlap is computed on date ranges regardless of period kind, so a МКБ
 // quarter collides with an Альфа-Банк month (S5).

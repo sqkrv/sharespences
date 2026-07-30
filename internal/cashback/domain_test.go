@@ -808,3 +808,35 @@ func TestRankActiveSelectionsWithFriends(t *testing.T) {
 		t.Errorf("Ranked[2].FriendName = %q, want the friend's 5%% card last", got.Ranked[2].FriendName)
 	}
 }
+
+// TestFriendShareWindow covers friends-sharing invariant 8: a granted
+// friend reads periods overlapping [today .. the end of next month] — the
+// current picture plus the next-month coordination window, never history.
+func TestFriendShareWindow(t *testing.T) {
+	cases := []struct {
+		name      string
+		now       time.Time
+		wantStart time.Time
+		wantEnd   time.Time
+	}{
+		{"mid-month", Date(2026, time.July, 15), Date(2026, time.July, 15), Date(2026, time.August, 31)},
+		{"year boundary", Date(2026, time.December, 31), Date(2026, time.December, 31), Date(2027, time.January, 31)},
+		{"into a leap February", Date(2028, time.January, 1), Date(2028, time.January, 1), Date(2028, time.February, 29)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FriendShareWindow(tc.now)
+			if !got.Start.Equal(tc.wantStart) || !got.End.Equal(tc.wantEnd) {
+				t.Fatalf("FriendShareWindow(%s) = [%s .. %s], want [%s .. %s]",
+					tc.now.Format("2006-01-02"), got.Start.Format("2006-01-02"), got.End.Format("2006-01-02"),
+					tc.wantStart.Format("2006-01-02"), tc.wantEnd.Format("2006-01-02"))
+			}
+		})
+	}
+	// The window must never reach into the past: a period that ended
+	// yesterday is history.
+	w := FriendShareWindow(Date(2026, time.August, 1))
+	if w.Overlaps(DateRange{Start: Date(2026, time.July, 1), End: Date(2026, time.July, 31)}) {
+		t.Fatal("window overlaps last month")
+	}
+}

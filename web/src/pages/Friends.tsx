@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { api, unwrap, type FriendCashback, type FriendOffer, type FriendSharedClient } from "../api/client";
+import { api, unwrap, type FriendCashback, type FriendOffer, type FriendPeriod, type FriendSharedClient } from "../api/client";
 import { BankBadge, Btn, Card, Empty, ErrMsg, Pct, Spinner } from "../components/ui";
-import { currencyBadge, fmtRange } from "../lib";
+import { coversToday, currencyBadge, fmtRange } from "../lib";
 
 // CB-06 «Кешбек друзей» (docs/specs/friends-sharing.md FR-S3): a read-only
 // window into each friend's shared clients — selected chips, gold chips for
@@ -28,25 +28,23 @@ function OfferChip({ o, gold = false }: { o: FriendOffer; gold?: boolean }) {
   );
 }
 
-function ClientCard({ c }: { c: FriendSharedClient }) {
+// PeriodBlock renders one period of the shared window: chips + the
+// collapsible unselected menu. Друзья see the current period and next
+// month's, nothing further (invariant 8) — the future one is marked.
+function PeriodBlock({ p }: { p: FriendPeriod }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const menu = c.menu ?? [];
-  const selected = c.selected ?? [];
-  const granted = c.granted ?? [];
+  const menu = p.menu ?? [];
+  const selected = p.selected ?? [];
+  const granted = p.granted ?? [];
+  const current = coversToday(p.period_start, p.period_end);
   return (
-    <div className="space-y-2 rounded-xl border border-brd2 bg-srf2/50 p-3">
-      <div className="flex items-center gap-2.5">
-        <BankBadge name={c.bank_name} size={26} />
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-bold">
-            {c.bank_name}
-            {c.holder_label && <span className="font-medium text-tx4"> · {c.holder_label}</span>}
-          </p>
-          <p className="text-[10px] font-medium text-tx4">
-            {c.period_start && c.period_end ? fmtRange(c.period_start, c.period_end) : "нет периода на эту дату"}
-          </p>
-        </div>
-      </div>
+    <div className="space-y-1.5">
+      <p className="text-[10px] font-medium text-tx4">
+        {fmtRange(p.period_start, p.period_end)}
+        {!current && (
+          <span className="ml-1.5 rounded bg-acc/15 px-1 py-[1px] text-[9px] font-bold text-accl">следующий</span>
+        )}
+      </p>
       {selected.length + granted.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
           {selected.map((o, i) => (
@@ -57,7 +55,7 @@ function ClientCard({ c }: { c: FriendSharedClient }) {
           ))}
         </div>
       ) : (
-        c.period_start && <p className="text-[11px] font-medium text-tx4">Категории пока не выбраны</p>
+        <p className="text-[11px] font-medium text-tx4">Категории пока не выбраны</p>
       )}
       {menu.length > 0 && (
         <div>
@@ -82,6 +80,26 @@ function ClientCard({ c }: { c: FriendSharedClient }) {
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function ClientCard({ c }: { c: FriendSharedClient }) {
+  const periods = c.periods ?? [];
+  return (
+    <div className="space-y-2 rounded-xl border border-brd2 bg-srf2/50 p-3">
+      <div className="flex items-center gap-2.5">
+        <BankBadge name={c.bank_name} size={26} />
+        <p className="min-w-0 flex-1 text-[13px] font-bold">
+          {c.bank_name}
+          {c.holder_label && <span className="font-medium text-tx4"> · {c.holder_label}</span>}
+        </p>
+      </div>
+      {periods.length > 0 ? (
+        periods.map((p, i) => <PeriodBlock key={i} p={p} />)
+      ) : (
+        <p className="text-[11px] font-medium text-tx4">Периоды пока не внесены</p>
       )}
     </div>
   );

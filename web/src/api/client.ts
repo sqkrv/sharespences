@@ -24,6 +24,7 @@ export type FriendSharing = Schemas["SharingDTO"];
 export type FriendCashback = Schemas["FriendCashbackDTO"];
 export type FriendSharedClient = Schemas["FriendSharedClientDTO"];
 export type FriendOffer = Schemas["FriendOfferDTO"];
+export type FriendPeriod = Schemas["FriendPeriodDTO"];
 
 // huma error body (ErrorModel)
 type ErrorBody = { title?: string; detail?: string; errors?: { message?: string; location?: string }[] };

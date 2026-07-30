@@ -42,15 +42,23 @@ type FriendOfferView struct {
 	Selected     bool
 }
 
-// FriendClientView is one shared client's current-period picture.
+// FriendPeriodView is one period inside the shared window, with its rows
+// split into the three chip groups.
+type FriendPeriodView struct {
+	Period   DateRange
+	Selected []FriendOfferView // chosen regular rows
+	Granted  []FriendOfferView // marked super/special rows (gold chips)
+	Menu     []FriendOfferView // unselected rows — «ты можешь выбрать X»
+}
+
+// FriendClientView is one shared client's picture inside the shared window
+// (invariant 8): the current period plus anything reaching into next month
+// — the ritual's coordination horizon. Never history.
 type FriendClientView struct {
 	BankClientID int64
 	BankName     string
 	HolderLabel  string
-	Period       *DateRange        // nil — no period covers the date
-	Selected     []FriendOfferView // chosen regular rows
-	Granted      []FriendOfferView // marked super/special rows (gold chips)
-	Menu         []FriendOfferView // unselected rows — «ты можешь выбрать X»
+	Periods      []FriendPeriodView // window periods, earliest first; empty — nothing shared yet
 }
 
 // FriendView groups one friend's shared clients.
@@ -62,12 +70,14 @@ type FriendView struct {
 }
 
 // FriendsOffers builds the browse payload (CB-06): every friend appears,
-// zero-client friends included.
-func (s *Service) FriendsOffers(ctx context.Context, viewerID uuid.UUID, onDate time.Time) ([]FriendView, error) {
+// zero-client friends included. `now` is server time — the shared window
+// derives from it and from nothing the caller sends.
+func (s *Service) FriendsOffers(ctx context.Context, viewerID uuid.UUID, now time.Time) ([]FriendView, error) {
 	friends, rows, err := s.sharedRows(ctx, viewerID)
 	if err != nil {
 		return nil, err
 	}
+	window := FriendShareWindow(now)
 	byClient := make(map[int64][]db.ListOffersForClientsRow)
 	for _, r := range rows {
 		byClient[r.BankClientID] = append(byClient[r.BankClientID], r)
@@ -79,33 +89,41 @@ func (s *Service) FriendsOffers(ctx context.Context, viewerID uuid.UUID, onDate 
 			Clients: []FriendClientView{},
 		}
 		for _, clientID := range f.BankClientIDs {
-			v.Clients = append(v.Clients, friendClientView(clientID, byClient[clientID], onDate))
+			v.Clients = append(v.Clients, friendClientView(clientID, byClient[clientID], window))
 		}
 		out[i] = v
 	}
 	return out, nil
 }
 
-// friendClientView filters one client's rows to the period covering onDate
-// and splits them into the three chip groups.
-func friendClientView(clientID int64, rows []db.ListOffersForClientsRow, onDate time.Time) FriendClientView {
+// friendClientView keeps only the periods overlapping the shared window and
+// splits each into the three chip groups.
+func friendClientView(clientID int64, rows []db.ListOffersForClientsRow, window DateRange) FriendClientView {
 	v := FriendClientView{
 		BankClientID: clientID,
-		Selected:     []FriendOfferView{},
-		Granted:      []FriendOfferView{},
-		Menu:         []FriendOfferView{},
+		Periods:      []FriendPeriodView{},
 	}
+	// Indexes, not pointers: appending to v.Periods may reallocate its
+	// backing array, which would strand any *FriendPeriodView taken earlier.
+	byPeriod := make(map[int64]int)
 	for _, r := range rows {
-		// Bank/держатель render even when no period covers the date.
+		// Bank/держатель render even when no period falls in the window.
 		v.BankName = r.BankName
 		v.HolderLabel = holderOf(r.HolderLabel)
 		period := rowRange(r.PeriodStart, r.PeriodEnd)
-		if !period.Contains(onDate) {
+		if !period.Overlaps(window) {
 			continue
 		}
-		if v.Period == nil {
-			p := period
-			v.Period = &p
+		idx, ok := byPeriod[r.OfferPeriodID]
+		if !ok {
+			idx = len(v.Periods)
+			byPeriod[r.OfferPeriodID] = idx
+			v.Periods = append(v.Periods, FriendPeriodView{
+				Period:   period,
+				Selected: []FriendOfferView{},
+				Granted:  []FriendOfferView{},
+				Menu:     []FriendOfferView{},
+			})
 		}
 		row := FriendOfferView{
 			RawTitle:     r.RawTitle,
@@ -117,32 +135,41 @@ func friendClientView(clientID int64, rows []db.ListOffersForClientsRow, onDate 
 		if r.PointsLabel != nil {
 			row.PointsLabel = *r.PointsLabel
 		}
+		p := &v.Periods[idx]
 		switch {
 		case r.Selected && row.Kind == OfferRegular:
-			v.Selected = append(v.Selected, row)
+			p.Selected = append(p.Selected, row)
 		case r.Selected:
-			v.Granted = append(v.Granted, row)
+			p.Granted = append(p.Granted, row)
 		default:
-			v.Menu = append(v.Menu, row)
+			p.Menu = append(p.Menu, row)
 		}
 	}
+	sort.SliceStable(v.Periods, func(i, j int) bool { return v.Periods[i].Period.Start.Before(v.Periods[j].Period.Start) })
 	byPercentDesc := func(s []FriendOfferView) func(i, j int) bool {
 		return func(i, j int) bool { return cmpPercentDesc(s[i].Percent, s[j].Percent) < 0 }
 	}
-	sort.SliceStable(v.Selected, byPercentDesc(v.Selected))
-	sort.SliceStable(v.Granted, byPercentDesc(v.Granted))
-	sort.SliceStable(v.Menu, byPercentDesc(v.Menu))
+	for i := range v.Periods {
+		sort.SliceStable(v.Periods[i].Selected, byPercentDesc(v.Periods[i].Selected))
+		sort.SliceStable(v.Periods[i].Granted, byPercentDesc(v.Periods[i].Granted))
+		sort.SliceStable(v.Periods[i].Menu, byPercentDesc(v.Periods[i].Menu))
+	}
 	return v
 }
 
 // friendLookupEntries returns friends' SELECTED rows of one category as
 // rankable entries — never Available (verdicts are owner actions), never
 // the fallback (base rates stay personal), caps cleared (invariant 4).
+// Entries outside the shared window are dropped here (invariant 8): the
+// lookup date param may pick a day WITHIN the window (e.g. next month's
+// coordination), but can never reach history — the window itself derives
+// from server time.
 func (s *Service) friendLookupEntries(ctx context.Context, viewerID uuid.UUID, categoryID int64) ([]LookupEntry, error) {
 	friends, rows, err := s.sharedRows(ctx, viewerID)
 	if err != nil {
 		return nil, err
 	}
+	window := FriendShareWindow(time.Now())
 	owner := make(map[int64]*SharedFriend)
 	for i := range friends {
 		for _, id := range friends[i].BankClientIDs {
@@ -152,6 +179,9 @@ func (s *Service) friendLookupEntries(ctx context.Context, viewerID uuid.UUID, c
 	var entries []LookupEntry
 	for _, r := range rows {
 		if !r.Selected || r.CanonicalCategoryID == nil || *r.CanonicalCategoryID != categoryID {
+			continue
+		}
+		if !rowRange(r.PeriodStart, r.PeriodEnd).Overlaps(window) {
 			continue
 		}
 		f := owner[r.BankClientID]
