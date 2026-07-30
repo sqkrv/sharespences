@@ -17,18 +17,23 @@
 -- hits unique(username) if two accounts collide on lowercase, and the
 -- constraints are validated against existing rows. Both need a human decision
 -- (which of two accounts keeps the name), not a guess. Run the pre-flight below
--- first — it lists every row that would block, in one pass:
+-- first — it lists every row that would block, in one pass. Feed it on stdin
+-- through a quoted heredoc rather than psql -c "…": every column here is a
+-- boolean flag, and an interactive zsh expands the «!» of a `!~` operator as a
+-- history reference before psql ever sees it.
 --
+--   docker compose exec -T db psql -U sharespences <<'SQL'
 --   select id, username, email, display_name,
---          username <> lower(username)                                     as username_case,
---          count(*) over (partition by lower(username)) > 1                as username_collision,
---          lower(username) !~ '^[a-z][a-z0-9]*([._][a-z0-9]+)*$'           as username_format,
---          char_length(username) not between 3 and 32                      as username_length,
---          email <> lower(email)                                           as email_case,
---          count(*) over (partition by lower(email)) > 1                   as email_collision,
---          char_length(display_name) not between 1 and 64                  as display_name_length
+--          username <> lower(username)                                as username_case,
+--          count(*) over (partition by lower(username)) > 1           as username_collision,
+--          not (lower(username) ~ '^[a-z][a-z0-9]*([._][a-z0-9]+)*$') as username_format,
+--          char_length(username) not between 3 and 32                 as username_length,
+--          email <> lower(email)                                      as email_case,
+--          count(*) over (partition by lower(email)) > 1              as email_collision,
+--          char_length(display_name) not between 1 and 64             as display_name_length
 --   from "user"
 --   order by username;
+--   SQL
 --
 -- Everything false on every row ⇒ the migration applies cleanly. Any true in a
 -- *_collision column ⇒ merge or rename by hand first; any other true is fixed
