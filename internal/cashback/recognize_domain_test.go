@@ -376,3 +376,119 @@ func TestBuildDraftNotRelevantAndSkipped(t *testing.T) {
 		t.Fatalf("images[1] = %+v", draft.Images[1])
 	}
 }
+
+// ВТБ lists «АЗС» TWICE: 3% among the offered rows and 5% under «Уже
+// действующая выгода» (granted за хранение остатков, its own 25.07–23.08
+// window). The two land in different screenshots, so only the section
+// heading separates them — keyed on the title alone they collapsed into
+// one row with a fabricated «3 / 5» percent conflict, and the granted row
+// prefilled as regular, where ticking it would burn one of ВТБ's 3 slots.
+func TestBuildDraftGrantedSectionSplitsSameTitle(t *testing.T) {
+	offered := menuImage(vision.Row{
+		Percent: "3", Title: "АЗС", State: "unchecked",
+		Section: "Основные категории кешбэка", Subtitle: "Оплата топлива и сопутствующих товаров",
+	})
+	granted := menuImage(vision.Row{
+		Percent: "5", Title: "АЗС", State: "unknown",
+		Section: "Уже действующая выгода", Subtitle: "За хранение остатков",
+	})
+	draft := BuildDraft([]RecognizedImage{offered, granted}, nil, nil, "ВТБ", nil)
+	if len(draft.Rows) != 2 {
+		t.Fatalf("rows = %+v, want two «АЗС» rows", draft.Rows)
+	}
+	a, b := draft.Rows[0], draft.Rows[1]
+	if a.Kind != string(OfferRegular) || a.Percent == nil || *a.Percent != "3" || a.Checked {
+		t.Errorf("offered row = %+v, want regular 3%% unticked", a)
+	}
+	if a.Subtitle != "Оплата топлива и сопутствующих товаров" {
+		t.Errorf("offered subtitle = %q", a.Subtitle)
+	}
+	// Granted, condition-gated and time-boxed → special: slot-free and
+	// ranked, never a comparison candidate (spec invariant 6).
+	if b.Kind != string(OfferSpecial) || b.Percent == nil || *b.Percent != "5" {
+		t.Errorf("granted row = %+v, want special 5%%", b)
+	}
+	if !b.Checked {
+		t.Errorf("granted row = %+v, want pre-ticked — «уже действующая» is the bank stating it is live", b)
+	}
+	if b.Subtitle != "За хранение остатков" {
+		t.Errorf("granted subtitle = %q", b.Subtitle)
+	}
+	for _, r := range draft.Rows {
+		if r.NeedsReview || len(r.ConflictPercents) != 0 {
+			t.Errorf("row %+v: two genuine rows must not read as a conflict", r)
+		}
+	}
+}
+
+// A heading is not by itself a grant: Альфа's «Сервисы Альфа-Банка» rows
+// are ordinary selectable categories (2026-07-21). An unknown section
+// must default to regular, never to a slot-free grant.
+func TestBuildDraftOrdinarySectionStaysRegular(t *testing.T) {
+	draft := BuildDraft([]RecognizedImage{menuImage(vision.Row{
+		Percent: "5", Title: "Альфа-Тревел", State: "unchecked", Section: "Сервисы Альфа-Банка",
+	})}, nil, nil, "", nil)
+	if r := draft.Rows[0]; r.Kind != string(OfferRegular) || r.Checked {
+		t.Fatalf("row = %+v, want an ordinary unticked regular row", r)
+	}
+}
+
+// Fallback when no section separates them: one screenshot lists each
+// visible row once, so the same title twice in the SAME image at a
+// different percent is two offers — split, both flagged. Across images
+// the identical pair stays a conflict (TestBuildDraftSurfacesPercentConflict):
+// there it is one row read twice.
+func TestBuildDraftSplitsSameImageDuplicate(t *testing.T) {
+	draft := BuildDraft([]RecognizedImage{menuImage(row("3", "АЗС"), row("5", "АЗС"))}, nil, nil, "", nil)
+	if len(draft.Rows) != 2 {
+		t.Fatalf("rows = %+v, want both «АЗС» rows", draft.Rows)
+	}
+	for i, r := range draft.Rows {
+		want := []string{"3", "5"}[i]
+		if r.Percent == nil || *r.Percent != want {
+			t.Errorf("row %d = %+v, want percent %s", i, r, want)
+		}
+		if len(r.ConflictPercents) != 0 {
+			t.Errorf("row %d = %+v, want a split, not a conflict", i, r)
+		}
+		if !r.NeedsReview || !hasNote(r.ReviewNotes, "две строки") {
+			t.Errorf("row %d = %+v, want the ambiguity surfaced", i, r)
+		}
+	}
+}
+
+// Scroll overlap still merges when the percent repeats, and the subtitle
+// survives from whichever screenshot caught it.
+func TestBuildDraftCarriesSubtitleAcrossOverlap(t *testing.T) {
+	cut := menuImage(vision.Row{Percent: "15", Title: "Театры и кино", State: "unchecked"})
+	full := menuImage(vision.Row{
+		Percent: "15", Title: "Театры и кино", State: "unchecked",
+		Subtitle: "Покупка билетов в театры и кинотеатры",
+	})
+	draft := BuildDraft([]RecognizedImage{cut, full}, nil, nil, "", nil)
+	if len(draft.Rows) != 1 {
+		t.Fatalf("rows = %+v, want one merged row", draft.Rows)
+	}
+	if r := draft.Rows[0]; r.Subtitle != "Покупка билетов в театры и кинотеатры" || r.NeedsReview {
+		t.Fatalf("row = %+v, want the subtitle kept and no review flag", r)
+	}
+}
+
+// bank_category is unique on (bank_id, title), so ВТБ holds ONE «АЗС»
+// row and the granted twin reuses it for traceability (2026-07-31). The
+// match must not pull the catalog's kind=regular back over the granted
+// row's special — that would hand it a slot again.
+func TestBuildDraftGrantedRowKeepsKindOverCatalog(t *testing.T) {
+	catalog := []CatalogRow{{ID: 42, Title: "АЗС", Kind: OfferRegular}}
+	draft := BuildDraft([]RecognizedImage{menuImage(vision.Row{
+		Percent: "5", Title: "АЗС", State: "unknown",
+		Section: "Уже действующая выгода", Subtitle: "За хранение остатков",
+	})}, catalog, nil, "ВТБ", nil)
+	r := draft.Rows[0]
+	if r.BankCategoryID == nil || *r.BankCategoryID != 42 {
+		t.Fatalf("row = %+v, want the ordinary catalog row for traceability", r)
+	}
+	if r.Kind != string(OfferSpecial) {
+		t.Fatalf("row = %+v, the catalog kind must not overwrite a granted row", r)
+	}
+}

@@ -50,6 +50,10 @@ type RecognitionRowDTO struct {
 	CapValue   *string `json:"cap_value,omitempty"`
 	RawCap     string  `json:"raw_cap,omitempty"`
 	Kind       string  `json:"kind" enum:"regular,super,special"`
+	// Subtitle is the row's grey line, verbatim — committed as
+	// category_offer.notes. It is also what tells two same-titled rows
+	// apart on review («За хранение остатков» vs «Оплата топлива…»).
+	Subtitle string `json:"subtitle,omitempty"`
 	// BankCategoryID is set when the row matched the bank's catalog —
 	// the commit sends it ALONE, and no alias is written from a model
 	// match (2026-07-28: aliases are bank-global; only an
@@ -144,6 +148,36 @@ type draftRow struct {
 	caps     []string // distinct parsed caps seen
 }
 
+// grantedSection reports whether a picker section holds ALREADY GRANTED
+// rows rather than offered ones. ВТБ renders «Уже действующая выгода»
+// with the identical row layout right under the menu, and its rows can
+// repeat a menu title at another percent — «3% АЗС» is on offer while
+// «5% АЗС» is already running за хранение остатков. Deliberately one
+// narrow substring: an unknown heading must default to «ordinary
+// selectable row», never to a slot-free grant.
+func grantedSection(section string) bool {
+	return strings.Contains(NormalizeTitle(section), "уже действ")
+}
+
+// splitsFromSameImage reports whether r must start a NEW draft row rather
+// than merge into dr. One screenshot lists each visible row once, so the
+// same title seen twice in the SAME image at a percent dr has not seen is
+// a second offer, not a re-read. Across images the identical pair is
+// scroll overlap and still merges — there the disagreement is real and
+// surfaces as a conflict.
+func splitsFromSameImage(dr *draftRow, imgIndex int, percent string) bool {
+	p, ok := parseExtractedNumber(percent)
+	if !ok || containsStr(dr.percents, p) {
+		return false // unreadable or already seen: merge, keeping the raw string
+	}
+	for _, i := range dr.row.SourceImages {
+		if i == imgIndex {
+			return true
+		}
+	}
+	return false
+}
+
 // BuildDraft merges per-image readings into the prefill draft:
 // same normalized title across images collapses (scroll overlap), value
 // disagreements surface as conflicts, барабан results collapse to one
@@ -157,6 +191,9 @@ func BuildDraft(images []RecognizedImage, catalog []CatalogRow, aliases []Alias,
 	type key struct {
 		kind string
 		norm string
+		// variant separates rows a bank genuinely lists more than once
+		// under one kind (see splitsFromSameImage); 0 is the ordinary row.
+		variant int
 	}
 	var order []key
 	rows := map[key]*draftRow{}
@@ -170,6 +207,13 @@ func BuildDraft(images []RecognizedImage, catalog []CatalogRow, aliases []Alias,
 			return
 		}
 		k := key{kind: kind, norm: NormalizeTitle(r.Title)}
+		for {
+			existing, taken := rows[k]
+			if !taken || !splitsFromSameImage(existing, imgIndex, r.Percent) {
+				break
+			}
+			k.variant++
+		}
 		dr, seen := rows[k]
 		if !seen {
 			dr = &draftRow{row: RecognitionRowDTO{RawTitle: r.Title, Kind: kind}}
@@ -177,6 +221,7 @@ func BuildDraft(images []RecognizedImage, catalog []CatalogRow, aliases []Alias,
 			order = append(order, k)
 		}
 		dr.row.SourceImages = append(dr.row.SourceImages, imgIndex)
+		dr.row.Subtitle = firstNonEmptyStr(dr.row.Subtitle, r.Subtitle)
 		if r.CatalogMatch != "" && dr.row.CatalogTitle == nil {
 			m := r.CatalogMatch
 			dr.row.CatalogTitle = &m
@@ -234,6 +279,16 @@ func BuildDraft(images []RecognizedImage, catalog []CatalogRow, aliases []Alias,
 				sawSummary = true
 			}
 			for _, r := range screen.Rows {
+				// A row under an «уже действующая выгода» heading is
+				// granted, condition-gated and time-boxed → special:
+				// slot-free and ranked, never a comparison candidate
+				// (spec invariant 6). Pre-ticked for the same reason a
+				// барабан card is (invariant 5a) — the heading is the
+				// bank stating the benefit is already running.
+				if grantedSection(r.Section) {
+					addRow(n, r, string(OfferSpecial), true)
+					continue
+				}
 				addRow(n, r, string(OfferRegular), false)
 			}
 		}
@@ -249,10 +304,24 @@ func BuildDraft(images []RecognizedImage, catalog []CatalogRow, aliases []Alias,
 		}
 	}
 
+	// Titles that survived the merge more than once under one kind were
+	// split by splitsFromSameImage — every one of them carries the
+	// ambiguity, so flag them all rather than only the later row.
+	type titleKey struct{ kind, norm string }
+	repeated := map[titleKey]int{}
+	for _, k := range order {
+		repeated[titleKey{k.kind, k.norm}]++
+	}
+
 	// Resolve values, conflicts and catalog matches per merged row.
 	for _, k := range order {
 		dr := rows[k]
 		row := &dr.row
+		if repeated[titleKey{k.kind, k.norm}] > 1 {
+			row.NeedsReview = true
+			row.ReviewNotes = append(row.ReviewNotes,
+				fmt.Sprintf("в меню две строки «%s» с разным процентом — проверь, что это две разные выгоды", row.RawTitle))
+		}
 		switch len(dr.percents) {
 		case 0:
 			if row.RawPercent != "" {

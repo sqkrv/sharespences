@@ -31,6 +31,16 @@ type Row struct {
 	// Cap is the «Кешбэк до N ₽» chip figure, empty when absent.
 	Cap   string `json:"cap,omitempty"`
 	State string `json:"state"`
+	// Subtitle is the grey line under the title, verbatim. It carries the
+	// row's condition as often as a description — «За хранение остатков»
+	// against «Оплата топлива и сопутствующих товаров».
+	Subtitle string `json:"subtitle,omitempty"`
+	// Section is the heading this row sits under, verbatim. Empty when
+	// the screen has no sections or the heading scrolled off. It is the
+	// only thing separating a granted row from an offered one when both
+	// carry the same title: ВТБ lists «3% АЗС» in the picker and «5% АЗС»
+	// under «Уже действующая выгода».
+	Section string `json:"section,omitempty"`
 	// CatalogMatch is the known catalog title the model matched this row
 	// to (the constrained-vocabulary lever), empty for new rows.
 	CatalogMatch string `json:"catalog_match,omitempty"`

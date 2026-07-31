@@ -10,8 +10,10 @@ import (
 // (docs/research/recognizer-eval, private meta-repo) before shipping —
 // the numbers below were measured against this exact wording:
 // qwen3-vl:4b on the 13-image set: 93/93 rows, 93/93 percent, 4/4 caps,
-// zero hallucinations (run 5, prod GPU).
-const PromptVersion = "2026-07-28"
+// zero hallucinations (run 5, prod GPU) — measured against 2026-07-28.
+// ⚠️ 2026-07-31 added subtitle/section and the duplicate-title rule; the
+// numbers above have NOT been re-measured against that wording.
+const PromptVersion = "2026-07-31"
 
 // rowPromptBase is bench.py ROW_PROMPT, verbatim.
 const rowPromptBase = `You are reading a screenshot from a Russian bank's mobile app — the screen where a user picks cashback categories for a period.
@@ -42,11 +44,19 @@ Rules:
 // rowPromptExtra is the delta over the benchmarked prompt: has_header /
 // has_footer_button feed the completeness warning (spec §7), row_kind is
 // the safety net behind invariant 2 (a non-category row must never
-// prefill), catalog_match is the constrained-vocabulary lever (spec §3).
+// prefill), catalog_match is the constrained-vocabulary lever (spec §3),
+// and subtitle/section separate a granted row from an offered one that
+// happens to share its title (2026-07-31).
 const rowPromptExtra = `
 Also report, top-level:
 - has_header — true if the picker's own header/title area is visible in this screenshot
 - has_footer_button — true if a footer confirm button («Выбрать», «Продолжить») is visible
+
+Also report, per row:
+- subtitle — the grey line printed under the title, verbatim ("За хранение остатков", "Оплата топлива и сопутствующих товаров"). Omit if absent.
+- section — the heading of the section this row belongs to, verbatim ("Уже действующая выгода", "Основные категории кешбэка"). Omit when the screen has no headings or none is visible. The heading itself is still NOT a row.
+
+The same title may legitimately appear TWICE under different headings — a bank lists a category both among the ones you may pick and among the benefits you already have, at different percentages. Report both rows; never merge or drop one.
 
 If a non-category row does end up in rows, mark it with row_kind: "slot_modifier", "mechanic" or "section_header"; ordinary rows may omit row_kind or use "category".
 `
@@ -115,6 +125,8 @@ var RowSchema = json.RawMessage(`{
         "title": {"type": "string"},
         "cap": {"type": "string"},
         "state": {"type": "string", "enum": ["unchecked", "checked", "unknown"]},
+        "subtitle": {"type": "string"},
+        "section": {"type": "string"},
         "catalog_match": {"type": "string"},
         "row_kind": {"type": "string", "enum": ["category", "slot_modifier", "mechanic", "section_header"]}
       },
