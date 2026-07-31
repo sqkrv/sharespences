@@ -24,6 +24,11 @@ import (
 
 const asOf = "as of 2025-05 (wiki table); re-verify in the bank app"
 
+// Т-Банк's programme terms are newer than the wiki table and come from a different
+// kind of source: the caps are stated terms, the slot count is an
+// observation from the menu screenshots rather than the programme document.
+const tbankAsOf = "as of 2026-07-31; 4 слота — по корпусу скриншотов меню (2025-06…2026-07), не из условий программы"
+
 type tier struct {
 	name           string
 	paid           bool
@@ -125,10 +130,27 @@ var programs = []program{
 			{name: "Эксклюзивный", capValue: "50000", capScope: "total", basePercent: "7", notes: asOf},
 		},
 	},
+	{
+		bank: "Т-Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "incremental",
+		currencyKind: "rub",
+		// Filling a still-empty slot later is what the picker demonstrably
+		// allows (the sheet re-titles to «Select another category»); whether
+		// a TAKEN slot can be swapped stays unobserved, and that is a
+		// different question from adding.
+		midPeriodAdd: "allowed", activation: "unknown",
+		notes: tbankAsOf,
+		tiers: []tier{
+			// The subscription buys cap, not slots: 4 is the only count ever
+			// observed, across all eight sampled months.
+			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
+			{name: "Pro", paid: true, capValue: "5000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
+			{name: "Premium", paid: true, capValue: "30000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
+		},
+	},
 }
 
 // Reference-only banks (wiki): no programs seeded.
-var extraBanks = []string{"Сбербанк", "Т-Банк"}
+var extraBanks = []string{"Сбербанк"}
 
 // Emoji are UI icons for the picker, curated in the taxonomy page
 // (2026-07-16, timeless).
