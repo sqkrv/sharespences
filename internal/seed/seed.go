@@ -36,7 +36,6 @@ type tier struct {
 	capScope       string
 	capPerCategory string
 	maxCategories  int // 0 = unknown
-	basePercent    string
 	notes          string
 }
 
@@ -67,9 +66,9 @@ var programs = []program{
 		midPeriodAdd: "allowed", activation: "immediate", // 2026-07-16: add while a slot is free
 		notes: asOf,
 		tiers: []tier{
-			{name: "Стандартный", capValue: "5000", capScope: "total", maxCategories: 3, basePercent: "5", notes: asOf},
-			{name: "Альфа-Смарт", paid: true, capValue: "7000", capScope: "total", maxCategories: 4, basePercent: "5", notes: asOf},
-			{name: "Alfa Only", paid: true, capValue: "15000", capScope: "total", maxCategories: 5, basePercent: "7", notes: asOf},
+			{name: "Стандартный", capValue: "5000", capScope: "total", maxCategories: 3, notes: asOf},
+			{name: "Альфа-Смарт", paid: true, capValue: "7000", capScope: "total", maxCategories: 4, notes: asOf},
+			{name: "Alfa Only", paid: true, capValue: "15000", capScope: "total", maxCategories: 5, notes: asOf},
 		},
 	},
 	{
@@ -125,9 +124,9 @@ var programs = []program{
 		notes: asOf + "; баллы 1:1 в рубли с месячными лимитами перевода; платная смена категории посреди квартала, активация на следующий день",
 		tiers: []tier{
 			{name: "Стандарт", capValue: "1500", capScope: "total", notes: asOf},
-			{name: "Выгодный", capValue: "3000", capScope: "total", basePercent: "5", notes: asOf},
-			{name: "Премиальный", capValue: "20000", capScope: "total", basePercent: "7", notes: asOf},
-			{name: "Эксклюзивный", capValue: "50000", capScope: "total", basePercent: "7", notes: asOf},
+			{name: "Выгодный", capValue: "3000", capScope: "total", notes: asOf},
+			{name: "Премиальный", capValue: "20000", capScope: "total", notes: asOf},
+			{name: "Эксклюзивный", capValue: "50000", capScope: "total", notes: asOf},
 		},
 	},
 	{
@@ -853,9 +852,9 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 		for _, t := range p.tiers {
 			if _, err := pool.Exec(ctx, `
 				insert into program_tier (program_id, name, is_paid_subscription, cap_value, cap_scope,
-				                          cap_per_category, max_categories, base_percent, notes)
+				                          cap_per_category, max_categories, notes)
 				select cp.id, $3, $4, nullif($5, '')::numeric, $6::cashback_cap_scope,
-				       nullif($7, '')::numeric, nullif($8, 0), nullif($9, '')::numeric, nullif($10, '')
+				       nullif($7, '')::numeric, nullif($8, 0), nullif($9, '')
 				from cashback_program cp
 				         join bank b on b.id = cp.bank_id
 				where b.name = $1
@@ -864,7 +863,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 				                  from program_tier pt
 				                  where pt.program_id = cp.id and pt.name = $3)`,
 				p.bank, p.name, t.name, t.paid, t.capValue, t.capScope,
-				t.capPerCategory, t.maxCategories, t.basePercent, t.notes); err != nil {
+				t.capPerCategory, t.maxCategories, t.notes); err != nil {
 				return fmt.Errorf("seed tier %s/%s: %w", p.bank, t.name, err)
 			}
 		}

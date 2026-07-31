@@ -539,12 +539,11 @@ export default function Period() {
         <GradientCard className="p-4">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-[9.5px] font-bold uppercase tracking-[.14em] text-white/70">
-                {tierInfo.tier.base_percent != null ? "Базовая ставка" : "Тариф"}
-              </p>
-              <p className="mt-1.5 text-[34px] leading-none font-extrabold tracking-tight">
-                {tierInfo.tier.base_percent != null ? `${tierInfo.tier.base_percent}%` : tierInfo.tier.name}
-              </p>
+              {/* The tier, never a «базовая ставка» — no bank pays a rate on
+                  everything regardless of the picks. «За все покупки» is an
+                  ordinary slot-consuming row, and it ranks like one. */}
+              <p className="text-[9.5px] font-bold uppercase tracking-[.14em] text-white/70">Тариф</p>
+              <p className="mt-1.5 text-[34px] leading-none font-extrabold tracking-tight">{tierInfo.tier.name}</p>
               <p className="mt-2 text-[11px] font-semibold text-white/85">
                 {[client?.label, cardChips].filter(Boolean).join(" · ") || "любая карта"} · {currencyBadge(currency, tierInfo.program.points_label ?? undefined) === "₽" ? "рубли" : currencyBadge(currency, tierInfo.program.points_label ?? undefined)}
               </p>

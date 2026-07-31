@@ -1893,7 +1893,6 @@ export interface components {
              * @example https://example.com/schemas/TierBody.json
              */
             readonly $schema?: string;
-            base_percent?: string;
             cap_per_category?: string;
             /**
              * @default total
@@ -1916,7 +1915,6 @@ export interface components {
              * @example https://example.com/schemas/TierDTO.json
              */
             readonly $schema?: string;
-            base_percent?: string;
             cap_per_category?: string;
             cap_scope: string;
             cap_value?: string;

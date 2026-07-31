@@ -39,8 +39,8 @@ where id = $1;
 
 -- name: CreateTier :one
 insert into program_tier (program_id, name, is_paid_subscription, cap_value, cap_scope,
-                          cap_per_category, max_categories, base_percent, notes)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                          cap_per_category, max_categories, notes)
+values ($1, $2, $3, $4, $5, $6, $7, $8)
 returning *;
 
 -- name: ListTiersForProgram :many
@@ -62,8 +62,7 @@ set name                 = $2,
     cap_scope            = $5,
     cap_per_category     = $6,
     max_categories       = $7,
-    base_percent         = $8,
-    notes                = $9
+    notes                = $8
 where id = $1
 returning *;
 

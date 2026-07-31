@@ -107,7 +107,6 @@ type TierDTO struct {
 	CapScope           string  `json:"cap_scope"`
 	CapPerCategory     *string `json:"cap_per_category,omitempty"`
 	MaxCategories      *int32  `json:"max_categories,omitempty"`
-	BasePercent        *string `json:"base_percent,omitempty"`
 	Notes              *string `json:"notes,omitempty"`
 }
 
@@ -115,8 +114,7 @@ func tierDTO(t db.ProgramTier) TierDTO {
 	return TierDTO{
 		ID: t.ID, ProgramID: t.ProgramID, Name: t.Name, IsPaidSubscription: t.IsPaidSubscription,
 		CapValue: decToStr(t.CapValue), CapScope: string(t.CapScope),
-		CapPerCategory: decToStr(t.CapPerCategory), MaxCategories: t.MaxCategories,
-		BasePercent: decToStr(t.BasePercent), Notes: t.Notes,
+		CapPerCategory: decToStr(t.CapPerCategory), MaxCategories: t.MaxCategories, Notes: t.Notes,
 	}
 }
 
@@ -139,7 +137,6 @@ type tierBody struct {
 	CapScope           string  `json:"cap_scope,omitempty" enum:"total,per_category,both" default:"total"`
 	CapPerCategory     *string `json:"cap_per_category,omitempty"`
 	MaxCategories      *int32  `json:"max_categories,omitempty" minimum:"1"`
-	BasePercent        *string `json:"base_percent,omitempty"`
 	Notes              *string `json:"notes,omitempty"`
 }
 
@@ -425,10 +422,6 @@ func RegisterHTTP(api huma.API, s *Service) {
 		if err != nil {
 			return nil, err
 		}
-		basePct, err := strToDec(in.Body.BasePercent, "base_percent")
-		if err != nil {
-			return nil, err
-		}
 		scope := in.Body.CapScope
 		if scope == "" {
 			scope = string(CapTotal)
@@ -437,8 +430,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			ProgramID: in.Body.ProgramID, Name: in.Body.Name,
 			IsPaidSubscription: in.Body.IsPaidSubscription,
 			CapValue:           capValue, CapScope: db.CashbackCapScope(scope),
-			CapPerCategory: capPerCat, MaxCategories: in.Body.MaxCategories,
-			BasePercent: basePct, Notes: in.Body.Notes,
+			CapPerCategory: capPerCat, MaxCategories: in.Body.MaxCategories, Notes: in.Body.Notes,
 		})
 		if err != nil {
 			return nil, httpErr(err)

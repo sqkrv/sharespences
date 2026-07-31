@@ -306,9 +306,9 @@ func (q *Queries) CreateSelection(ctx context.Context, arg CreateSelectionParams
 
 const createTier = `-- name: CreateTier :one
 insert into program_tier (program_id, name, is_paid_subscription, cap_value, cap_scope,
-                          cap_per_category, max_categories, base_percent, notes)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-returning id, program_id, name, is_paid_subscription, cap_value, cap_scope, cap_per_category, max_categories, base_percent, notes
+                          cap_per_category, max_categories, notes)
+values ($1, $2, $3, $4, $5, $6, $7, $8)
+returning id, program_id, name, is_paid_subscription, cap_value, cap_scope, cap_per_category, max_categories, notes
 `
 
 type CreateTierParams struct {
@@ -319,7 +319,6 @@ type CreateTierParams struct {
 	CapScope           CashbackCapScope
 	CapPerCategory     *decimal.Decimal
 	MaxCategories      *int32
-	BasePercent        *decimal.Decimal
 	Notes              *string
 }
 
@@ -332,7 +331,6 @@ func (q *Queries) CreateTier(ctx context.Context, arg CreateTierParams) (Program
 		arg.CapScope,
 		arg.CapPerCategory,
 		arg.MaxCategories,
-		arg.BasePercent,
 		arg.Notes,
 	)
 	var i ProgramTier
@@ -345,7 +343,6 @@ func (q *Queries) CreateTier(ctx context.Context, arg CreateTierParams) (Program
 		&i.CapScope,
 		&i.CapPerCategory,
 		&i.MaxCategories,
-		&i.BasePercent,
 		&i.Notes,
 	)
 	return i, err
@@ -685,7 +682,7 @@ func (q *Queries) GetProgram(ctx context.Context, id int64) (CashbackProgram, er
 }
 
 const getTier = `-- name: GetTier :one
-select id, program_id, name, is_paid_subscription, cap_value, cap_scope, cap_per_category, max_categories, base_percent, notes
+select id, program_id, name, is_paid_subscription, cap_value, cap_scope, cap_per_category, max_categories, notes
 from program_tier
 where id = $1
 `
@@ -702,7 +699,6 @@ func (q *Queries) GetTier(ctx context.Context, id int64) (ProgramTier, error) {
 		&i.CapScope,
 		&i.CapPerCategory,
 		&i.MaxCategories,
-		&i.BasePercent,
 		&i.Notes,
 	)
 	return i, err
@@ -1241,7 +1237,7 @@ func (q *Queries) ListPrograms(ctx context.Context) ([]ListProgramsRow, error) {
 }
 
 const listTiersForProgram = `-- name: ListTiersForProgram :many
-select id, program_id, name, is_paid_subscription, cap_value, cap_scope, cap_per_category, max_categories, base_percent, notes
+select id, program_id, name, is_paid_subscription, cap_value, cap_scope, cap_per_category, max_categories, notes
 from program_tier
 where program_id = $1
 order by id
@@ -1265,7 +1261,6 @@ func (q *Queries) ListTiersForProgram(ctx context.Context, programID int64) ([]P
 			&i.CapScope,
 			&i.CapPerCategory,
 			&i.MaxCategories,
-			&i.BasePercent,
 			&i.Notes,
 		); err != nil {
 			return nil, err
@@ -1542,10 +1537,9 @@ set name                 = $2,
     cap_scope            = $5,
     cap_per_category     = $6,
     max_categories       = $7,
-    base_percent         = $8,
-    notes                = $9
+    notes                = $8
 where id = $1
-returning id, program_id, name, is_paid_subscription, cap_value, cap_scope, cap_per_category, max_categories, base_percent, notes
+returning id, program_id, name, is_paid_subscription, cap_value, cap_scope, cap_per_category, max_categories, notes
 `
 
 type UpdateTierParams struct {
@@ -1556,7 +1550,6 @@ type UpdateTierParams struct {
 	CapScope           CashbackCapScope
 	CapPerCategory     *decimal.Decimal
 	MaxCategories      *int32
-	BasePercent        *decimal.Decimal
 	Notes              *string
 }
 
@@ -1569,7 +1562,6 @@ func (q *Queries) UpdateTier(ctx context.Context, arg UpdateTierParams) (Program
 		arg.CapScope,
 		arg.CapPerCategory,
 		arg.MaxCategories,
-		arg.BasePercent,
 		arg.Notes,
 	)
 	var i ProgramTier
@@ -1582,7 +1574,6 @@ func (q *Queries) UpdateTier(ctx context.Context, arg UpdateTierParams) (Program
 		&i.CapScope,
 		&i.CapPerCategory,
 		&i.MaxCategories,
-		&i.BasePercent,
 		&i.Notes,
 	)
 	return i, err

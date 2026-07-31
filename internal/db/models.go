@@ -839,7 +839,6 @@ type ProgramTier struct {
 	CapScope           CashbackCapScope
 	CapPerCategory     *decimal.Decimal
 	MaxCategories      *int32
-	BasePercent        *decimal.Decimal
 	Notes              *string
 }
 
