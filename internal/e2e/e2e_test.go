@@ -328,8 +328,8 @@ func TestCashbackE2E(t *testing.T) {
 	// Озон Стандартный: 4 slots, 1500/cat + 3000 total) ---
 	var programs []programJSON
 	owner.must("GET", "/api/v1/cashback/programs", nil, &programs, http.StatusOK)
-	if len(programs) != 6 {
-		t.Fatalf("seeded programs = %d, want 6", len(programs))
+	if len(programs) != 7 {
+		t.Fatalf("seeded programs = %d, want 7", len(programs))
 	}
 	findProgram := func(bank string) programJSON {
 		for _, p := range programs {
