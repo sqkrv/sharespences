@@ -251,12 +251,14 @@ type helperJSON struct {
 
 type lookupJSON struct {
 	Ranked []struct {
-		BankName      string  `json:"bank_name"`
-		HolderLabel   string  `json:"holder_label"`
-		Percent       *string `json:"percent"`
-		CurrencyKind  string  `json:"currency_kind"`
-		CapValue      *string `json:"cap_value"`
-		OfferCapValue *string `json:"offer_cap_value"`
+		BankName       string  `json:"bank_name"`
+		HolderLabel    string  `json:"holder_label"`
+		Percent        *string `json:"percent"`
+		CurrencyKind   string  `json:"currency_kind"`
+		CapValue       *string `json:"cap_value"`
+		OfferCapValue  *string `json:"offer_cap_value"`
+		StackedRegular *string `json:"stacked_regular"`
+		StackedSuper   *string `json:"stacked_super"`
 	} `json:"ranked"`
 	Fallback []struct {
 		BankName string  `json:"bank_name"`
@@ -1482,6 +1484,50 @@ func TestCashbackE2E(t *testing.T) {
 		return c.Slug == "restaurants"
 	}) {
 		t.Fatalf("overview categories = %+v, want the committed catalog row under restaurants", catalogOverview.Categories)
+	}
+
+	// Report 2026-07-31: a барабан pays on top of that same client's own pick
+	// of the category, so the two must answer as one card at their sum —
+	// ranking the барабан by its own percent had the highest-value screen
+	// recommending the worse card. Grant one on the already-committed
+	// «Кафе и рестораны» pick (7%) and both screens must read 12%.
+	var stackedSuper offerJSON
+	owner.must("POST", "/api/v1/cashback/category-offers", map[string]any{
+		"offer_period_id": recogPeriod.ID, "raw_title": "Кафе и рестораны",
+		"bank_category_id": *recogCafe.BankCategoryID, "percent": "5", "kind": "super",
+	}, &stackedSuper, http.StatusCreated)
+	if got := sel(stackedSuper.ID, "2026-10-05T10:00:00Z"); got != http.StatusCreated {
+		t.Fatalf("select the барабан: %d", got)
+	}
+	owner.must("GET", "/api/v1/cashback/lookup?category=restaurants&date=2026-10-05", nil, &catalogLookup, http.StatusOK)
+	if len(catalogLookup.Ranked) != 1 {
+		t.Fatalf("lookup restaurants = %+v, want ONE stacked answer, not the pick and the барабан racing", catalogLookup.Ranked)
+	}
+	if stacked := catalogLookup.Ranked[0]; stacked.Percent == nil || *stacked.Percent != "12" ||
+		stacked.StackedRegular == nil || *stacked.StackedRegular != "7" ||
+		stacked.StackedSuper == nil || *stacked.StackedSuper != "5" {
+		t.Fatalf("stacked entry = %+v, want 12%% shown as 7 + 5", stacked)
+	}
+	var stackedOverview struct {
+		Categories []struct {
+			Slug string `json:"slug"`
+			Best struct {
+				Percent        *string `json:"percent"`
+				StackedRegular *string `json:"stacked_regular"`
+				StackedSuper   *string `json:"stacked_super"`
+			} `json:"best"`
+			OthersCount int `json:"others_count"`
+		} `json:"categories"`
+	}
+	owner.must("GET", "/api/v1/cashback/overview?date=2026-10-05", nil, &stackedOverview, http.StatusOK)
+	for _, c := range stackedOverview.Categories {
+		if c.Slug != "restaurants" {
+			continue
+		}
+		if c.Best.Percent == nil || *c.Best.Percent != "12" || c.OthersCount != 0 ||
+			c.Best.StackedRegular == nil || c.Best.StackedSuper == nil {
+			t.Fatalf("overview restaurants = %+v, want one 12%% row carrying its 7 + 5 parts (no «+1»)", c)
+		}
 	}
 
 	// Degradation: a server with no vision backend answers 503 with a

@@ -232,6 +232,8 @@ type LookupEntryDTO struct {
 	OfferCapValue  *string `json:"offer_cap_value,omitempty" doc:"per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap"`
 	PeriodStart    string  `json:"period_start"`
 	PeriodEnd      string  `json:"period_end"`
+	StackedRegular *string `json:"stacked_regular,omitempty" doc:"percent is a sum: the client's own monthly pick. Set together with stacked_super (invariant 6 amendment 2026-07-31)"`
+	StackedSuper   *string `json:"stacked_super,omitempty" doc:"the барабан granted on top of that pick — mark the row «барабан» when this is set"`
 	FriendName     string  `json:"friend_name,omitempty" doc:"карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда"`
 	FriendUsername string  `json:"friend_username,omitempty"`
 }
@@ -243,9 +245,10 @@ func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 		CurrencyKind: string(e.CurrencyKind), PointsLabel: e.PointsLabel,
 		CapValue: decToStr(e.CapValue), CapPerCategory: decToStr(e.CapPerCategory),
 		CapScope: string(e.CapScope), OfferCapValue: decToStr(e.OfferCapValue),
-		PeriodStart: e.Period.Start.Format("2006-01-02"),
-		PeriodEnd:   e.Period.End.Format("2006-01-02"),
-		FriendName:  e.FriendName, FriendUsername: e.FriendUsername,
+		PeriodStart:    e.Period.Start.Format("2006-01-02"),
+		PeriodEnd:      e.Period.End.Format("2006-01-02"),
+		StackedRegular: decToStr(e.StackedRegular), StackedSuper: decToStr(e.StackedSuper),
+		FriendName: e.FriendName, FriendUsername: e.FriendUsername,
 	}
 }
 

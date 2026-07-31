@@ -320,13 +320,24 @@ function ComingSoon({ text, onPickCategory }: { text: string; onPickCategory: ()
 // kinds rank): барабан is deterministic and stacks; спец ranks by percent but
 // its condition (пятница, только в сервисе) is not modelled — so it always
 // carries the mechanic's own title and «проверь условие».
-function KindBadge({ kind }: { kind?: string }) {
-  if (kind !== "super" && kind !== "special") return null;
+//
+// A stacked row (2026-07-31) arrives as kind=regular carrying the барабан
+// inside its percent — it is marked барабан off the parts, not the kind.
+function KindBadge({ kind, stacked }: { kind?: string; stacked?: boolean }) {
+  if (!stacked && kind !== "super" && kind !== "special") return null;
   return (
     <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] text-[9px] font-bold text-gold">
-      {kind === "super" ? "барабан" : "спец"}
+      {kind === "special" ? "спец" : "барабан"}
     </span>
   );
+}
+
+// «7% + 7%» — the pick and the барабан behind a stacked percent, so the
+// headline number is never an unexplained sum. The барабан itself is named by
+// the gold badge next to it.
+function stackNote(e: LookupEntry): string {
+  if (e.stacked_super == null) return "";
+  return `${fmtPercent(e.stacked_regular ?? undefined)} + ${fmtPercent(e.stacked_super)}`;
 }
 
 function specialNote(e: LookupEntry): string {
@@ -347,10 +358,12 @@ function OtherCardRow({ e }: { e: LookupEntry }) {
               друг · {e.friend_name}
             </span>
           )}
-          <KindBadge kind={e.kind} />
+          <KindBadge kind={e.kind} stacked={e.stacked_super != null} />
         </p>
         <p className="text-[10px] font-medium text-tx4">
-          {e.kind === "special" ? specialNote(e) : cap || currencyBadge(e.currency_kind, e.points_label)}
+          {e.kind === "special"
+            ? specialNote(e)
+            : [stackNote(e), cap || currencyBadge(e.currency_kind, e.points_label)].filter(Boolean).join(" · ")}
         </p>
       </div>
       <Pct percent={e.percent} currency={e.currency_kind} className="text-[14px]" />
@@ -541,6 +554,11 @@ export default function Lookup() {
                               {best.friend_name && (
                                 <span className="mt-1.5 mr-1 inline-flex rounded-[8px] bg-white/20 px-2 py-0.5 text-[10px] font-bold">
                                   карта друга · {best.friend_name}
+                                </span>
+                              )}
+                              {best.stacked_super != null && (
+                                <span className="mt-1.5 inline-flex rounded-[8px] bg-white/20 px-2 py-0.5 text-[10px] font-bold">
+                                  барабан · {stackNote(best)}
                                 </span>
                               )}
                               {best.kind === "super" && (

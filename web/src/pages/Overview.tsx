@@ -645,8 +645,10 @@ export default function Overview() {
                     <span className="flex-1 text-sm font-semibold">
                       {g.title_ru}
                       {/* All kinds rank since 2026-07-27; барабан/спец are granted bonuses,
-                          not chosen slots — flagged gold, спец also means «проверь условие». */}
-                      {g.best.kind === "super" && (
+                          not chosen slots — flagged gold, спец also means «проверь условие».
+                          A stacked row (2026-07-31) carries the барабан inside its
+                          percent and arrives as kind=regular — mark it off the parts. */}
+                      {(g.best.kind === "super" || g.best.stacked_super != null) && (
                         <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] align-middle text-[9px] font-bold text-gold">барабан</span>
                       )}
                       {g.best.kind === "special" && (
@@ -664,7 +666,15 @@ export default function Overview() {
                         {g.best.percent != null ? `${g.best.percent}%` : "—"}
                       </span>
                     ) : (
-                      <Pct percent={g.best.percent} currency={g.best.currency_kind} className="w-10 text-right text-[14.5px]" />
+                      <span className="w-10 flex-none text-right">
+                        <Pct percent={g.best.percent} currency={g.best.currency_kind} className="text-[14.5px]" />
+                        {/* The sum is only trustworthy if it shows its parts. */}
+                        {g.best.stacked_super != null && (
+                          <span className="block text-[9px] font-semibold text-tx4">
+                            {g.best.stacked_regular}+{g.best.stacked_super}
+                          </span>
+                        )}
+                      </span>
                     )}
                   </button>
                 ))}
