@@ -331,6 +331,12 @@ type LookupEntry struct {
 	CapScope       CapScope
 	OfferCapValue  *decimal.Decimal // per-offer cap (ВТБ «Кешбэк до N ₽» rows); wins over the tier cap in display
 	PointsLabel    string           // 'Баллы Плюс', 'баллы МКБ'; empty for rubles
+	// StackedRegular/StackedSuper are the parts behind a stacked Percent: the
+	// client's own monthly pick and the барабан granted on top of it, summed
+	// into one answer by stackSupers (invariant 6 amendment 2026-07-31). Both
+	// nil on an ordinary entry, both set on a stacked one.
+	StackedRegular *decimal.Decimal
+	StackedSuper   *decimal.Decimal
 	// FriendName/FriendUsername mark a friend's shared card
 	// (docs/specs/friends-sharing.md); empty = the viewer's own card. Friend
 	// entries rank alongside own ones but never enter Available or the
@@ -478,11 +484,81 @@ type LookupResult struct {
 	Ranked []LookupEntry
 }
 
+// stackSupers folds each client's барабан into that same client's monthly
+// pick of the category: Альфа pays both on the same purchase, so the honest
+// answer to «какой картой» is their sum. Ranking the барабан by its own
+// percent made the highest-value screen recommend the worse card — Озон 8%
+// beat Альфа's 7% барабан stacked onto a 7% pick (report 2026-07-31, the
+// same failure the 2026-07-27 amendment fixed for специальные rows).
+//
+// Only `super` stacks: it is granted unconditionally for the whole period.
+// `special` may stack too (the ВТБ остаток-категория does), but only while
+// its condition holds, so summing it would promise a rate the user may not
+// earn — it keeps ranking on its own percent with «проверь условие».
+//
+// A missing percent on either side leaves both rows untouched: the app never
+// invents a number. A барабан on a category the client did not pick has
+// nothing to stack onto and ranks alone, as before.
+//
+// PRECONDITION: entries belong to ONE canonical category — every caller
+// groups by category (or by all-purchases) before ranking. Merging is keyed
+// on the client alone, so a mixed slice would sum unrelated categories.
+func stackSupers(entries []LookupEntry) []LookupEntry {
+	// Best regular pick per client, and every барабан it can absorb.
+	pick := make(map[int64]int)
+	supers := make(map[int64][]int)
+	for i, e := range entries {
+		if e.Percent == nil {
+			continue
+		}
+		switch e.Kind {
+		case OfferRegular:
+			if j, ok := pick[e.ClientID]; !ok || e.Percent.GreaterThan(*entries[j].Percent) {
+				pick[e.ClientID] = i
+			}
+		case OfferSuper:
+			supers[e.ClientID] = append(supers[e.ClientID], i)
+		}
+	}
+	merged := make(map[int]bool)
+	for clientID, idxs := range supers {
+		j, ok := pick[clientID]
+		if !ok {
+			continue // барабан on a category this client didn't pick
+		}
+		base := *entries[j].Percent
+		bonus := decimal.Zero
+		for _, i := range idxs {
+			bonus = bonus.Add(*entries[i].Percent)
+			merged[i] = true
+		}
+		total := base.Add(bonus)
+		entries[j].Percent = &total
+		entries[j].StackedRegular = &base
+		entries[j].StackedSuper = &bonus
+	}
+	if len(merged) == 0 {
+		return entries
+	}
+	out := entries[:0:0]
+	for i, e := range entries {
+		if !merged[i] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // RankActiveSelections filters entries to those whose period covers onDate,
-// then ranks them: grouped by currency (rub before points — groups are never
+// stacks each client's барабан onto its own pick of the category, then ranks
+// what is left: grouped by currency (rub before points — groups are never
 // compared to each other, invariant 5), percent descending within a group
 // (unknown percent last), ties by bank name then client label. Kind does not
 // affect the order (amendment 2026-07-27); it only reaches the UI as a mark.
+//
+// Stacking runs after the date filter on purpose: invariant 4 gives a client
+// at most one period covering a date, so only rows that genuinely pay
+// together can meet here.
 func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult {
 	var res LookupResult
 	for _, e := range entries {
@@ -491,6 +567,7 @@ func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult 
 		}
 		res.Ranked = append(res.Ranked, e)
 	}
+	res.Ranked = stackSupers(res.Ranked)
 	currencyOrder := func(k CurrencyKind) int {
 		switch k {
 		case CurrencyRub:

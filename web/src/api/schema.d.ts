@@ -939,6 +939,10 @@ export interface components {
             points_label?: string;
             /** @description the bank's own menu title — names the mechanic on marked super/special rows («Пятница») */
             raw_title: string;
+            /** @description percent is a sum: the client's own monthly pick. Set together with stacked_super (invariant 6 amendment 2026-07-31) */
+            stacked_regular?: string;
+            /** @description the барабан granted on top of that pick — mark the row «барабан» when this is set */
+            stacked_super?: string;
             /** @enum {string} */
             verdict: "free" | "paid" | "locked" | "slots_full" | "unknown";
         };
@@ -1604,6 +1608,10 @@ export interface components {
             points_label?: string;
             /** @description the bank's own menu title — names the mechanic on marked super/special rows («Пятница») */
             raw_title: string;
+            /** @description percent is a sum: the client's own monthly pick. Set together with stacked_super (invariant 6 amendment 2026-07-31) */
+            stacked_regular?: string;
+            /** @description the барабан granted on top of that pick — mark the row «барабан» when this is set */
+            stacked_super?: string;
         };
         "Mcc-resolveResponse": {
             /**

@@ -545,6 +545,78 @@ func TestRankActiveSelections(t *testing.T) {
 	}
 }
 
+// TestRankActiveSelectionsStacksSuper covers the invariant 6 amendment of
+// 2026-07-31: the барабан pays on top of the client's own pick of the same
+// category, so the two rank as one answer at their sum. Report: Альфа's 7%
+// барабан on «Кафе и рестораны» sat beside a 7% monthly pick of the same
+// category and the screen said 7%.
+func TestRankActiveSelectionsStacksSuper(t *testing.T) {
+	got := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
+		{ClientID: clientOzon, BankName: "Ozon Банк", Percent: pct("8"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: clientAlfa, BankName: "Альфа-Банк", RawTitle: "Кафе и рестораны", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: clientAlfa, BankName: "Альфа-Банк", RawTitle: "Кафе и рестораны", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferSuper, Period: july2026},
+	})
+
+	if len(got.Ranked) != 2 {
+		t.Fatalf("Ranked has %d entries, want 2 — the барабан merges into the pick it pays with", len(got.Ranked))
+	}
+	// 14% beats Озон's 8%: ranking on the барабан's own 7% recommended the
+	// worse card, which is the whole point of the amendment.
+	best := got.Ranked[0]
+	if best.BankName != "Альфа-Банк" || best.Percent == nil || !best.Percent.Equal(decimal.RequireFromString("14")) {
+		t.Fatalf("Ranked[0] = %s at %v, want Альфа-Банк at 14%% (7 pick + 7 барабан)", best.BankName, best.Percent)
+	}
+	if best.StackedRegular == nil || !best.StackedRegular.Equal(decimal.RequireFromString("7")) ||
+		best.StackedSuper == nil || !best.StackedSuper.Equal(decimal.RequireFromString("7")) {
+		t.Errorf("stacked parts = %v + %v, want both 7 — the UI shows the sum's breakdown", best.StackedRegular, best.StackedSuper)
+	}
+	// The merged row is the chosen category, so it keeps consuming its slot
+	// semantics: kind stays regular and the UI marks it барабан off the parts.
+	if best.Kind != OfferRegular {
+		t.Errorf("merged kind = %s, want regular (the pick absorbs the grant)", best.Kind)
+	}
+
+	// A барабан on a category this client did not pick has nothing to stack
+	// onto — it still ranks on its own, as before the amendment.
+	alone := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
+		{ClientID: clientOzon, BankName: "Ozon Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferSuper, Period: july2026},
+	})
+	if len(alone.Ranked) != 2 || alone.Ranked[0].Kind != OfferSuper || !alone.Ranked[0].Percent.Equal(decimal.RequireFromString("7")) {
+		t.Errorf("unpaired барабан = %+v, want it ranked alone at 7%%", alone.Ranked)
+	}
+
+	// special never stacks: the ВТБ остаток-категория pays on top too, but
+	// only while its condition holds (amendment 2026-07-31), so the app
+	// refuses to promise a sum it cannot verify.
+	cond := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
+		{ClientID: 5, BankName: "ВТБ", Percent: pct("3"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: 5, BankName: "ВТБ", RawTitle: "За хранение остатков", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferSpecial, Period: july2026},
+	})
+	if len(cond.Ranked) != 2 {
+		t.Errorf("special must not merge into the pick, got %+v", cond.Ranked)
+	}
+
+	// Nothing to sum with: an unknown percent on either side leaves both
+	// rows alone rather than inventing a total.
+	unknown := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
+		{ClientID: clientAlfa, BankName: "Альфа-Банк", CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferSuper, Period: july2026},
+	})
+	if len(unknown.Ranked) != 2 {
+		t.Errorf("percent-less pick must not absorb the барабан, got %+v", unknown.Ranked)
+	}
+
+	// Stacking is per client: another bank's барабан never lifts this one.
+	crossed := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
+		{ClientID: clientOzon, BankName: "Ozon Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferSuper, Period: july2026},
+	})
+	if len(crossed.Ranked) != 2 || crossed.Ranked[1].Percent.Equal(decimal.RequireFromString("12")) {
+		t.Errorf("a барабан must never stack onto another client's pick, got %+v", crossed.Ranked)
+	}
+}
+
 // TestAssessAvailability covers S3b verdicts (2026-07-16): honest
 // «можно ли выбрать прямо сейчас» per offered-but-unselected menu row.
 func TestAssessAvailability(t *testing.T) {
@@ -635,9 +707,12 @@ func TestRankAvailable(t *testing.T) {
 // the Альфа monthly барабан ranks like a regular (unlike special), but is
 // granted, not chosen — no slot, no collision, not a comparison candidate.
 func TestOfferSuper(t *testing.T) {
-	// Ranks, and outranks a lower regular in the same category/currency.
+	// Ranks, and outranks a lower regular on ANOTHER client in the same
+	// category/currency. Same-client pairs no longer compete — the барабан
+	// pays together with that client's own pick, so they merge into one
+	// answer (amendment 2026-07-31, TestRankActiveSelectionsStacksSuper).
 	res := RankActiveSelections(Date(2026, time.July, 15), []LookupEntry{
-		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
+		{ClientID: clientOzon, BankName: "Ozon Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026},
 		{ClientID: clientAlfa, BankName: "Альфа-Банк", Percent: pct("15"), CurrencyKind: CurrencyRub, Kind: OfferSuper, Period: july2026},
 	})
 	if len(res.Ranked) != 2 {
