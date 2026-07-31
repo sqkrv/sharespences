@@ -415,6 +415,7 @@ function RecognizeReview({
               raw_title: row.title.trim(),
               ...(row.percent.trim() ? { percent: row.percent.trim() } : {}),
               ...(row.cap.trim() ? { cap_value: row.cap.trim() } : {}),
+              ...(row.subtitle.trim() ? { notes: row.subtitle.trim() } : {}),
               kind: row.kind,
               ...(row.bankCategoryID != null ? { bank_category_id: row.bankCategoryID } : {}),
               ...(row.canonicalID != null ? { canonical_category_id: row.canonicalID } : {}),
@@ -561,6 +562,11 @@ function RecognizeReview({
               </button>
             </div>
 
+            {/* The bank's own subtitle: the only thing distinguishing two
+                rows it lists under one title, so it is shown even though
+                nothing here edits it. */}
+            {row.subtitle && <p className="mt-1 pl-7 text-[11px] text-tx3">{row.subtitle}</p>}
+
             {row.conflictPercents.length > 0 && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-warn">
                 <span>процент на скриншотах:</span>
@@ -651,6 +657,7 @@ function RecognizeReview({
               {
                 key: rows.reduce((m, r) => Math.max(m, r.key), 0) + 1,
                 title: "",
+                subtitle: "",
                 percent: "",
                 cap: "",
                 kind: "regular",

@@ -1849,6 +1849,7 @@ export interface components {
             raw_title: string;
             review_notes?: string[] | null;
             source_images: number[] | null;
+            subtitle?: string;
         };
         RequestDTO: {
             /** Format: date-time */

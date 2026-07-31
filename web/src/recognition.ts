@@ -21,6 +21,11 @@ import { api, unwrap, type RecognitionDraft } from "./api/client";
 export type ReviewRow = {
   key: number;
   title: string;
+  // The bank's grey line under the title, verbatim — commits as the
+  // offer's notes, and on screen it is what separates two rows the bank
+  // lists under the same title («3% АЗС» offered vs «5% АЗС» already
+  // running за хранение остатков).
+  subtitle: string;
   percent: string;
   cap: string;
   kind: "regular" | "super" | "special";
@@ -198,6 +203,7 @@ export function draftRows(d: RecognitionDraft): ReviewRow[] {
   return (d.rows ?? []).map((r, i) => ({
     key: i,
     title: r.raw_title,
+    subtitle: r.subtitle ?? "",
     percent: r.percent ?? "",
     cap: r.cap_value ?? "",
     kind: (r.kind as ReviewRow["kind"]) || "regular",
