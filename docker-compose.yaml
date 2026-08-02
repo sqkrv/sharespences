@@ -5,7 +5,15 @@
 # are shallow, so an `environment:` on `app:` would replace this whole map
 # (dropping DATABASE_URL) instead of adding to it.
 x-backend: &backend
-  build: .
+  build:
+    context: .
+    args:
+      # Stamps GET /api/v1/version and the «О приложении» card (ADR-0006
+      # CalVer). Pass it inline at deploy time — VERSION=v2026.7.4 docker
+      # compose up -d --build — rather than pinning it in .env, where the
+      # value outlives the release it names and the app then reports a
+      # version it is not running. Unset builds report "dev".
+      VERSION: ${VERSION:-dev}
   image: sharespences
   environment:
     DATABASE_URL: postgres://sharespences:sharespences@db:5432/sharespences
