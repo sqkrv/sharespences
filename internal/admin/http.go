@@ -288,9 +288,13 @@ func RegisterHTTP(api huma.API, s *Service) {
 		OperationID: "admin-bank-category-list", Method: http.MethodGet,
 		Path: "/api/bank-categories", Summary: "List a bank's category catalog (incl. inactive)", Tags: []string{"catalog"},
 	}, func(ctx context.Context, in *struct {
-		BankID *int32 `query:"bank_id" required:"false"`
+		BankID int32 `query:"bank_id" required:"false" doc:"0 или пусто — все банки"`
 	}) (*struct{ Body []BankCategoryDTO }, error) {
-		rows, err := s.Q.AdminListBankCategories(ctx, in.BankID)
+		var bankFilter *int32
+		if in.BankID != 0 {
+			bankFilter = &in.BankID
+		}
+		rows, err := s.Q.AdminListBankCategories(ctx, bankFilter)
 		if err != nil {
 			return nil, err
 		}
@@ -480,6 +484,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 	huma.Register(api, huma.Operation{
 		OperationID: "admin-mcc-link-upsert", Method: http.MethodPut,
 		Path: "/api/bank-categories/{id}/mcc/{code}", Summary: "Add/update an MCC link (non-covered categories)", Tags: []string{"mcc"},
+		DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, in *struct {
 		ID   int64 `path:"id"`
 		Code int16 `path:"code"`
