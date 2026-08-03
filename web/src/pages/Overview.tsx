@@ -5,7 +5,7 @@ import { api, unwrap, type Schemas } from "../api/client";
 import { useBanks, useClients, usePeriods, usePrograms, useTierMap } from "../hooks";
 import { BankBadge, Btn, Card, Empty, ErrMsg, Field, Input, Pct, SegTabs, Select, Spinner, Badge } from "../components/ui";
 import { MonthPicker } from "../components/MonthPicker";
-import { capNote, FALLBACK_EMOJI, midMonthISO, monthKey, monthNameOf, opensStripParts, pad2, todayISO } from "../lib";
+import { capNote, FALLBACK_EMOJI, midMonthISO, midPeriodAddNote, monthKey, monthNameOf, opensStripParts, pad2, todayISO } from "../lib";
 
 // [enum value, human label] — the API takes the lowercase enum, the user
 // reads «Мир»/«Visa» (2026-07-15).
@@ -450,8 +450,9 @@ function ClientCard({
               {title} <span className="font-semibold text-tx4">{cardNums}</span>
             </p>
             <p className="mt-px truncate text-[10.5px] font-medium text-tx4">
-              {[c.tier_name, capNote(c)].filter(Boolean).join(" · ") || "без тарифа"}
-              {c.selection_mode === "incremental" && " · инкрементально"}
+              {[c.tier_name, capNote(c), midPeriodAddNote(c.mid_period_add, c.activation)]
+                .filter(Boolean)
+                .join(" · ") || "без тарифа"}
             </p>
           </div>
           {c.max_categories != null ? (

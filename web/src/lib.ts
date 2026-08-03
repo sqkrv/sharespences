@@ -78,6 +78,27 @@ export function currencyWord(kind?: string, pointsLabel?: string): string {
   return "неизвестно чем";
 }
 
+// «Можно ли ещё добавить категорию в идущий период?» — the program policy
+// from migration 00008, which is what S3b verdicts key on. This replaced the
+// old selection_mode chip: atomic|incremental described how the picker
+// submits, not whether you may still pick, and on Яндекс Пэй the two say
+// opposite things (incremental, yet locked after the first confirm).
+// Returns "" when there is nothing worth saying.
+export function midPeriodAddNote(policy?: string, activation?: string): string {
+  const add =
+    policy === "allowed"
+      ? "можно добавить"
+      : policy === "locked_after_first"
+        ? "добавить нельзя"
+        : policy === "paid"
+          ? "платно"
+          : "";
+  // next_day only matters where a pick is still possible — «активируется
+  // завтра» is advice about a purchase you are about to make.
+  const late = activation === "next_day" && policy !== "locked_after_first" ? "со след. дня" : "";
+  return [add, late].filter(Boolean).join(", ");
+}
+
 // Static cap reference, e.g. «лимит 1500₽/кат, всего 3000₽» (Озон) or
 // «лимит 7000₽» (Альфа-Смарт). Caps are configured values, not remaining.
 // A per-offer cap (ВТБ «Кешбэк до N ₽» rows) wins over the tier cap.

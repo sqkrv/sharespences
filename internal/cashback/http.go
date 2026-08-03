@@ -86,7 +86,12 @@ type ProgramDTO struct {
 	CurrencyKind      string  `json:"currency_kind"`
 	PointsLabel       *string `json:"points_label,omitempty"`
 	SelectionOpensDay *int32  `json:"selection_opens_day,omitempty"`
-	Notes             *string `json:"notes,omitempty"`
+	// The two policy axes selection_mode does NOT capture (migration 00008):
+	// Альфа is atomic yet allows mid-period adds, ВТБ/Озон are atomic and
+	// lock after the first confirm.
+	MidPeriodAdd string  `json:"mid_period_add" enum:"allowed,locked_after_first,paid,unknown"`
+	Activation   string  `json:"activation" enum:"immediate,next_day,unknown"`
+	Notes        *string `json:"notes,omitempty"`
 }
 
 func programDTO(p db.CashbackProgram, bankName string) ProgramDTO {
@@ -94,7 +99,9 @@ func programDTO(p db.CashbackProgram, bankName string) ProgramDTO {
 		ID: p.ID, BankID: p.BankID, BankName: bankName, Name: p.Name,
 		PeriodType: string(p.PeriodType), SelectionMode: string(p.SelectionMode),
 		CurrencyKind: string(p.CurrencyKind), PointsLabel: p.PointsLabel,
-		SelectionOpensDay: p.SelectionOpensDay, Notes: p.Notes,
+		SelectionOpensDay: p.SelectionOpensDay,
+		MidPeriodAdd:      string(p.MidPeriodAdd), Activation: string(p.Activation),
+		Notes: p.Notes,
 	}
 }
 
@@ -357,7 +364,8 @@ type OverviewClientDTO struct {
 	CapScope       string                `json:"cap_scope,omitempty"`
 	CurrencyKind   string                `json:"currency_kind"`
 	PointsLabel    string                `json:"points_label,omitempty"`
-	SelectionMode  string                `json:"selection_mode,omitempty"`
+	MidPeriodAdd   string                `json:"mid_period_add,omitempty" enum:"allowed,locked_after_first,paid,unknown" doc:"can a category still be ADDED to a live period"`
+	Activation     string                `json:"activation,omitempty" enum:"immediate,next_day,unknown" doc:"next_day (МКБ): a fresh pick won't cover a purchase made right now"`
 	PeriodID       *int64                `json:"period_id,omitempty"`
 	PeriodStart    *string               `json:"period_start,omitempty"`
 	PeriodEnd      *string               `json:"period_end,omitempty"`
@@ -1030,7 +1038,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				HolderLabel: c.HolderLabel, TierName: c.TierName, IsPaidTier: c.IsPaidTier,
 				CapValue: decToStr(c.CapValue), CapPerCategory: decToStr(c.CapPerCat),
 				CapScope: string(c.CapScope), CurrencyKind: string(c.CurrencyKind),
-				PointsLabel: c.PointsLabel, SelectionMode: c.SelectionMode,
+				PointsLabel: c.PointsLabel, MidPeriodAdd: c.MidPeriodAdd, Activation: c.Activation,
 				PeriodID: c.PeriodID, SlotsUsed: c.SlotsUsed, MaxCategories: c.MaxCategories,
 			}
 			dto.Cards = make([]OverviewCardChipDTO, len(c.Cards))

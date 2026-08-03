@@ -1697,6 +1697,11 @@ export interface components {
             raw_title: string;
         };
         OverviewClientDTO: {
+            /**
+             * @description next_day (МКБ): a fresh pick won't cover a purchase made right now
+             * @enum {string}
+             */
+            activation?: "immediate" | "next_day" | "unknown";
             /** Format: int64 */
             bank_client_id: number;
             /** Format: int32 */
@@ -1711,13 +1716,17 @@ export interface components {
             is_paid_tier?: boolean;
             /** Format: int32 */
             max_categories?: number;
+            /**
+             * @description can a category still be ADDED to a live period
+             * @enum {string}
+             */
+            mid_period_add?: "allowed" | "locked_after_first" | "paid" | "unknown";
             period_end?: string;
             /** Format: int64 */
             period_id?: number;
             period_start?: string;
             points_label?: string;
             selected: components["schemas"]["OverviewChipDTO"][] | null;
-            selection_mode?: string;
             /** Format: int64 */
             slots_used: number;
             specials?: components["schemas"]["OverviewChipDTO"][] | null;
@@ -1772,12 +1781,16 @@ export interface components {
              * @example https://example.com/schemas/ProgramDTO.json
              */
             readonly $schema?: string;
+            /** @enum {string} */
+            activation: "immediate" | "next_day" | "unknown";
             /** Format: int32 */
             bank_id: number;
             bank_name?: string;
             currency_kind: string;
             /** Format: int64 */
             id: number;
+            /** @enum {string} */
+            mid_period_add: "allowed" | "locked_after_first" | "paid" | "unknown";
             name: string;
             notes?: string;
             period_type: string;

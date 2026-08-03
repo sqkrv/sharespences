@@ -669,10 +669,15 @@ type OverviewClient struct {
 	CapValue      *decimal.Decimal
 	CapScope      CapScope
 	CapPerCat     *decimal.Decimal
-	CurrencyKind  CurrencyKind
-	PointsLabel   string
-	SelectionMode string
-	PeriodID      *int64
+	CurrencyKind CurrencyKind
+	PointsLabel  string
+	// MidPeriodAdd/Activation are the two policy axes that actually govern
+	// «can I still pick this right now?» (migration 00008). They replaced
+	// SelectionMode here: atomic|incremental described how the picker submits,
+	// which no screen and no rule ever needed.
+	MidPeriodAdd string
+	Activation   string
+	PeriodID     *int64
 	PeriodStart   *time.Time
 	PeriodEnd     *time.Time
 	SlotsUsed     int
@@ -864,7 +869,8 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			if program.PointsLabel != nil {
 				oc.PointsLabel = *program.PointsLabel
 			}
-			oc.SelectionMode = string(program.SelectionMode)
+			oc.MidPeriodAdd = string(program.MidPeriodAdd)
+			oc.Activation = string(program.Activation)
 			if program.SelectionOpensDay != nil &&
 				(res.SelectionOpensDay == nil || *program.SelectionOpensDay < *res.SelectionOpensDay) {
 				res.SelectionOpensDay = program.SelectionOpensDay

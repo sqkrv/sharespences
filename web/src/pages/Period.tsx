@@ -5,7 +5,7 @@ import { api, unwrap, attachmentURL, uploadAttachment, ApiError, type CanonicalC
 import { useBankCategories, useBanks, useCards, useCategories, useClients, useTierMap } from "../hooks";
 import { Badge, Btn, Card, CheckDot, ErrMsg, errorText, Field, GradientCard, Input, Pct, Select, Spinner } from "../components/ui";
 import { CategoryPicker, type PickedCategory } from "../components/CategoryPicker";
-import { currencyBadge, fmtRange } from "../lib";
+import { currencyBadge, fmtRange, midPeriodAddNote } from "../lib";
 
 function usePeriod(id: number) {
   return useQuery({
@@ -547,6 +547,14 @@ export default function Period() {
               <p className="mt-2 text-[11px] font-semibold text-white/85">
                 {[client?.label, cardChips].filter(Boolean).join(" · ") || "любая карта"} · {currencyBadge(currency, tierInfo.program.points_label ?? undefined) === "₽" ? "рубли" : currencyBadge(currency, tierInfo.program.points_label ?? undefined)}
               </p>
+              {/* Whether a slot can still be filled in a live period — the
+                  same policy S3b «Можно выбрать» keys on, shown where the
+                  user is actually filling slots. */}
+              {midPeriodAddNote(tierInfo.program.mid_period_add, tierInfo.program.activation) && (
+                <p className="mt-1 text-[11px] font-semibold text-white/70">
+                  Категории: {midPeriodAddNote(tierInfo.program.mid_period_add, tierInfo.program.activation)}
+                </p>
+              )}
             </div>
             <div className="text-right">
               <p className="text-[9.5px] font-bold uppercase tracking-[.1em] text-white/70">Лимит</p>
