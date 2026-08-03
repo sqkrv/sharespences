@@ -33,6 +33,27 @@ go run ./cmd/sharespences serve   # web/: npm run dev proxies to :8080
 If 5432 is taken locally too, change the host side in the override (e.g.
 `"127.0.0.1:5433:5432"`) and the `DATABASE_URL` port to match.
 
+### Filling a dev database
+
+`cmd/devdata` generates a realistic cashback history for one user — bank
+clients, cards, offer periods, menu rows drawn from each bank's seeded
+catalog, dated selections and partner offers:
+
+```sh
+go run ./cmd/devdata -user <username> -months 18
+```
+
+It writes through `internal/cashback.Service`, not raw SQL, so slot limits,
+period-overlap and selection-date rules apply exactly as they do to a real
+user. Re-running is the intended workflow: existing periods are detected and
+skipped, so the same command next month adds only next month. `-dry-run`
+reports what it would write; `-seed` makes generation reproducible.
+
+It refuses a non-loopback `DATABASE_URL` without `-confirm`, and it is not
+part of the server image (the Dockerfile builds `./cmd/sharespences` only).
+The rows it writes are indistinguishable from hand-entered ones — do not
+point it at production.
+
 ## Deploying
 
 The session cookie is marked `Secure`, so **the app must be served over
