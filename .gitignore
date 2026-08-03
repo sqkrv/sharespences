@@ -258,6 +258,9 @@ attachments/
 !internal/web/dist/
 internal/web/dist/*
 !internal/web/dist/.placeholder
+!internal/adminweb/dist/
+internal/adminweb/dist/*
+!internal/adminweb/dist/.placeholder
 
 # leftover untracked junk from the removed Next.js mockup (see legacy/python-backend)
 /frontend/
