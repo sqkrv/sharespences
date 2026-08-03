@@ -78,6 +78,23 @@ export function currencyWord(kind?: string, pointsLabel?: string): string {
   return "неизвестно чем";
 }
 
+// Monogram for a partner-offer avatar. Bank offers are habitually written
+// with the rate in front («25% в Авито»), so taking title[0] renders a digit
+// — the tile showed «2» for Авито. Skip leading digits, punctuation and the
+// «в»/«в » connector to reach the merchant's own first letter, and fall back
+// to the raw first character when there is no letter at all.
+export function merchantMonogram(title: string): string {
+  const words = title.split(/[\s·—–-]+/).filter(Boolean);
+  for (const w of words) {
+    const cleaned = w.replace(/^[^\p{L}]+/u, "");
+    if (!cleaned) continue;
+    const lower = cleaned.toLowerCase();
+    if (lower === "в" || lower === "на" || lower === "от" || lower === "до") continue;
+    return cleaned[0].toUpperCase();
+  }
+  return title.trim()[0]?.toUpperCase() ?? "?";
+}
+
 // «Можно ли ещё добавить категорию в идущий период?» — the program policy
 // from migration 00008, which is what S3b verdicts key on. This replaced the
 // old selection_mode chip: atomic|incremental described how the picker
