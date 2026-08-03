@@ -482,8 +482,7 @@ export interface paths {
         /** List cashback programs */
         get: operations["cashback-program-list"];
         put?: never;
-        /** Create a cashback program */
-        post: operations["cashback-program-create"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -570,23 +569,6 @@ export interface paths {
         post?: never;
         /** Undo a selection */
         delete: operations["cashback-selection-delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cashback/tiers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create a program tier (client level) */
-        post: operations["cashback-tier-create"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1753,34 +1735,7 @@ export interface components {
             valid_from?: string;
             valid_to?: string;
         };
-        ProgramBody: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/ProgramBody.json
-             */
-            readonly $schema?: string;
-            /** Format: int32 */
-            bank_id: number;
-            /** @enum {string} */
-            currency_kind: "rub" | "points";
-            name: string;
-            notes?: string;
-            /** @enum {string} */
-            period_type: "calendar_month" | "quarter" | "week" | "rolling";
-            points_label?: string;
-            /** @enum {string} */
-            selection_mode: "atomic" | "incremental";
-            /** Format: int32 */
-            selection_opens_day?: number;
-        };
         ProgramDTO: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/ProgramDTO.json
-             */
-            readonly $schema?: string;
             /** @enum {string} */
             activation: "immediate" | "next_day" | "unknown";
             /** Format: int32 */
@@ -1907,35 +1862,7 @@ export interface components {
             /** Format: int64 */
             value: number;
         };
-        TierBody: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/TierBody.json
-             */
-            readonly $schema?: string;
-            cap_per_category?: string;
-            /**
-             * @default total
-             * @enum {string}
-             */
-            cap_scope: "total" | "per_category" | "both";
-            cap_value?: string;
-            is_paid_subscription?: boolean;
-            /** Format: int32 */
-            max_categories?: number;
-            name: string;
-            notes?: string;
-            /** Format: int64 */
-            program_id: number;
-        };
         TierDTO: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/TierDTO.json
-             */
-            readonly $schema?: string;
             cap_per_category?: string;
             cap_scope: string;
             cap_value?: string;
@@ -3142,39 +3069,6 @@ export interface operations {
             };
         };
     };
-    "cashback-program-create": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProgramBody"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProgramDTO"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
     "cashback-tier-list": {
         parameters: {
             query?: never;
@@ -3320,39 +3214,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
-    "cashback-tier-create": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TierBody"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TierDTO"];
-                };
             };
             /** @description Error */
             default: {

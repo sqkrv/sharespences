@@ -125,28 +125,6 @@ func tierDTO(t db.ProgramTier) TierDTO {
 	}
 }
 
-type programBody struct {
-	BankID            int32   `json:"bank_id"`
-	Name              string  `json:"name" minLength:"1"`
-	PeriodType        string  `json:"period_type" enum:"calendar_month,quarter,week,rolling"`
-	SelectionMode     string  `json:"selection_mode" enum:"atomic,incremental"`
-	CurrencyKind      string  `json:"currency_kind" enum:"rub,points"`
-	PointsLabel       *string `json:"points_label,omitempty"`
-	SelectionOpensDay *int32  `json:"selection_opens_day,omitempty" minimum:"1" maximum:"31"`
-	Notes             *string `json:"notes,omitempty"`
-}
-
-type tierBody struct {
-	ProgramID          int64   `json:"program_id"`
-	Name               string  `json:"name" minLength:"1"`
-	IsPaidSubscription bool    `json:"is_paid_subscription,omitempty"`
-	CapValue           *string `json:"cap_value,omitempty"`
-	CapScope           string  `json:"cap_scope,omitempty" enum:"total,per_category,both" default:"total"`
-	CapPerCategory     *string `json:"cap_per_category,omitempty"`
-	MaxCategories      *int32  `json:"max_categories,omitempty" minimum:"1"`
-	Notes              *string `json:"notes,omitempty"`
-}
-
 type OfferPeriodDTO struct {
 	ID                    int64  `json:"id"`
 	BankClientID          int64  `json:"bank_client_id"`
@@ -377,27 +355,7 @@ type OverviewClientDTO struct {
 
 // RegisterHTTP mounts the module's API (spec «Interfaces & files»).
 func RegisterHTTP(api huma.API, s *Service) {
-	// --- programs / tiers (admin-ish reference data, shared across users) ---
-
-	huma.Register(api, huma.Operation{
-		OperationID: "cashback-program-create", Method: http.MethodPost,
-		Path: "/api/v1/cashback/programs", Summary: "Create a cashback program", Tags: []string{"cashback"},
-		DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, in *struct {
-		Body programBody
-	}) (*struct{ Body ProgramDTO }, error) {
-		p, err := s.Q.CreateProgram(ctx, db.CreateProgramParams{
-			BankID: in.Body.BankID, Name: in.Body.Name,
-			PeriodType:    db.CashbackPeriodType(in.Body.PeriodType),
-			SelectionMode: db.CashbackSelectionMode(in.Body.SelectionMode),
-			CurrencyKind:  db.CashbackCurrencyKind(in.Body.CurrencyKind),
-			PointsLabel:   in.Body.PointsLabel, SelectionOpensDay: in.Body.SelectionOpensDay, Notes: in.Body.Notes,
-		})
-		if err != nil {
-			return nil, httpErr(err)
-		}
-		return &struct{ Body ProgramDTO }{programDTO(p, "")}, nil
-	})
+	// --- programs / tiers (seed-managed reference data, read-only here) ---
 
 	huma.Register(api, huma.Operation{
 		OperationID: "cashback-program-list", Method: http.MethodGet,
@@ -416,37 +374,6 @@ func RegisterHTTP(api huma.API, s *Service) {
 			}, r.BankName)
 		}
 		return &struct{ Body []ProgramDTO }{out}, nil
-	})
-
-	huma.Register(api, huma.Operation{
-		OperationID: "cashback-tier-create", Method: http.MethodPost,
-		Path: "/api/v1/cashback/tiers", Summary: "Create a program tier (client level)", Tags: []string{"cashback"},
-		DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, in *struct {
-		Body tierBody
-	}) (*struct{ Body TierDTO }, error) {
-		capValue, err := strToDec(in.Body.CapValue, "cap_value")
-		if err != nil {
-			return nil, err
-		}
-		capPerCat, err := strToDec(in.Body.CapPerCategory, "cap_per_category")
-		if err != nil {
-			return nil, err
-		}
-		scope := in.Body.CapScope
-		if scope == "" {
-			scope = string(CapTotal)
-		}
-		t, err := s.Q.CreateTier(ctx, db.CreateTierParams{
-			ProgramID: in.Body.ProgramID, Name: in.Body.Name,
-			IsPaidSubscription: in.Body.IsPaidSubscription,
-			CapValue:           capValue, CapScope: db.CashbackCapScope(scope),
-			CapPerCategory: capPerCat, MaxCategories: in.Body.MaxCategories, Notes: in.Body.Notes,
-		})
-		if err != nil {
-			return nil, httpErr(err)
-		}
-		return &struct{ Body TierDTO }{tierDTO(t)}, nil
 	})
 
 	huma.Register(api, huma.Operation{
