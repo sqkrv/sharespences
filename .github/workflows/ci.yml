@@ -55,3 +55,20 @@ jobs:
       # tsc --noEmit + vite build (embedded by the Go release build)
       - run: npm run build
         working-directory: web
+
+  admin-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+      - run: npm ci
+        working-directory: admin
+      # tsc --noEmit + vite build (embedded by the sidecar release build;
+      # no codegen and no drift gate — the admin API is outside the public
+      # contract, ADR-0008)
+      - run: npm run build
+        working-directory: admin
