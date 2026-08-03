@@ -190,9 +190,9 @@ func (q *Queries) CreateOfferPeriod(ctx context.Context, arg CreateOfferPeriodPa
 
 const createPartnerOffer = `-- name: CreatePartnerOffer :one
 insert into partner_offer (user_id, bank_id, bank_client_id, merchant_title, percent,
-                           valid_from, valid_to, cap_value, notes)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-returning id, user_id, bank_id, merchant_title, percent, valid_from, valid_to, cap_value, notes, bank_client_id
+                           valid_from, valid_to, cap_value, notes, min_amount)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+returning id, user_id, bank_id, merchant_title, percent, valid_from, valid_to, cap_value, notes, bank_client_id, min_amount
 `
 
 type CreatePartnerOfferParams struct {
@@ -205,6 +205,7 @@ type CreatePartnerOfferParams struct {
 	ValidTo       *time.Time
 	CapValue      *decimal.Decimal
 	Notes         *string
+	MinAmount     *decimal.Decimal
 }
 
 func (q *Queries) CreatePartnerOffer(ctx context.Context, arg CreatePartnerOfferParams) (PartnerOffer, error) {
@@ -218,6 +219,7 @@ func (q *Queries) CreatePartnerOffer(ctx context.Context, arg CreatePartnerOffer
 		arg.ValidTo,
 		arg.CapValue,
 		arg.Notes,
+		arg.MinAmount,
 	)
 	var i PartnerOffer
 	err := row.Scan(
@@ -231,6 +233,7 @@ func (q *Queries) CreatePartnerOffer(ctx context.Context, arg CreatePartnerOffer
 		&i.CapValue,
 		&i.Notes,
 		&i.BankClientID,
+		&i.MinAmount,
 	)
 	return i, err
 }
@@ -508,6 +511,26 @@ func (q *Queries) DetachFromOfferPeriod(ctx context.Context, arg DetachFromOffer
 	return result.RowsAffected(), nil
 }
 
+const detachFromPartnerOffer = `-- name: DetachFromPartnerOffer :execrows
+delete
+from partner_offer_attachment
+where partner_offer_id = $1
+  and attachment_id = $2
+`
+
+type DetachFromPartnerOfferParams struct {
+	PartnerOfferID int64
+	AttachmentID   uuid.UUID
+}
+
+func (q *Queries) DetachFromPartnerOffer(ctx context.Context, arg DetachFromPartnerOfferParams) (int64, error) {
+	result, err := q.db.Exec(ctx, detachFromPartnerOffer, arg.PartnerOfferID, arg.AttachmentID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getBankCategory = `-- name: GetBankCategory :one
 select id, bank_id, title, canonical_category_id, kind, emoji, is_custom, active
 from bank_category
@@ -652,6 +675,54 @@ func (q *Queries) GetOfferWithContextForUser(ctx context.Context, arg GetOfferWi
 		&i.BankID,
 		&i.ProgramTierID,
 		&i.AlreadySelected,
+	)
+	return i, err
+}
+
+const getPartnerOfferForUser = `-- name: GetPartnerOfferForUser :one
+select po.id, po.user_id, po.bank_id, po.merchant_title, po.percent, po.valid_from, po.valid_to, po.cap_value, po.notes, po.bank_client_id, po.min_amount, b.name as bank_name
+from partner_offer po
+         join bank b on b.id = po.bank_id
+where po.id = $1
+  and po.user_id = $2
+`
+
+type GetPartnerOfferForUserParams struct {
+	ID     int64
+	UserID uuid.UUID
+}
+
+type GetPartnerOfferForUserRow struct {
+	ID            int64
+	UserID        uuid.UUID
+	BankID        int32
+	MerchantTitle string
+	Percent       *decimal.Decimal
+	ValidFrom     *time.Time
+	ValidTo       *time.Time
+	CapValue      *decimal.Decimal
+	Notes         *string
+	BankClientID  *int64
+	MinAmount     *decimal.Decimal
+	BankName      string
+}
+
+func (q *Queries) GetPartnerOfferForUser(ctx context.Context, arg GetPartnerOfferForUserParams) (GetPartnerOfferForUserRow, error) {
+	row := q.db.QueryRow(ctx, getPartnerOfferForUser, arg.ID, arg.UserID)
+	var i GetPartnerOfferForUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.BankID,
+		&i.MerchantTitle,
+		&i.Percent,
+		&i.ValidFrom,
+		&i.ValidTo,
+		&i.CapValue,
+		&i.Notes,
+		&i.BankClientID,
+		&i.MinAmount,
+		&i.BankName,
 	)
 	return i, err
 }
@@ -1096,8 +1167,40 @@ func (q *Queries) ListOffersForPeriod(ctx context.Context, offerPeriodID int64) 
 	return items, nil
 }
 
+const listPartnerOfferAttachments = `-- name: ListPartnerOfferAttachments :many
+select a.id, a.filename, a.media_type, a.user_id
+from attachment a
+         join partner_offer_attachment poa on poa.attachment_id = a.id
+where poa.partner_offer_id = $1
+`
+
+func (q *Queries) ListPartnerOfferAttachments(ctx context.Context, partnerOfferID int64) ([]Attachment, error) {
+	rows, err := q.db.Query(ctx, listPartnerOfferAttachments, partnerOfferID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Attachment
+	for rows.Next() {
+		var i Attachment
+		if err := rows.Scan(
+			&i.ID,
+			&i.Filename,
+			&i.MediaType,
+			&i.UserID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPartnerOffersForUser = `-- name: ListPartnerOffersForUser :many
-select po.id, po.user_id, po.bank_id, po.merchant_title, po.percent, po.valid_from, po.valid_to, po.cap_value, po.notes, po.bank_client_id, b.name as bank_name
+select po.id, po.user_id, po.bank_id, po.merchant_title, po.percent, po.valid_from, po.valid_to, po.cap_value, po.notes, po.bank_client_id, po.min_amount, b.name as bank_name
 from partner_offer po
          join bank b on b.id = po.bank_id
 where po.user_id = $1
@@ -1115,6 +1218,7 @@ type ListPartnerOffersForUserRow struct {
 	CapValue      *decimal.Decimal
 	Notes         *string
 	BankClientID  *int64
+	MinAmount     *decimal.Decimal
 	BankName      string
 }
 
@@ -1138,6 +1242,7 @@ func (q *Queries) ListPartnerOffersForUser(ctx context.Context, userID uuid.UUID
 			&i.CapValue,
 			&i.Notes,
 			&i.BankClientID,
+			&i.MinAmount,
 			&i.BankName,
 		); err != nil {
 			return nil, err
@@ -1473,6 +1578,67 @@ func (q *Queries) UpdateCategoryOfferForUser(ctx context.Context, arg UpdateCate
 		&i.Notes,
 		&i.BankCategoryID,
 		&i.CapValue,
+	)
+	return i, err
+}
+
+const updatePartnerOfferForUser = `-- name: UpdatePartnerOfferForUser :one
+update partner_offer
+set bank_id        = $3,
+    bank_client_id = $4,
+    merchant_title = $5,
+    percent        = $6,
+    valid_from     = $7,
+    valid_to       = $8,
+    cap_value      = $9,
+    notes          = $10,
+    min_amount     = $11
+where id = $1
+  and user_id = $2
+returning id, user_id, bank_id, merchant_title, percent, valid_from, valid_to, cap_value, notes, bank_client_id, min_amount
+`
+
+type UpdatePartnerOfferForUserParams struct {
+	ID            int64
+	UserID        uuid.UUID
+	BankID        int32
+	BankClientID  *int64
+	MerchantTitle string
+	Percent       *decimal.Decimal
+	ValidFrom     *time.Time
+	ValidTo       *time.Time
+	CapValue      *decimal.Decimal
+	Notes         *string
+	MinAmount     *decimal.Decimal
+}
+
+func (q *Queries) UpdatePartnerOfferForUser(ctx context.Context, arg UpdatePartnerOfferForUserParams) (PartnerOffer, error) {
+	row := q.db.QueryRow(ctx, updatePartnerOfferForUser,
+		arg.ID,
+		arg.UserID,
+		arg.BankID,
+		arg.BankClientID,
+		arg.MerchantTitle,
+		arg.Percent,
+		arg.ValidFrom,
+		arg.ValidTo,
+		arg.CapValue,
+		arg.Notes,
+		arg.MinAmount,
+	)
+	var i PartnerOffer
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.BankID,
+		&i.MerchantTitle,
+		&i.Percent,
+		&i.ValidFrom,
+		&i.ValidTo,
+		&i.CapValue,
+		&i.Notes,
+		&i.BankClientID,
+		&i.MinAmount,
 	)
 	return i, err
 }

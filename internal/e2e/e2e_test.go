@@ -1228,9 +1228,49 @@ func TestCashbackE2E(t *testing.T) {
 	owner.must("POST", "/api/v1/bank-clients", map[string]any{
 		"bank_id": vtbID, "label": "Партнёрский",
 	}, &partnerClient, http.StatusCreated)
+	var partnerOffer struct {
+		ID            int64    `json:"id"`
+		MerchantTitle string   `json:"merchant_title"`
+		MinAmount     *string  `json:"min_amount"`
+		Percent       *string  `json:"percent"`
+		AttachmentIDs []string `json:"attachment_ids"`
+	}
 	owner.must("POST", "/api/v1/cashback/partner-offers", map[string]any{
 		"bank_id": vtbID, "bank_client_id": partnerClient.ID, "merchant_title": "Кофейня у дома",
-	}, nil, http.StatusCreated)
+		"percent": "10", "min_amount": "1500",
+	}, &partnerOffer, http.StatusCreated)
+	if partnerOffer.MinAmount == nil || *partnerOffer.MinAmount != "1500" {
+		t.Fatalf("min_amount = %v, want 1500", partnerOffer.MinAmount)
+	}
+
+	// A recorded offer is correctable, and correcting it does not disturb
+	// the screenshots hanging off it.
+	shotID := owner.upload("promo.png", "image/png", []byte("fake-png-bytes"))
+	owner.must("POST", fmt.Sprintf("/api/v1/cashback/partner-offers/%d/attachments", partnerOffer.ID),
+		map[string]any{"attachment_id": shotID}, nil, http.StatusNoContent)
+	owner.must("PUT", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", partnerOffer.ID), map[string]any{
+		"bank_id": vtbID, "bank_client_id": partnerClient.ID, "merchant_title": "25% в Авито",
+		"percent": "25", "min_amount": "3000",
+	}, nil, http.StatusOK)
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", partnerOffer.ID), nil, &partnerOffer, http.StatusOK)
+	if partnerOffer.MerchantTitle != "25% в Авито" || partnerOffer.MinAmount == nil || *partnerOffer.MinAmount != "3000" {
+		t.Fatalf("after update = %+v, want «25%% в Авито» at min 3000", partnerOffer)
+	}
+	if len(partnerOffer.AttachmentIDs) != 1 || partnerOffer.AttachmentIDs[0] != shotID {
+		t.Fatalf("attachments = %v, want [%s] to survive the update", partnerOffer.AttachmentIDs, shotID)
+	}
+	// Scoping holds on every new op, as everywhere else.
+	if got := other.do("PUT", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", partnerOffer.ID), map[string]any{
+		"bank_id": vtbID, "merchant_title": "чужое",
+	}, nil); got != http.StatusNotFound {
+		t.Fatalf("foreign partner-offer update: %d, want 404", got)
+	}
+	if got := other.do("GET", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", partnerOffer.ID), nil, nil); got != http.StatusNotFound {
+		t.Fatalf("foreign partner-offer get: %d, want 404", got)
+	}
+	owner.must("DELETE", fmt.Sprintf("/api/v1/cashback/partner-offers/%d/attachments/%s", partnerOffer.ID, shotID),
+		nil, nil, http.StatusNoContent)
+
 	if got := owner.do("DELETE", fmt.Sprintf("/api/v1/bank-clients/%d", partnerClient.ID), nil, nil); got != http.StatusConflict {
 		t.Fatalf("delete client with partner offer: %d, want 409", got)
 	}

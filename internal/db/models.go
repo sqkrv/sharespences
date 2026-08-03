@@ -810,6 +810,8 @@ type PartnerOffer struct {
 	CapValue      *decimal.Decimal
 	Notes         *string
 	BankClientID  *int64
+	// minimum qualifying purchase, e.g. «при заказе от 2 000 ₽»; display only
+	MinAmount *decimal.Decimal
 }
 
 type PartnerOfferAttachment struct {
