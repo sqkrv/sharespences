@@ -478,23 +478,12 @@ func RegisterHTTP(api huma.API, s *Service) {
 		return &struct{ Body []CanonicalCategoryDTO }{out}, nil
 	})
 
-	huma.Register(api, huma.Operation{
-		OperationID: "cashback-canonical-create", Method: http.MethodPost,
-		Path: "/api/v1/cashback/canonical-categories", Summary: "Create a canonical category", Tags: []string{"cashback"},
-		DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, in *struct {
-		Body struct {
-			Slug    string  `json:"slug" minLength:"1" pattern:"^[a-z0-9-]+$"`
-			TitleRu string  `json:"title_ru" minLength:"1"`
-			Emoji   *string `json:"emoji,omitempty"`
-		}
-	}) (*struct{ Body CanonicalCategoryDTO }, error) {
-		c, err := s.Q.CreateCanonicalCategory(ctx, db.CreateCanonicalCategoryParams{Slug: in.Body.Slug, TitleRu: in.Body.TitleRu, Emoji: in.Body.Emoji})
-		if err != nil {
-			return nil, httpErr(err)
-		}
-		return &struct{ Body CanonicalCategoryDTO }{canonicalCategoryDTO(c)}, nil
-	})
+	// Canonical categories are seed-managed and read-only over the API: they
+	// are the cross-bank identity every account's lookup and overview key on,
+	// and the taxonomy already covers the banks' menus, so a new one is rare
+	// enough to belong in the knowledge base and the seed derived from it. A
+	// category the seed does not know yet is recorded as a canonical-less
+	// catalog row, which is what that state is for.
 
 	// --- bank picker catalogs ---
 
@@ -504,7 +493,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 	}, func(ctx context.Context, in *struct {
 		BankID int32 `path:"bank_id"`
 	}) (*struct{ Body []BankCategoryDTO }, error) {
-		rows, err := s.ListBankCategories(ctx, in.BankID)
+		rows, err := s.ListBankCategories(ctx, auth.UserID(ctx), in.BankID)
 		if err != nil {
 			return nil, err
 		}
@@ -526,7 +515,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "cashback-bank-category-create", Method: http.MethodPost,
-		Path: "/api/v1/cashback/bank-categories", Summary: "Add a custom category to a bank's picker catalog", Tags: []string{"cashback"},
+		Path: "/api/v1/cashback/bank-categories", Summary: "Add a custom category to a bank's picker catalog (visible to its author only)", Tags: []string{"cashback"},
 		DefaultStatus: http.StatusCreated,
 	}, func(ctx context.Context, in *struct {
 		Body struct {
@@ -541,7 +530,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		if kind == "" {
 			kind = OfferRegular
 		}
-		bc, err := s.CreateBankCategory(ctx, in.Body.BankID, in.Body.Title, in.Body.CanonicalCategoryID, kind, in.Body.Emoji)
+		bc, err := s.CreateBankCategory(ctx, auth.UserID(ctx), in.Body.BankID, in.Body.Title, in.Body.CanonicalCategoryID, kind, in.Body.Emoji)
 		if err != nil {
 			return nil, httpErr(err)
 		}

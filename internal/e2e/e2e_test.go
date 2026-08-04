@@ -939,6 +939,66 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("duplicate custom bank category: %d, want 409", got)
 	}
 
+	// 00019: a custom row belongs to its author alone. Another account's
+	// catalog is the seeded one, and the same title is free for them to take
+	// — under the old unique (bank_id, title) one account squatted it for
+	// everyone, and the seed's is_custom guard then kept the name
+	// un-refreshable forever.
+	var otherCatalog []bankCategoryJSON
+	other.must("GET", fmt.Sprintf("/api/v1/cashback/banks/%d/categories", alfa.BankID), nil, &otherCatalog, http.StatusOK)
+	for _, r := range otherCatalog {
+		if r.ID == custom.ID || r.Title == "Кофейни" {
+			t.Fatalf("another account sees the private catalog row %+v", r)
+		}
+	}
+	var otherCustom bankCategoryJSON
+	other.must("POST", "/api/v1/cashback/bank-categories", map[string]any{
+		"bank_id": alfa.BankID, "title": "Кофейни", "emoji": "🥐",
+	}, &otherCustom, http.StatusCreated)
+	if otherCustom.ID == custom.ID {
+		t.Fatal("the same title returned the other account's row instead of a new one")
+	}
+
+	var otherClient struct {
+		ID int64 `json:"id"`
+	}
+	other.must("POST", "/api/v1/bank-clients", map[string]any{
+		"bank_id": alfa.BankID,
+	}, &otherClient, http.StatusCreated)
+	var otherPeriod struct {
+		ID int64 `json:"id"`
+	}
+	other.must("POST", "/api/v1/cashback/offer-periods", map[string]any{
+		"bank_client_id": otherClient.ID, "period_start": "2026-07-01", "period_end": "2026-07-31",
+	}, &otherPeriod, http.StatusCreated)
+	// Invisible reads as «not found», so the id cannot probe for existence
+	// either — a private row is unattachable, not merely unlisted.
+	if got := other.do("POST", "/api/v1/cashback/category-offers", map[string]any{
+		"offer_period_id": otherPeriod.ID, "raw_title": "Кофейни", "bank_category_id": custom.ID,
+	}, nil); got != http.StatusNotFound {
+		t.Fatalf("offer citing another account's private catalog row: %d, want 404", got)
+	}
+
+	// The alias an entry writes is the author's too. Before 00019 this upsert
+	// replaced the mapping every other account got suggested for the same
+	// (bank, raw title), silently and with no UI action behind it.
+	other.must("POST", "/api/v1/cashback/category-offers", map[string]any{
+		"offer_period_id": otherPeriod.ID, "raw_title": "Барбершопы",
+		"canonical_category_id": *cafe.CanonicalCategoryID, "percent": "5",
+	}, nil, http.StatusCreated)
+	var authorSuggestion suggestionJSON
+	other.must("GET", "/api/v1/cashback/alias-suggestion?offer_period_id="+
+		fmt.Sprint(otherPeriod.ID)+"&raw_title="+url.QueryEscape("Барбершопы"), nil, &authorSuggestion, http.StatusOK)
+	if authorSuggestion.Suggestion == nil {
+		t.Fatal("the author's own alias is not suggested back to them")
+	}
+	var strangerSuggestion suggestionJSON
+	owner.must("GET", "/api/v1/cashback/alias-suggestion?offer_period_id="+
+		fmt.Sprint(alfaPeriod.ID)+"&raw_title="+url.QueryEscape("Барбершопы"), nil, &strangerSuggestion, http.StatusOK)
+	if strangerSuggestion.Suggestion != nil {
+		t.Fatalf("another account inherited the private alias: %+v", strangerSuggestion.Suggestion)
+	}
+
 	// An offer picked from the catalog carries the traceability FK…
 	var pickedOffer struct {
 		ID             int64  `json:"id"`

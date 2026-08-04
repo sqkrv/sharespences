@@ -60,10 +60,35 @@ func (q *Queries) CountRegularSelectionsInPeriod(ctx context.Context, offerPerio
 	return count, err
 }
 
+const countVisibleBankCategoriesWithTitle = `-- name: CountVisibleBankCategoriesWithTitle :one
+select count(*)
+from bank_category
+where bank_id = $1
+  and title = $2
+  and (created_by is null or created_by = $3::uuid)
+`
+
+type CountVisibleBankCategoriesWithTitleParams struct {
+	BankID int32
+	Title  string
+	UserID uuid.UUID
+}
+
+// The unique constraint spans the owner, so it no longer catches a custom row
+// that shadows a SEEDED title — this does, over exactly the rows the caller
+// can see.
+func (q *Queries) CountVisibleBankCategoriesWithTitle(ctx context.Context, arg CountVisibleBankCategoriesWithTitleParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countVisibleBankCategoriesWithTitle, arg.BankID, arg.Title, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createBankCategory = `-- name: CreateBankCategory :one
-insert into bank_category (bank_id, title, canonical_category_id, kind, emoji, is_custom)
-values ($1, $2, $3, $4, $5, true)
-returning id, bank_id, title, canonical_category_id, kind, emoji, is_custom, active
+insert into bank_category (bank_id, title, canonical_category_id, kind, emoji, is_custom, created_by)
+values ($1, $2, $3, $4,
+        $5, true, $6::uuid)
+returning id, bank_id, title, canonical_category_id, kind, emoji, is_custom, active, created_by
 `
 
 type CreateBankCategoryParams struct {
@@ -72,6 +97,7 @@ type CreateBankCategoryParams struct {
 	CanonicalCategoryID *int64
 	Kind                CashbackOfferKind
 	Emoji               *string
+	CreatedBy           uuid.UUID
 }
 
 func (q *Queries) CreateBankCategory(ctx context.Context, arg CreateBankCategoryParams) (BankCategory, error) {
@@ -81,6 +107,7 @@ func (q *Queries) CreateBankCategory(ctx context.Context, arg CreateBankCategory
 		arg.CanonicalCategoryID,
 		arg.Kind,
 		arg.Emoji,
+		arg.CreatedBy,
 	)
 	var i BankCategory
 	err := row.Scan(
@@ -92,30 +119,7 @@ func (q *Queries) CreateBankCategory(ctx context.Context, arg CreateBankCategory
 		&i.Emoji,
 		&i.IsCustom,
 		&i.Active,
-	)
-	return i, err
-}
-
-const createCanonicalCategory = `-- name: CreateCanonicalCategory :one
-insert into canonical_category (slug, title_ru, emoji)
-values ($1, $2, $3)
-returning id, slug, title_ru, emoji
-`
-
-type CreateCanonicalCategoryParams struct {
-	Slug    string
-	TitleRu string
-	Emoji   *string
-}
-
-func (q *Queries) CreateCanonicalCategory(ctx context.Context, arg CreateCanonicalCategoryParams) (CanonicalCategory, error) {
-	row := q.db.QueryRow(ctx, createCanonicalCategory, arg.Slug, arg.TitleRu, arg.Emoji)
-	var i CanonicalCategory
-	err := row.Scan(
-		&i.ID,
-		&i.Slug,
-		&i.TitleRu,
-		&i.Emoji,
+		&i.CreatedBy,
 	)
 	return i, err
 }
@@ -437,13 +441,19 @@ func (q *Queries) DetachFromPartnerOffer(ctx context.Context, arg DetachFromPart
 }
 
 const getBankCategory = `-- name: GetBankCategory :one
-select id, bank_id, title, canonical_category_id, kind, emoji, is_custom, active
+select id, bank_id, title, canonical_category_id, kind, emoji, is_custom, active, created_by
 from bank_category
 where id = $1
+  and (created_by is null or created_by = $2::uuid)
 `
 
-func (q *Queries) GetBankCategory(ctx context.Context, id int64) (BankCategory, error) {
-	row := q.db.QueryRow(ctx, getBankCategory, id)
+type GetBankCategoryParams struct {
+	ID     int64
+	UserID uuid.UUID
+}
+
+func (q *Queries) GetBankCategory(ctx context.Context, arg GetBankCategoryParams) (BankCategory, error) {
+	row := q.db.QueryRow(ctx, getBankCategory, arg.ID, arg.UserID)
 	var i BankCategory
 	err := row.Scan(
 		&i.ID,
@@ -454,6 +464,7 @@ func (q *Queries) GetBankCategory(ctx context.Context, id int64) (BankCategory, 
 		&i.Emoji,
 		&i.IsCustom,
 		&i.Active,
+		&i.CreatedBy,
 	)
 	return i, err
 }
@@ -681,13 +692,22 @@ func (q *Queries) GetTier(ctx context.Context, id int64) (ProgramTier, error) {
 }
 
 const listAliasesForBank = `-- name: ListAliasesForBank :many
-select canonical_category_id, bank_id, raw_title
+select distinct on (raw_title) canonical_category_id, bank_id, raw_title, user_id
 from bank_category_alias
 where bank_id = $1
+  and (user_id is null or user_id = $2::uuid)
+order by raw_title, user_id nulls last
 `
 
-func (q *Queries) ListAliasesForBank(ctx context.Context, bankID int32) ([]BankCategoryAlias, error) {
-	rows, err := q.db.Query(ctx, listAliasesForBank, bankID)
+type ListAliasesForBankParams struct {
+	BankID int32
+	UserID uuid.UUID
+}
+
+// One row per raw title: the caller's own mapping shadows the seeded one
+// (`nulls last` sorts a non-null owner first).
+func (q *Queries) ListAliasesForBank(ctx context.Context, arg ListAliasesForBankParams) ([]BankCategoryAlias, error) {
+	rows, err := q.db.Query(ctx, listAliasesForBank, arg.BankID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -695,7 +715,12 @@ func (q *Queries) ListAliasesForBank(ctx context.Context, bankID int32) ([]BankC
 	var items []BankCategoryAlias
 	for rows.Next() {
 		var i BankCategoryAlias
-		if err := rows.Scan(&i.CanonicalCategoryID, &i.BankID, &i.RawTitle); err != nil {
+		if err := rows.Scan(
+			&i.CanonicalCategoryID,
+			&i.BankID,
+			&i.RawTitle,
+			&i.UserID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -707,7 +732,8 @@ func (q *Queries) ListAliasesForBank(ctx context.Context, bankID int32) ([]BankC
 }
 
 const listBankCategories = `-- name: ListBankCategories :many
-select bc.id, bc.bank_id, bc.title, bc.canonical_category_id, bc.kind, bc.emoji, bc.is_custom, bc.active,
+
+select bc.id, bc.bank_id, bc.title, bc.canonical_category_id, bc.kind, bc.emoji, bc.is_custom, bc.active, bc.created_by,
        cc.slug     as canonical_slug,
        cc.title_ru as canonical_title_ru,
        cc.emoji    as canonical_emoji
@@ -715,8 +741,14 @@ from bank_category bc
          left join canonical_category cc on cc.id = bc.canonical_category_id
 where bc.bank_id = $1
   and bc.active
+  and (bc.created_by is null or bc.created_by = $2::uuid)
 order by bc.kind, bc.title
 `
+
+type ListBankCategoriesParams struct {
+	BankID int32
+	UserID uuid.UUID
+}
 
 type ListBankCategoriesRow struct {
 	ID                  int64
@@ -727,13 +759,17 @@ type ListBankCategoriesRow struct {
 	Emoji               *string
 	IsCustom            bool
 	Active              bool
+	CreatedBy           *uuid.UUID
 	CanonicalSlug       *string
 	CanonicalTitleRu    *string
 	CanonicalEmoji      *string
 }
 
-func (q *Queries) ListBankCategories(ctx context.Context, bankID int32) ([]ListBankCategoriesRow, error) {
-	rows, err := q.db.Query(ctx, listBankCategories, bankID)
+// The catalog is global rows (created_by null, seed-managed) plus the caller's
+// own; another account's custom row is invisible and, through
+// GetBankCategory, unattachable to an offer (00019).
+func (q *Queries) ListBankCategories(ctx context.Context, arg ListBankCategoriesParams) ([]ListBankCategoriesRow, error) {
+	rows, err := q.db.Query(ctx, listBankCategories, arg.BankID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -750,6 +786,7 @@ func (q *Queries) ListBankCategories(ctx context.Context, bankID int32) ([]ListB
 			&i.Emoji,
 			&i.IsCustom,
 			&i.Active,
+			&i.CreatedBy,
 			&i.CanonicalSlug,
 			&i.CanonicalTitleRu,
 			&i.CanonicalEmoji,
@@ -1656,18 +1693,24 @@ func (q *Queries) UpdateTier(ctx context.Context, arg UpdateTierParams) (Program
 }
 
 const upsertAlias = `-- name: UpsertAlias :exec
-insert into bank_category_alias (canonical_category_id, bank_id, raw_title)
-values ($1, $2, $3)
-on conflict (bank_id, raw_title) do update set canonical_category_id = excluded.canonical_category_id
+insert into bank_category_alias (canonical_category_id, bank_id, raw_title, user_id)
+values ($1, $2, $3, $4::uuid)
+on conflict (bank_id, raw_title, user_id) do update set canonical_category_id = excluded.canonical_category_id
 `
 
 type UpsertAliasParams struct {
 	CanonicalCategoryID int64
 	BankID              int32
 	RawTitle            string
+	UserID              uuid.UUID
 }
 
 func (q *Queries) UpsertAlias(ctx context.Context, arg UpsertAliasParams) error {
-	_, err := q.db.Exec(ctx, upsertAlias, arg.CanonicalCategoryID, arg.BankID, arg.RawTitle)
+	_, err := q.db.Exec(ctx, upsertAlias,
+		arg.CanonicalCategoryID,
+		arg.BankID,
+		arg.RawTitle,
+		arg.UserID,
+	)
 	return err
 }

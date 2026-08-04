@@ -245,7 +245,7 @@ func (s *Service) SuggestAlias(ctx context.Context, userID uuid.UUID, offerPerio
 	if err != nil {
 		return nil, notFound(err)
 	}
-	aliases, err := s.Q.ListAliasesForBank(ctx, int32(period.BankID))
+	aliases, err := s.Q.ListAliasesForBank(ctx, db.ListAliasesForBankParams{BankID: int32(period.BankID), UserID: userID})
 	if err != nil {
 		return nil, err
 	}
@@ -270,23 +270,43 @@ func (s *Service) SuggestAlias(ctx context.Context, userID uuid.UUID, offerPerio
 }
 
 // ListBankCategories returns one bank's picker catalog (active rows with
-// resolved canonical info). Reference data, not user-scoped — like the
-// canonical list.
-func (s *Service) ListBankCategories(ctx context.Context, bankID int32) ([]db.ListBankCategoriesRow, error) {
-	return s.Q.ListBankCategories(ctx, bankID)
+// resolved canonical info): the seeded rows every account shares plus the
+// caller's own custom ones.
+func (s *Service) ListBankCategories(ctx context.Context, userID uuid.UUID, bankID int32) ([]db.ListBankCategoriesRow, error) {
+	return s.Q.ListBankCategories(ctx, db.ListBankCategoriesParams{BankID: bankID, UserID: userID})
 }
 
 // CreateBankCategory adds a custom row to a bank's picker catalog — the
 // escape hatch for a category the bank introduced before the seed learned
 // it. Canonical mapping is optional (special/service rows stay
 // canonical-less by design; unmapped rows keep the S3 warning badge).
-func (s *Service) CreateBankCategory(ctx context.Context, bankID int32, title string, canonicalID *int64, kind OfferKind, emoji *string) (db.BankCategory, error) {
+//
+// The row belongs to its author and nobody else sees it: the catalog is a
+// shared namespace on an installation with open registration, so a typo or a
+// joke title would otherwise reach every account holding that bank. A title
+// the seed ships later coexists with it (00019).
+func (s *Service) CreateBankCategory(ctx context.Context, userID uuid.UUID, bankID int32, title string, canonicalID *int64, kind OfferKind, emoji *string) (db.BankCategory, error) {
+	// The unique constraint only rejects a second row of the caller's own, so
+	// a title already in their catalog — theirs OR seeded — is rejected here.
+	// Two concurrent creates can still slip past to the constraint below.
+	n, err := s.Q.CountVisibleBankCategoriesWithTitle(ctx, db.CountVisibleBankCategoriesWithTitleParams{
+		BankID: bankID,
+		Title:  title,
+		UserID: userID,
+	})
+	if err != nil {
+		return db.BankCategory{}, err
+	}
+	if n > 0 {
+		return db.BankCategory{}, ErrBankCategoryExists
+	}
 	bc, err := s.Q.CreateBankCategory(ctx, db.CreateBankCategoryParams{
 		BankID:              bankID,
 		Title:               title,
 		CanonicalCategoryID: canonicalID,
 		Kind:                db.CashbackOfferKind(kind),
 		Emoji:               emoji,
+		CreatedBy:           userID,
 	})
 	if err != nil {
 		if isPgCode(err, "23505") {
@@ -306,8 +326,10 @@ func firstNonNil[T any](explicit, fallback *T) *T {
 	return fallback
 }
 
-// resolveBankCategory validates that a referenced catalog row exists and
-// belongs to the given bank (a picker pick can't attach another bank's row),
+// resolveBankCategory validates that a referenced catalog row is visible to
+// the caller and belongs to the given bank (a picker pick can't attach
+// another bank's row, nor another account's private one — that reads as
+// «not found», which is also what keeps the id from probing for existence),
 // and returns the canonical mapping that row carries.
 //
 // A catalog pick reaches the API as bank_category_id ALONE — both the picker
@@ -318,11 +340,11 @@ func firstNonNil[T any](explicit, fallback *T) *T {
 // unmapped badge is suppressed for catalog rows precisely because the
 // catalog is supposed to hold the mapping (report 2026-07-30). Rows that are
 // canonical-less by design (Альфа-Тревел, канальные) return nil and stay so.
-func (s *Service) resolveBankCategory(ctx context.Context, bankCategoryID *int64, bankID int32) (*int64, error) {
+func (s *Service) resolveBankCategory(ctx context.Context, userID uuid.UUID, bankCategoryID *int64, bankID int32) (*int64, error) {
 	if bankCategoryID == nil {
 		return nil, nil
 	}
-	bc, err := s.Q.GetBankCategory(ctx, *bankCategoryID)
+	bc, err := s.Q.GetBankCategory(ctx, db.GetBankCategoryParams{ID: *bankCategoryID, UserID: userID})
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -339,7 +361,7 @@ func (s *Service) CreateCategoryOffer(ctx context.Context, userID uuid.UUID, off
 	if err != nil {
 		return db.CategoryOffer{}, notFound(err)
 	}
-	inherited, err := s.resolveBankCategory(ctx, bankCategoryID, int32(period.BankID))
+	inherited, err := s.resolveBankCategory(ctx, userID, bankCategoryID, int32(period.BankID))
 	if err != nil {
 		return db.CategoryOffer{}, err
 	}
@@ -361,6 +383,7 @@ func (s *Service) CreateCategoryOffer(ctx context.Context, userID uuid.UUID, off
 			CanonicalCategoryID: *canonicalID,
 			BankID:              int32(period.BankID),
 			RawTitle:            rawTitle,
+			UserID:              userID,
 		}); err != nil {
 			return db.CategoryOffer{}, err
 		}
@@ -431,7 +454,7 @@ func (s *Service) UpdateCategoryOffer(ctx context.Context, userID uuid.UUID, off
 	if err != nil {
 		return db.CategoryOffer{}, notFound(err)
 	}
-	inherited, err := s.resolveBankCategory(ctx, bankCategoryID, int32(ctxRow.BankID))
+	inherited, err := s.resolveBankCategory(ctx, userID, bankCategoryID, int32(ctxRow.BankID))
 	if err != nil {
 		return db.CategoryOffer{}, err
 	}
@@ -454,6 +477,7 @@ func (s *Service) UpdateCategoryOffer(ctx context.Context, userID uuid.UUID, off
 			CanonicalCategoryID: *canonicalID,
 			BankID:              int32(ctxRow.BankID),
 			RawTitle:            rawTitle,
+			UserID:              userID,
 		}); err != nil {
 			return db.CategoryOffer{}, err
 		}

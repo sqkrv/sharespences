@@ -183,7 +183,7 @@ func (s *Service) StartRecognition(ctx context.Context, userID uuid.UUID, bankCl
 			return RecognitionJobDTO{}, notFound(err)
 		}
 	}
-	catalogRows, err := s.Q.ListBankCategories(ctx, client.BankID)
+	catalogRows, err := s.Q.ListBankCategories(ctx, db.ListBankCategoriesParams{BankID: client.BankID, UserID: userID})
 	if err != nil {
 		return RecognitionJobDTO{}, err
 	}
@@ -193,7 +193,7 @@ func (s *Service) StartRecognition(ctx context.Context, userID uuid.UUID, bankCl
 		catalog = append(catalog, CatalogRow{ID: r.ID, Title: r.Title, CanonicalCategoryID: r.CanonicalCategoryID, Kind: OfferKind(r.Kind)})
 		titles = append(titles, r.Title)
 	}
-	aliasRows, err := s.Q.ListAliasesForBank(ctx, client.BankID)
+	aliasRows, err := s.Q.ListAliasesForBank(ctx, db.ListAliasesForBankParams{BankID: client.BankID, UserID: userID})
 	if err != nil {
 		return RecognitionJobDTO{}, err
 	}
