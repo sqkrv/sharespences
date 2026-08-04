@@ -69,6 +69,10 @@ export default function Partners() {
   // edit mode. null = sheet closed.
   const [openID, setOpenID] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
+  // Collapsed on every visit, deliberately not persisted: a new localStorage
+  // key would make the privacy policy's §3.2 key list incomplete, which is a
+  // published-document edit. Not worth it for a section toggle.
+  const [showExpired, setShowExpired] = useState(false);
   const set = (k: keyof OfferForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -287,12 +291,28 @@ export default function Partners() {
 
       {expired.length > 0 && (
         <>
-          <p className="mx-0.5 text-[10.5px] font-semibold tracking-[.06em] text-tx4 uppercase">Прошедшие</p>
-          <div className="space-y-1.5">
-            {expired.map((o) => (
-              <Row key={o.id} o={o} muted />
-            ))}
-          </div>
+          {/* Expired offers are history: kept reachable, collapsed by default
+              so they never push «Скоро истекают» off the first screen. */}
+          <button
+            type="button"
+            onClick={() => setShowExpired((v) => !v)}
+            aria-expanded={showExpired}
+            className="mx-0.5 flex items-center gap-1.5 text-[10.5px] font-semibold tracking-[.06em] text-tx4 uppercase hover:text-tx3"
+            data-sid="CB-05.d"
+          >
+            <span aria-hidden className={`text-[13px] leading-none transition-transform ${showExpired ? "rotate-90" : ""}`}>
+              ›
+            </span>
+            Прошедшие
+            <span className="rounded-md bg-inset px-1.5 py-0.5 text-[9.5px] normal-case tabular-nums">{expired.length}</span>
+          </button>
+          {showExpired && (
+            <div className="space-y-1.5">
+              {expired.map((o) => (
+                <Row key={o.id} o={o} muted />
+              ))}
+            </div>
+          )}
         </>
       )}
 
