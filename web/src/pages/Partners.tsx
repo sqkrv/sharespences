@@ -1,8 +1,23 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, attachmentURL, unwrap, uploadAttachment, type PartnerOffer } from "../api/client";
+import {
+  api,
+  attachmentURL,
+  unwrap,
+  uploadAttachment,
+  type PartnerOffer,
+} from "../api/client";
 import { useBanks, useClients } from "../hooks";
-import { Btn, Card, ErrMsg, Field, Input, Select, Spinner } from "../components/ui";
+import {
+  Btn,
+  Card,
+  ErrMsg,
+  Field,
+  Input,
+  Select,
+  Spinner,
+} from "../components/ui";
+import { Lightbox } from "../components/Lightbox";
 import { fmtDate, fmtPercent, merchantMonogram, todayISO } from "../lib";
 
 const emptyForm = {
@@ -60,7 +75,8 @@ export default function Partners() {
 
   const offers = useQuery({
     queryKey: ["partner-offers"],
-    queryFn: async () => unwrap(await api.GET("/api/v1/cashback/partner-offers")) ?? [],
+    queryFn: async () =>
+      unwrap(await api.GET("/api/v1/cashback/partner-offers")) ?? [],
   });
 
   const [form, setForm] = useState<OfferForm>(emptyForm);
@@ -73,8 +89,10 @@ export default function Partners() {
   // key would make the privacy policy's §3.2 key list incomplete, which is a
   // published-document edit. Not worth it for a section toggle.
   const [showExpired, setShowExpired] = useState(false);
-  const set = (k: keyof OfferForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }));
+  const set =
+    (k: keyof OfferForm) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const create = useMutation({
     mutationFn: async () => {
@@ -82,7 +100,10 @@ export default function Partners() {
       for (const f of files) attachmentIDs.push((await uploadAttachment(f)).id);
       return unwrap(
         await api.POST("/api/v1/cashback/partner-offers", {
-          body: { ...bodyOf(form), ...(attachmentIDs.length ? { attachment_ids: attachmentIDs } : {}) },
+          body: {
+            ...bodyOf(form),
+            ...(attachmentIDs.length ? { attachment_ids: attachmentIDs } : {}),
+          },
         }),
       );
     },
@@ -96,11 +117,17 @@ export default function Partners() {
 
   const remove = useMutation({
     mutationFn: async (id: number) =>
-      unwrap(await api.DELETE("/api/v1/cashback/partner-offers/{id}", { params: { path: { id } } })),
+      unwrap(
+        await api.DELETE("/api/v1/cashback/partner-offers/{id}", {
+          params: { path: { id } },
+        }),
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["partner-offers"] }),
   });
 
-  const bankClients = (clients.data ?? []).filter((c) => String(c.bank_id) === form.bank_id);
+  const bankClients = (clients.data ?? []).filter(
+    (c) => String(c.bank_id) === form.bank_id,
+  );
 
   const today = todayISO();
   const soonEdge = (() => {
@@ -110,14 +137,33 @@ export default function Partners() {
   })();
   const all = offers.data ?? [];
   const expired = all.filter((o) => o.valid_to != null && o.valid_to < today);
-  const expiring = all.filter((o) => o.valid_to != null && o.valid_to >= today && o.valid_to <= soonEdge);
-  const active = all.filter((o) => !expired.includes(o) && !expiring.includes(o));
+  const expiring = all.filter(
+    (o) => o.valid_to != null && o.valid_to >= today && o.valid_to <= soonEdge,
+  );
+  const active = all.filter(
+    (o) => !expired.includes(o) && !expiring.includes(o),
+  );
 
-  const daysLeft = (to: string) => Math.max(0, Math.round((new Date(to).getTime() - new Date(today).getTime()) / 86400000));
+  const daysLeft = (to: string) =>
+    Math.max(
+      0,
+      Math.round(
+        (new Date(to).getTime() - new Date(today).getTime()) / 86400000,
+      ),
+    );
 
-  const clientOf = (o: PartnerOffer) => (clients.data ?? []).find((c) => c.id === o.bank_client_id);
+  const clientOf = (o: PartnerOffer) =>
+    (clients.data ?? []).find((c) => c.id === o.bank_client_id);
 
-  const Row = ({ o, urgent, muted }: { o: PartnerOffer; urgent?: boolean; muted?: boolean }) => (
+  const Row = ({
+    o,
+    urgent,
+    muted,
+  }: {
+    o: PartnerOffer;
+    urgent?: boolean;
+    muted?: boolean;
+  }) => (
     <div
       role="button"
       tabIndex={0}
@@ -137,7 +183,10 @@ export default function Partners() {
     >
       <span
         className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-xl text-sm font-bold text-accl"
-        style={{ background: "repeating-linear-gradient(120deg, var(--t-inset) 0 6px, var(--t-srf2) 6px 12px)" }}
+        style={{
+          background:
+            "repeating-linear-gradient(120deg, var(--t-inset) 0 6px, var(--t-srf2) 6px 12px)",
+        }}
       >
         {merchantMonogram(o.merchant_title)}
       </span>
@@ -150,7 +199,9 @@ export default function Partners() {
               {urgent && ` · ${daysLeft(o.valid_to)} дн.`}
             </span>
           )}
-          {o.valid_to && <span className="h-[3px] w-[3px] rounded-full bg-dash" />}
+          {o.valid_to && (
+            <span className="h-[3px] w-[3px] rounded-full bg-dash" />
+          )}
           <span className="truncate">
             {o.bank_name}
             {clientOf(o)?.label && ` · ${clientOf(o)!.label}`}
@@ -158,7 +209,9 @@ export default function Partners() {
         </p>
       </div>
       <div className="flex-none text-right">
-        <p className="text-[16px] font-extrabold text-accl">{fmtPercent(o.percent)}</p>
+        <p className="text-[16px] font-extrabold text-accl">
+          {fmtPercent(o.percent)}
+        </p>
         <p className="text-[8.5px] font-medium text-tx4">разовое</p>
       </div>
       <button
@@ -167,7 +220,8 @@ export default function Partners() {
         title="Удалить"
         onClick={(e) => {
           e.stopPropagation(); // the row itself opens the offer
-          if (window.confirm(`Удалить «${o.merchant_title}»?`)) remove.mutate(o.id);
+          if (window.confirm(`Удалить «${o.merchant_title}»?`))
+            remove.mutate(o.id);
         }}
       >
         ✕
@@ -213,7 +267,10 @@ export default function Partners() {
                 </Select>
               </Field>
               <Field label="Держатель (необязательно)">
-                <Select value={form.bank_client_id} onChange={set("bank_client_id")}>
+                <Select
+                  value={form.bank_client_id}
+                  onChange={set("bank_client_id")}
+                >
                   <option value="">— любой —</option>
                   {bankClients.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -224,34 +281,71 @@ export default function Partners() {
               </Field>
             </div>
             <Field label="Мерчант / предложение">
-              <Input required value={form.merchant_title} onChange={set("merchant_title")} placeholder="10% в Летуаль" />
+              <Input
+                required
+                value={form.merchant_title}
+                onChange={set("merchant_title")}
+                placeholder="10% в Летуаль"
+              />
             </Field>
             <div className="grid grid-cols-3 gap-3">
               <Field label="Процент">
-                <Input inputMode="decimal" value={form.percent} onChange={set("percent")} placeholder="10" />
+                <Input
+                  inputMode="decimal"
+                  value={form.percent}
+                  onChange={set("percent")}
+                  placeholder="10"
+                />
               </Field>
               <Field label="С даты">
-                <Input type="date" value={form.valid_from} onChange={set("valid_from")} />
+                <Input
+                  type="date"
+                  value={form.valid_from}
+                  onChange={set("valid_from")}
+                />
               </Field>
               <Field label="По дату">
-                <Input type="date" value={form.valid_to} onChange={set("valid_to")} />
+                <Input
+                  type="date"
+                  value={form.valid_to}
+                  onChange={set("valid_to")}
+                />
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Мин. сумма покупки">
-                <Input inputMode="decimal" value={form.min_amount} onChange={set("min_amount")} placeholder="2000" />
+                <Input
+                  inputMode="decimal"
+                  value={form.min_amount}
+                  onChange={set("min_amount")}
+                  placeholder="2000"
+                />
               </Field>
               <Field label="Лимит (если есть)">
-                <Input inputMode="decimal" value={form.cap_value} onChange={set("cap_value")} />
+                <Input
+                  inputMode="decimal"
+                  value={form.cap_value}
+                  onChange={set("cap_value")}
+                />
               </Field>
             </div>
             <Field label="Заметки">
               <Input value={form.notes} onChange={set("notes")} />
             </Field>
             <Field label="Скриншот (необязательно)">
-              <Input type="file" accept="image/*" multiple onChange={(e) => setFiles([...(e.target.files ?? [])])} />
+              <Input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => setFiles([...(e.target.files ?? [])])}
+              />
             </Field>
-            <Btn type="submit" disabled={create.isPending || !form.bank_id || !form.merchant_title}>
+            <Btn
+              type="submit"
+              disabled={
+                create.isPending || !form.bank_id || !form.merchant_title
+              }
+            >
               Записать
             </Btn>
             <ErrMsg error={create.error} />
@@ -269,7 +363,9 @@ export default function Partners() {
 
       {expiring.length > 0 && (
         <>
-          <p className="mx-0.5 text-[10.5px] font-semibold tracking-[.06em] text-tx4 uppercase">Скоро истекают</p>
+          <p className="mx-0.5 text-[10.5px] font-semibold tracking-[.06em] text-tx4 uppercase">
+            Скоро истекают
+          </p>
           <div className="space-y-1.5">
             {expiring.map((o) => (
               <Row key={o.id} o={o} urgent />
@@ -280,7 +376,9 @@ export default function Partners() {
 
       {active.length > 0 && (
         <>
-          <p className="mx-0.5 text-[10.5px] font-semibold tracking-[.06em] text-tx4 uppercase">Активные</p>
+          <p className="mx-0.5 text-[10.5px] font-semibold tracking-[.06em] text-tx4 uppercase">
+            Активные
+          </p>
           <div className="space-y-1.5">
             {active.map((o) => (
               <Row key={o.id} o={o} />
@@ -300,11 +398,16 @@ export default function Partners() {
             className="mx-0.5 flex items-center gap-1.5 text-[10.5px] font-semibold tracking-[.06em] text-tx4 uppercase hover:text-tx3"
             data-sid="CB-05.d"
           >
-            <span aria-hidden className={`text-[13px] leading-none transition-transform ${showExpired ? "rotate-90" : ""}`}>
+            <span
+              aria-hidden
+              className={`text-[13px] leading-none transition-transform ${showExpired ? "rotate-90" : ""}`}
+            >
               ›
             </span>
             Прошедшие
-            <span className="rounded-md bg-inset px-1.5 py-0.5 text-[9.5px] normal-case tabular-nums">{expired.length}</span>
+            <span className="rounded-md bg-inset px-1.5 py-0.5 text-[9.5px] normal-case tabular-nums">
+              {expired.length}
+            </span>
           </button>
           {showExpired && (
             <div className="space-y-1.5">
@@ -350,10 +453,16 @@ function OfferSheet({
   const banks = useBanks();
   const clients = useClients();
   const [form, setForm] = useState<OfferForm>(emptyForm);
+  const [viewing, setViewing] = useState<number | null>(null);
 
   const offer = useQuery({
     queryKey: ["partner-offer", id],
-    queryFn: async () => unwrap(await api.GET("/api/v1/cashback/partner-offers/{id}", { params: { path: { id } } })),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/cashback/partner-offers/{id}", {
+          params: { path: { id } },
+        }),
+      ),
   });
 
   // Refill the form whenever the sheet flips into edit mode, so «отмена»
@@ -369,7 +478,12 @@ function OfferSheet({
 
   const save = useMutation({
     mutationFn: async () =>
-      unwrap(await api.PUT("/api/v1/cashback/partner-offers/{id}", { params: { path: { id } }, body: bodyOf(form) })),
+      unwrap(
+        await api.PUT("/api/v1/cashback/partner-offers/{id}", {
+          params: { path: { id } },
+          body: bodyOf(form),
+        }),
+      ),
     onSuccess: () => {
       invalidate();
       onEdit(false);
@@ -394,167 +508,266 @@ function OfferSheet({
   const dropShot = useMutation({
     mutationFn: async (attachmentID: string) =>
       unwrap(
-        await api.DELETE("/api/v1/cashback/partner-offers/{id}/attachments/{attachment_id}", {
-          params: { path: { id, attachment_id: attachmentID } },
-        }),
+        await api.DELETE(
+          "/api/v1/cashback/partner-offers/{id}/attachments/{attachment_id}",
+          {
+            params: { path: { id, attachment_id: attachmentID } },
+          },
+        ),
       ),
     onSuccess: invalidate,
   });
 
   const o = offer.data;
-  const bankClients = (clients.data ?? []).filter((c) => String(c.bank_id) === form.bank_id);
-  const set = (k: keyof OfferForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }));
+  const shots = o?.attachment_ids ?? [];
+  const bankClients = (clients.data ?? []).filter(
+    (c) => String(c.bank_id) === form.bank_id,
+  );
+  const set =
+    (k: keyof OfferForm) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setForm((f) => ({ ...f, [k]: e.target.value }));
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-4"
-      onClick={onClose}
-      data-sid="CB-05.c"
-    >
-      <Card
-        className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-b-none p-4 sm:rounded-b-2xl"
-        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+    <>
+      {/* A sibling, not a child: inside the backdrop every tap in the viewer
+          would bubble into onClick={onClose} and shut the sheet underneath. */}
+      {viewing != null && (
+        <Lightbox
+          ids={shots}
+          startIndex={viewing}
+          alt="скриншот предложения"
+          onClose={() => setViewing(null)}
+        />
+      )}
+      <div
+        className="fixed inset-0 z-40 flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-4"
+        onClick={onClose}
       >
-        {offer.isPending && <Spinner />}
-        {offer.isError && <ErrMsg error={offer.error} />}
-        {o && !editing && (
-          <div className="space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[17px] leading-tight font-extrabold">{o.merchant_title}</p>
-                <p className="mt-1 text-[11px] font-medium text-tx4">{o.bank_name}</p>
+        <Card
+          className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-b-none p-4 sm:rounded-b-2xl"
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          data-sid="CB-05.c"
+        >
+          {offer.isPending && <Spinner />}
+          {offer.isError && <ErrMsg error={offer.error} />}
+          {o && !editing && (
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[17px] leading-tight font-extrabold">
+                    {o.merchant_title}
+                  </p>
+                  <p className="mt-1 text-[11px] font-medium text-tx4">
+                    {o.bank_name}
+                  </p>
+                </div>
+                <p className="flex-none text-[22px] leading-none font-extrabold text-accl">
+                  {fmtPercent(o.percent)}
+                </p>
               </div>
-              <p className="flex-none text-[22px] leading-none font-extrabold text-accl">{fmtPercent(o.percent)}</p>
+
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11.5px]">
+                <Detail
+                  label="Действует"
+                  value={[
+                    o.valid_from && fmtDate(o.valid_from),
+                    o.valid_to && fmtDate(o.valid_to),
+                  ]
+                    .filter(Boolean)
+                    .join(" — ")}
+                />
+                <Detail
+                  label="Мин. сумма"
+                  value={o.min_amount ? `от ${o.min_amount} ₽` : ""}
+                />
+                <Detail
+                  label="Лимит"
+                  value={o.cap_value ? `до ${o.cap_value} ₽` : ""}
+                />
+                <Detail label="Заметки" value={o.notes ?? ""} />
+              </dl>
+
+              <div>
+                <p className="mb-1.5 text-[10.5px] font-semibold tracking-[.06em] text-tx4 uppercase">
+                  Скриншоты
+                </p>
+                <div className="flex gap-2 overflow-x-auto">
+                  {shots.map((aid, n) => (
+                    <div key={aid} className="relative flex-none">
+                      <button
+                        type="button"
+                        onClick={() => setViewing(n)}
+                        aria-label={`Открыть скриншот ${n + 1}`}
+                      >
+                        <img
+                          src={attachmentURL(aid)}
+                          alt="скриншот предложения"
+                          className="h-24 rounded-xl border border-brd object-cover"
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        title="Убрать скриншот"
+                        className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-brd bg-srf text-[10px] font-bold text-tx3 hover:text-warn"
+                        onClick={() => {
+                          if (window.confirm("Убрать скриншот?"))
+                            dropShot.mutate(aid);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <label className="flex h-24 w-16 flex-none cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-dash text-tx4">
+                    <span className="text-lg leading-none">+</span>
+                    <span className="text-[9px] font-semibold">скрин</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) =>
+                        e.target.files?.length &&
+                        addShot.mutate([...e.target.files])
+                      }
+                    />
+                  </label>
+                </div>
+                <ErrMsg error={addShot.error ?? dropShot.error} />
+              </div>
+
+              <div className="flex gap-2">
+                <Btn onClick={() => onEdit(true)}>Изменить</Btn>
+                <Btn variant="ghost" onClick={onClose}>
+                  Закрыть
+                </Btn>
+              </div>
             </div>
+          )}
 
-            <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11.5px]">
-              <Detail label="Действует" value={[o.valid_from && fmtDate(o.valid_from), o.valid_to && fmtDate(o.valid_to)].filter(Boolean).join(" — ")} />
-              <Detail label="Мин. сумма" value={o.min_amount ? `от ${o.min_amount} ₽` : ""} />
-              <Detail label="Лимит" value={o.cap_value ? `до ${o.cap_value} ₽` : ""} />
-              <Detail label="Заметки" value={o.notes ?? ""} />
-            </dl>
-
-            <div>
-              <p className="mb-1.5 text-[10.5px] font-semibold tracking-[.06em] text-tx4 uppercase">Скриншоты</p>
-              <div className="flex gap-2 overflow-x-auto">
-                {(o.attachment_ids ?? []).map((aid) => (
-                  <div key={aid} className="relative flex-none">
-                    <a href={attachmentURL(aid)} target="_blank" rel="noreferrer">
-                      <img src={attachmentURL(aid)} alt="скриншот предложения" className="h-24 rounded-xl border border-brd object-cover" />
-                    </a>
-                    <button
-                      type="button"
-                      title="Убрать скриншот"
-                      className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-brd bg-srf text-[10px] font-bold text-tx3 hover:text-warn"
-                      onClick={() => {
-                        if (window.confirm("Убрать скриншот?")) dropShot.mutate(aid);
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-                <label className="flex h-24 w-16 flex-none cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-dash text-tx4">
-                  <span className="text-lg leading-none">+</span>
-                  <span className="text-[9px] font-semibold">скрин</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => e.target.files?.length && addShot.mutate([...e.target.files])}
+          {o && editing && (
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                save.mutate();
+              }}
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Банк">
+                  <Select
+                    required
+                    value={form.bank_id}
+                    onChange={set("bank_id")}
+                  >
+                    <option value="">— банк —</option>
+                    {(banks.data ?? []).map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Держатель (необязательно)">
+                  <Select
+                    value={form.bank_client_id}
+                    onChange={set("bank_client_id")}
+                  >
+                    <option value="">— любой —</option>
+                    {bankClients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label ?? "Я"}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+              <Field label="Мерчант / предложение">
+                <Input
+                  required
+                  value={form.merchant_title}
+                  onChange={set("merchant_title")}
+                />
+              </Field>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Процент">
+                  <Input
+                    inputMode="decimal"
+                    value={form.percent}
+                    onChange={set("percent")}
                   />
-                </label>
+                </Field>
+                <Field label="С даты">
+                  <Input
+                    type="date"
+                    value={form.valid_from}
+                    onChange={set("valid_from")}
+                  />
+                </Field>
+                <Field label="По дату">
+                  <Input
+                    type="date"
+                    value={form.valid_to}
+                    onChange={set("valid_to")}
+                  />
+                </Field>
               </div>
-              <ErrMsg error={addShot.error ?? dropShot.error} />
-            </div>
-
-            <div className="flex gap-2">
-              <Btn onClick={() => onEdit(true)}>Изменить</Btn>
-              <Btn variant="ghost" onClick={onClose}>
-                Закрыть
-              </Btn>
-            </div>
-          </div>
-        )}
-
-        {o && editing && (
-          <form
-            className="space-y-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              save.mutate();
-            }}
-          >
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Банк">
-                <Select required value={form.bank_id} onChange={set("bank_id")}>
-                  <option value="">— банк —</option>
-                  {(banks.data ?? []).map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Мин. сумма покупки">
+                  <Input
+                    inputMode="decimal"
+                    value={form.min_amount}
+                    onChange={set("min_amount")}
+                    placeholder="2000"
+                  />
+                </Field>
+                <Field label="Лимит (если есть)">
+                  <Input
+                    inputMode="decimal"
+                    value={form.cap_value}
+                    onChange={set("cap_value")}
+                  />
+                </Field>
+              </div>
+              <Field label="Заметки">
+                <Input value={form.notes} onChange={set("notes")} />
               </Field>
-              <Field label="Держатель (необязательно)">
-                <Select value={form.bank_client_id} onChange={set("bank_client_id")}>
-                  <option value="">— любой —</option>
-                  {bankClients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label ?? "Я"}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
-            <Field label="Мерчант / предложение">
-              <Input required value={form.merchant_title} onChange={set("merchant_title")} />
-            </Field>
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Процент">
-                <Input inputMode="decimal" value={form.percent} onChange={set("percent")} />
-              </Field>
-              <Field label="С даты">
-                <Input type="date" value={form.valid_from} onChange={set("valid_from")} />
-              </Field>
-              <Field label="По дату">
-                <Input type="date" value={form.valid_to} onChange={set("valid_to")} />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Мин. сумма покупки">
-                <Input inputMode="decimal" value={form.min_amount} onChange={set("min_amount")} placeholder="2000" />
-              </Field>
-              <Field label="Лимит (если есть)">
-                <Input inputMode="decimal" value={form.cap_value} onChange={set("cap_value")} />
-              </Field>
-            </div>
-            <Field label="Заметки">
-              <Input value={form.notes} onChange={set("notes")} />
-            </Field>
-            <div className="flex gap-2">
-              <Btn type="submit" disabled={save.isPending || !form.bank_id || !form.merchant_title}>
-                Сохранить
-              </Btn>
-              <Btn type="button" variant="ghost" onClick={() => onEdit(false)}>
-                Отмена
-              </Btn>
-            </div>
-            <ErrMsg error={save.error} />
-          </form>
-        )}
-      </Card>
-    </div>
+              <div className="flex gap-2">
+                <Btn
+                  type="submit"
+                  disabled={
+                    save.isPending || !form.bank_id || !form.merchant_title
+                  }
+                >
+                  Сохранить
+                </Btn>
+                <Btn
+                  type="button"
+                  variant="ghost"
+                  onClick={() => onEdit(false)}
+                >
+                  Отмена
+                </Btn>
+              </div>
+              <ErrMsg error={save.error} />
+            </form>
+          )}
+        </Card>
+      </div>
+    </>
   );
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-[9.5px] font-semibold tracking-[.06em] text-tx4 uppercase">{label}</dt>
-      <dd className={`mt-0.5 font-semibold ${value ? "" : "text-tx4"}`}>{value || "—"}</dd>
+      <dt className="text-[9.5px] font-semibold tracking-[.06em] text-tx4 uppercase">
+        {label}
+      </dt>
+      <dd className={`mt-0.5 font-semibold ${value ? "" : "text-tx4"}`}>
+        {value || "—"}
+      </dd>
     </div>
   );
 }
