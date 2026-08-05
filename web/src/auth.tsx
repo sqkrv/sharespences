@@ -5,20 +5,30 @@ import { api, unwrap, ApiError } from "./api/client";
 import { clearAllRecognitions } from "./recognition";
 import { Spinner, ErrMsg } from "./components/ui";
 
-// purgeResponseCaches drops every Cache Storage entry. The service worker
-// caches read endpoints NetworkFirst with ignoreVary (scs stamps Vary: Cookie,
-// which would otherwise defeat the cache — see docs/specs/pwa.md), so entries
-// are keyed by URL alone and carry no notion of who they belong to. Logout
-// clears them; sign-in has to clear them too, because the previous user may
-// simply have closed the tab, and then a slow network on the next sign-in
-// would answer from their cached data.
+// The runtime cache holding this user's API responses — must match cacheName
+// in web/vite.config.ts. Only this one is personal: `legal` holds the public
+// policy pages, and Workbox's own precache holds the app shell.
+const API_CACHE = "api-v1";
+
+// purgeResponseCaches drops the cached API responses. The service worker keeps
+// read endpoints NetworkFirst with ignoreVary (scs stamps Vary: Cookie, which
+// would otherwise defeat the cache — docs/specs/pwa.md), so entries are keyed
+// by URL alone and carry no notion of whose data they hold. Logout clears them;
+// sign-in has to clear them too, because a user who just closes the tab never
+// triggers logout, and a slow network on the next sign-in would then answer
+// from their data.
 //
-// Recognition drafts are deliberately left to logout: they are the user's own
-// unfinished work, and a returning user would lose it.
+// ⚠️ Deliberately NOT `caches.keys()` — that also returns Workbox's precache
+// (app shell, hashed assets, the bundled font) and the `legal` cache. Workbox
+// only repopulates the precache during a service-worker `install`, which does
+// not re-run for an already-activated worker, so wiping it breaks offline
+// launch until the next deploy.
+//
+// Recognition drafts are left to logout: they are the user's own unfinished
+// work, and a returning user would lose it.
 export async function purgeResponseCaches() {
   if (!("caches" in window)) return;
-  const keys = await caches.keys();
-  await Promise.all(keys.map((k) => caches.delete(k)));
+  await caches.delete(API_CACHE);
 }
 
 export function useMe() {
