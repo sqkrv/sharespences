@@ -334,14 +334,27 @@ func parsePartnerFields(percent, capValue, minAmount, validFrom, validTo *string
 // attachToPartner links screenshots after checking each one belongs to the
 // caller — an attachment id is guessable, so ownership is verified per file.
 func (s *Service) attachToPartner(ctx context.Context, userID uuid.UUID, offerID int64, ids []uuid.UUID) error {
+	if err := s.assertOwnsAttachments(ctx, userID, ids); err != nil {
+		return httpErr(err)
+	}
 	for _, aid := range ids {
-		if _, err := s.Q.GetAttachmentForUser(ctx, db.GetAttachmentForUserParams{ID: aid, UserID: &userID}); err != nil {
-			return httpErr(notFound(err))
-		}
 		if err := s.Q.AttachToPartnerOffer(ctx, db.AttachToPartnerOfferParams{
 			PartnerOfferID: offerID, AttachmentID: aid,
 		}); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// assertOwnsAttachments is the pre-flight the create paths run before writing
+// anything: a foreign id used to be discovered only after the parent row had
+// been inserted, which answered 404 while leaving the row behind.
+func (s *Service) assertOwnsAttachments(ctx context.Context, userID uuid.UUID, ids []uuid.UUID) error {
+	uid := userID
+	for _, aid := range ids {
+		if _, err := s.Q.GetAttachmentForUser(ctx, db.GetAttachmentForUserParams{ID: aid, UserID: &uid}); err != nil {
+			return notFound(err)
 		}
 	}
 	return nil
@@ -588,7 +601,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			BankClientID  int64       `json:"bank_client_id"`
 			PeriodStart   string      `json:"period_start" format:"date"`
 			PeriodEnd     string      `json:"period_end" format:"date"`
-			AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty"`
+			AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty" maxItems:"10" doc:"скриншоты, уже загруженные через /attachments"`
 		}
 	}) (*struct{ Body OfferPeriodDTO }, error) {
 		start, err := parseDate(in.Body.PeriodStart, "period_start")
@@ -1159,7 +1172,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			CapValue      *string     `json:"cap_value,omitempty"`
 			MinAmount     *string     `json:"min_amount,omitempty" doc:"minimum qualifying purchase («от 2 000 ₽»); display only"`
 			Notes         *string     `json:"notes,omitempty"`
-			AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty"`
+			AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty" maxItems:"10" doc:"скриншоты, уже загруженные через /attachments"`
 		}
 	}) (*struct{ Body PartnerOfferDTO }, error) {
 		f, err := parsePartnerFields(in.Body.Percent, in.Body.CapValue, in.Body.MinAmount,
@@ -1168,6 +1181,9 @@ func RegisterHTTP(api huma.API, s *Service) {
 			return nil, err
 		}
 		if err := s.AssertOwnsClient(ctx, auth.UserID(ctx), in.Body.BankClientID); err != nil {
+			return nil, httpErr(err)
+		}
+		if err := s.assertOwnsAttachments(ctx, auth.UserID(ctx), in.Body.AttachmentIDs); err != nil {
 			return nil, httpErr(err)
 		}
 		p, err := s.Q.CreatePartnerOffer(ctx, db.CreatePartnerOfferParams{

@@ -197,6 +197,15 @@ func (s *Service) CreateOfferPeriod(ctx context.Context, userID uuid.UUID, clien
 	if err := ValidateNewPeriod(rowRange(start, end), existing); err != nil {
 		return db.OfferPeriod{}, err
 	}
+	// Ownership of the screenshots is checked BEFORE the insert. The check
+	// needs nothing from the new row, and doing it afterwards left a period
+	// behind on every 404 — the retry then answered 409 for an overlap with
+	// the row the failed attempt had just created.
+	for _, aid := range attachmentIDs {
+		if _, err := s.Q.GetAttachmentForUser(ctx, db.GetAttachmentForUserParams{ID: aid, UserID: &userID}); err != nil {
+			return db.OfferPeriod{}, notFound(err)
+		}
+	}
 	period, err := s.Q.CreateOfferPeriod(ctx, db.CreateOfferPeriodParams{BankClientID: clientID, PeriodStart: start, PeriodEnd: end})
 	if err != nil {
 		if isPgCode(err, "23P01") || isPgCode(err, "23505") {
@@ -205,9 +214,6 @@ func (s *Service) CreateOfferPeriod(ctx context.Context, userID uuid.UUID, clien
 		return db.OfferPeriod{}, err
 	}
 	for _, aid := range attachmentIDs {
-		if _, err := s.Q.GetAttachmentForUser(ctx, db.GetAttachmentForUserParams{ID: aid, UserID: &userID}); err != nil {
-			return db.OfferPeriod{}, notFound(err)
-		}
 		if err := s.Q.AttachToOfferPeriod(ctx, db.AttachToOfferPeriodParams{OfferPeriodID: period.ID, AttachmentID: aid}); err != nil {
 			return db.OfferPeriod{}, err
 		}

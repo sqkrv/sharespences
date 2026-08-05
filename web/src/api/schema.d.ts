@@ -1203,6 +1203,7 @@ export interface components {
              * @example https://example.com/schemas/Cashback-offer-period-createRequest.json
              */
             readonly $schema?: string;
+            /** @description скриншоты, уже загруженные через /attachments */
             attachment_ids?: string[] | null;
             /** Format: int64 */
             bank_client_id: number;
@@ -1272,6 +1273,7 @@ export interface components {
              * @example https://example.com/schemas/Cashback-partner-offer-createRequest.json
              */
             readonly $schema?: string;
+            /** @description скриншоты, уже загруженные через /attachments */
             attachment_ids?: string[] | null;
             /** Format: int64 */
             bank_client_id?: number;
