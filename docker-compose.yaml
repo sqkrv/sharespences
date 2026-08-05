@@ -46,7 +46,14 @@ services:
     # Postgres already on the host (e.g. on the server). For host access
     # during native dev, docker-compose.override.yaml publishes it locally.
     volumes:
-      - db-data:/var/lib/postgresql/data
+      # Mount the PARENT, not .../data: since 18 these images keep the cluster
+      # in a major-version subdirectory (/var/lib/postgresql/18/docker), so a
+      # mount on the old path is silently unused — the container refuses to
+      # start when it finds a previous cluster sitting there, and would
+      # otherwise have written to the container filesystem. The single parent
+      # mount is also what lets `pg_upgrade --link` work across a major bump
+      # without crossing a mount boundary.
+      - db-data:/var/lib/postgresql
     healthcheck:
       # TCP check (-h): the initdb-phase temp server listens on the unix
       # socket only, so plain pg_isready would pass too early.
