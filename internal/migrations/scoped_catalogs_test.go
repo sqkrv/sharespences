@@ -86,7 +86,11 @@ func TestDown00019(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.Down(ctx); err != nil {
+	// DownTo(18), not Down(): Down reverses whatever the newest migration
+	// happens to be, so the test silently stopped exercising 00019 the moment
+	// a later one was added — it reversed that instead and still saw the
+	// pre-down state. Naming the target keeps this pinned to 00019.
+	if _, err := provider.DownTo(ctx, 18); err != nil {
 		t.Fatalf("down 00019: %v", err)
 	}
 
