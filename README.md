@@ -10,8 +10,10 @@ docker compose up --build
 ```
 
 brings up PostGIS, applies migrations, loads seed data and serves the app
-(API + embedded SPA) on <http://localhost:8080> — interactive API docs at
-`/docs`. Uploaded attachments and the database persist in named volumes.
+(API + embedded SPA) on <http://localhost:8080>. The OpenAPI document is at
+`/openapi.json`; `DOCS=true` additionally serves the interactive reference at
+`/docs`, which is off by default because it loads Stoplight Elements from
+unpkg.com. Uploaded attachments and the database persist in named volumes.
 
 Set `APP_PORT` (env or a `.env` file) to publish on a different host port,
 e.g. `APP_PORT=9090 docker compose up` serves on <http://localhost:9090>.

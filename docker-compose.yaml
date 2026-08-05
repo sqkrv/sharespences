@@ -1,5 +1,5 @@
 # Local run/dev stack: `docker compose up --build` → migrated + seeded app on
-# http://localhost:8080 (docs at /docs). Throwaway dev credentials only —
+# http://localhost:8080. Throwaway dev credentials only —
 # this file is not a production deployment.
 # ⚠️ Env lives HERE in the anchor, never under a service: `<<:` merge keys
 # are shallow, so an `environment:` on `app:` would replace this whole map
@@ -93,7 +93,7 @@ services:
       seed:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/docs"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/api/v1/version"]
       interval: 30s
       timeout: 3s
       retries: 3

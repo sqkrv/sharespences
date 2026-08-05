@@ -48,6 +48,13 @@ type Config struct {
 	// Version identifies the running build — ADR-0006 CalVer (`v2026.7.1`),
 	// injected at link time. Empty means an unstamped build.
 	Version string
+	// Docs serves huma's built-in API reference at /docs. Off by default: the
+	// page loads Stoplight Elements from unpkg.com, and the privacy policy
+	// (§2.4) states the service loads no third-party front-end resources.
+	// Its CSP also runs that script same-origin with connect-src 'self', so a
+	// hijacked CDN response could call the API as whoever opened the page.
+	// The machine-readable /openapi.json stays available either way.
+	Docs bool
 	// InsecureCookie drops the Secure flag from the session cookie. Secure is
 	// the default because the app is served over HTTPS in production and the
 	// cookie must never travel in clear; this escape hatch exists for local
@@ -109,6 +116,10 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 		apiVersion = devVersion
 	}
 	humaCfg := huma.DefaultConfig("Sharespences API", apiVersion)
+	if !cfg.Docs {
+		// Empty DocsPath skips the docs route entirely (huma api.go).
+		humaCfg.DocsPath = ""
+	}
 	api := humachi.New(r, humaCfg)
 	api.UseMiddleware(requireSession(api, sm))
 

@@ -8,7 +8,9 @@
 //
 // Config via env: DATABASE_URL (required), LISTEN_ADDR (default :8080),
 // ATTACHMENTS_DIR (default ./attachments), COOKIE_SECURE (default true —
-// set false only for local development over plain http).
+// set false only for local development over plain http), DOCS (default
+// false — the huma API reference loads scripts from unpkg.com, so it is a
+// development aid; GET /openapi.json is served regardless).
 //
 // The build identifies itself through `version`, stamped at link time
 // (ADR-0006 CalVer) and served at GET /api/v1/version:
@@ -165,6 +167,9 @@ func run() error {
 			// must never ride a plaintext request. Opt out only for local
 			// development over http.
 			InsecureCookie: !envBool("COOKIE_SECURE", true),
+			// The API reference is a development aid: it pulls Stoplight
+			// Elements from unpkg.com, which production must not do.
+			Docs: envBool("DOCS", false),
 		})
 		srv := &http.Server{
 			Addr:              envOr("LISTEN_ADDR", ":8080"),
@@ -177,7 +182,7 @@ func run() error {
 			defer cancel()
 			_ = srv.Shutdown(shutdownCtx)
 		}()
-		log.Printf("sharespences %s listening on %s (docs at /docs)", cmp.Or(version, "dev"), srv.Addr)
+		log.Printf("sharespences %s listening on %s", cmp.Or(version, "dev"), srv.Addr)
 		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
