@@ -67,6 +67,9 @@ export default function Login() {
       // their responses in the offline cache (keyed by URL only) — drop them
       // before this session can be served from them.
       await purgeResponseCaches();
+      // Whatever the previous account left in the query cache would otherwise
+      // render for this one until each query refetched.
+      qc.clear();
       qc.setQueryData(["me"], user);
       navigate(from, { replace: true });
     },

@@ -28,6 +28,9 @@ export default function Register() {
       // Registration signs in (server sets the session cookie). Same reason
       // as sign-in: whoever used this browser last may not have signed out.
       await purgeResponseCaches();
+      // Whatever the previous account left in the query cache would otherwise
+      // render for this one until each query refetched.
+      qc.clear();
       qc.setQueryData(["me"], user);
       navigate(from, { replace: true });
     },

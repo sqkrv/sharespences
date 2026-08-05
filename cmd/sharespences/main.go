@@ -172,9 +172,16 @@ func run() error {
 			Docs: envBool("DOCS", false),
 		})
 		srv := &http.Server{
-			Addr:              envOr("LISTEN_ADDR", ":8080"),
-			Handler:           handler,
+			Addr:    envOr("LISTEN_ADDR", ":8080"),
+			Handler: handler,
+			// A public listener needs all four: without them one slow or stuck
+			// client holds a connection indefinitely. Read/Write are generous
+			// because an attachment upload is up to 10 MiB over a phone
+			// connection — they bound the pathological case, not the slow one.
 			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       2 * time.Minute,
+			WriteTimeout:      2 * time.Minute,
+			IdleTimeout:       2 * time.Minute,
 		}
 		go func() {
 			<-ctx.Done()
