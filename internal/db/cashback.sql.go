@@ -337,20 +337,6 @@ func (q *Queries) DeletePartnerOfferForUser(ctx context.Context, arg DeletePartn
 	return result.RowsAffected(), nil
 }
 
-const deleteProgram = `-- name: DeleteProgram :execrows
-delete
-from cashback_program
-where id = $1
-`
-
-func (q *Queries) DeleteProgram(ctx context.Context, id int64) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteProgram, id)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const deleteSelectionByOffer = `-- name: DeleteSelectionByOffer :exec
 delete
 from selection
@@ -380,20 +366,6 @@ type DeleteSelectionForUserParams struct {
 
 func (q *Queries) DeleteSelectionForUser(ctx context.Context, arg DeleteSelectionForUserParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteSelectionForUser, arg.ID, arg.UserID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const deleteTier = `-- name: DeleteTier :execrows
-delete
-from program_tier
-where id = $1
-`
-
-func (q *Queries) DeleteTier(ctx context.Context, id int64) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteTier, id)
 	if err != nil {
 		return 0, err
 	}
@@ -1586,108 +1558,6 @@ func (q *Queries) UpdatePartnerOfferForUser(ctx context.Context, arg UpdatePartn
 		&i.Notes,
 		&i.BankClientID,
 		&i.MinAmount,
-	)
-	return i, err
-}
-
-const updateProgram = `-- name: UpdateProgram :one
-update cashback_program
-set name                = $2,
-    period_type         = $3,
-    selection_mode      = $4,
-    currency_kind       = $5,
-    points_label        = $6,
-    selection_opens_day = $7,
-    notes               = $8
-where id = $1
-returning id, bank_id, name, period_type, selection_mode, currency_kind, points_label, selection_opens_day, notes, mid_period_add, activation
-`
-
-type UpdateProgramParams struct {
-	ID                int64
-	Name              string
-	PeriodType        CashbackPeriodType
-	SelectionMode     CashbackSelectionMode
-	CurrencyKind      CashbackCurrencyKind
-	PointsLabel       *string
-	SelectionOpensDay *int32
-	Notes             *string
-}
-
-func (q *Queries) UpdateProgram(ctx context.Context, arg UpdateProgramParams) (CashbackProgram, error) {
-	row := q.db.QueryRow(ctx, updateProgram,
-		arg.ID,
-		arg.Name,
-		arg.PeriodType,
-		arg.SelectionMode,
-		arg.CurrencyKind,
-		arg.PointsLabel,
-		arg.SelectionOpensDay,
-		arg.Notes,
-	)
-	var i CashbackProgram
-	err := row.Scan(
-		&i.ID,
-		&i.BankID,
-		&i.Name,
-		&i.PeriodType,
-		&i.SelectionMode,
-		&i.CurrencyKind,
-		&i.PointsLabel,
-		&i.SelectionOpensDay,
-		&i.Notes,
-		&i.MidPeriodAdd,
-		&i.Activation,
-	)
-	return i, err
-}
-
-const updateTier = `-- name: UpdateTier :one
-update program_tier
-set name                 = $2,
-    is_paid_subscription = $3,
-    cap_value            = $4,
-    cap_scope            = $5,
-    cap_per_category     = $6,
-    max_categories       = $7,
-    notes                = $8
-where id = $1
-returning id, program_id, name, is_paid_subscription, cap_value, cap_scope, cap_per_category, max_categories, notes
-`
-
-type UpdateTierParams struct {
-	ID                 int64
-	Name               string
-	IsPaidSubscription bool
-	CapValue           *decimal.Decimal
-	CapScope           CashbackCapScope
-	CapPerCategory     *decimal.Decimal
-	MaxCategories      *int32
-	Notes              *string
-}
-
-func (q *Queries) UpdateTier(ctx context.Context, arg UpdateTierParams) (ProgramTier, error) {
-	row := q.db.QueryRow(ctx, updateTier,
-		arg.ID,
-		arg.Name,
-		arg.IsPaidSubscription,
-		arg.CapValue,
-		arg.CapScope,
-		arg.CapPerCategory,
-		arg.MaxCategories,
-		arg.Notes,
-	)
-	var i ProgramTier
-	err := row.Scan(
-		&i.ID,
-		&i.ProgramID,
-		&i.Name,
-		&i.IsPaidSubscription,
-		&i.CapValue,
-		&i.CapScope,
-		&i.CapPerCategory,
-		&i.MaxCategories,
-		&i.Notes,
 	)
 	return i, err
 }

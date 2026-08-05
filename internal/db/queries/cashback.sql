@@ -14,23 +14,6 @@ select *
 from cashback_program
 where id = $1;
 
--- name: UpdateProgram :one
-update cashback_program
-set name                = $2,
-    period_type         = $3,
-    selection_mode      = $4,
-    currency_kind       = $5,
-    points_label        = $6,
-    selection_opens_day = $7,
-    notes               = $8
-where id = $1
-returning *;
-
--- name: DeleteProgram :execrows
-delete
-from cashback_program
-where id = $1;
-
 -- name: ListTiersForProgram :many
 select *
 from program_tier
@@ -39,23 +22,6 @@ order by id;
 
 -- name: GetTier :one
 select *
-from program_tier
-where id = $1;
-
--- name: UpdateTier :one
-update program_tier
-set name                 = $2,
-    is_paid_subscription = $3,
-    cap_value            = $4,
-    cap_scope            = $5,
-    cap_per_category     = $6,
-    max_categories       = $7,
-    notes                = $8
-where id = $1
-returning *;
-
--- name: DeleteTier :execrows
-delete
 from program_tier
 where id = $1;
 
