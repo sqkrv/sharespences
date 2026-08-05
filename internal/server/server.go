@@ -176,8 +176,23 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 			return
 		}
 		defer func() { _ = f.Close() }()
+		// The stored media type is whatever the upload declared — huma's
+		// validator trusts the part's header (see the upload op), so this is a
+		// wrong-file guard, not a verified type. Serving it back from the app's
+		// own origin therefore needs the two headers that keep a mislabelled
+		// file from becoming active content: nosniff stops the browser
+		// second-guessing the type, and anything that is not a known-safe image
+		// downloads instead of rendering.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		mediaType := "application/octet-stream"
 		if a.MediaType != nil {
-			w.Header().Set("Content-Type", *a.MediaType)
+			mediaType = *a.MediaType
+		}
+		w.Header().Set("Content-Type", mediaType)
+		if inlineImageTypes[mediaType] {
+			w.Header().Set("Content-Disposition", "inline")
+		} else {
+			w.Header().Set("Content-Disposition", "attachment")
 		}
 		_, _ = io.Copy(w, f)
 	})
@@ -186,6 +201,17 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 	r.Handle("/*", web.Handler())
 
 	return r, sm, api
+}
+
+// inlineImageTypes are the uploaded types the SPA renders in place (the
+// Lightbox, W-04). Everything else the allowlist admits — application/pdf —
+// is served as a download: a PDF opened inline runs its own scripting engine
+// on this origin.
+var inlineImageTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/webp": true,
+	"image/heic": true,
 }
 
 func sessionUser(sm *scs.SessionManager, ctx context.Context) (uuid.UUID, bool) {
