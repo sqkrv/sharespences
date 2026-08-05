@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ApiError, api, unwrap, uploadAttachment } from "../api/client";
+import { ApiError, api, attachmentURL, unwrap, uploadAttachment } from "../api/client";
 import { useBankCategories, useCategories, useClients, useTierMap } from "../hooks";
 import { Badge, Btn, Card, ErrMsg, errorText, Field, Input, Select, Spinner } from "../components/ui";
 import { CategoryPicker, type PickedCategory } from "../components/CategoryPicker";
+import { Lightbox } from "../components/Lightbox";
 import {
   clearJob,
   loadJob,
@@ -338,6 +339,7 @@ function RecognizeReview({
 }) {
   const rows = state.rows ?? [];
   const meta = state.meta;
+  const [viewing, setViewing] = useState<number | null>(null);
   const setRows = (next: ReviewRow[]) => persist({ ...state, rows: next });
   const patchRow = (key: number, patch: Partial<ReviewRow>) => setRows(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
@@ -508,6 +510,46 @@ function RecognizeReview({
           )}
         </div>
       </Card>
+
+      {/* The screenshots themselves, which this screen never showed: every
+          row below is a claim about one of these pictures, and the notes
+          address them by number («скрин 2»), so the strip is numbered to
+          match. Reviewing a prefill without the source is guesswork. */}
+      {state.attachmentIDs.length > 0 && (
+        <Card className="p-3" data-sid="CB-02.g">
+          <p className="mb-1.5 text-[10.5px] font-semibold tracking-[.06em] text-tx4 uppercase">
+            Скриншоты
+          </p>
+          <div className="flex gap-2 overflow-x-auto">
+            {state.attachmentIDs.map((aid, n) => (
+              <button
+                key={aid}
+                type="button"
+                onClick={() => setViewing(n)}
+                className="relative flex-none"
+                aria-label={`Открыть скриншот ${n + 1}`}
+              >
+                <img
+                  src={attachmentURL(aid)}
+                  alt={`скриншот ${n + 1}`}
+                  className="h-20 rounded-xl border border-brd object-cover"
+                />
+                <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[9px] font-bold text-white">
+                  {n + 1}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
+      {viewing != null && (
+        <Lightbox
+          ids={state.attachmentIDs}
+          startIndex={viewing}
+          alt="скриншот меню"
+          onClose={() => setViewing(null)}
+        />
+      )}
 
       {meta != null && (meta.notes.length > 0 || meta.images.some((im) => im.skipped)) && (
         <Card className="p-3" data-sid="CB-02.d">

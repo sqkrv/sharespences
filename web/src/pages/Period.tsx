@@ -5,6 +5,7 @@ import { api, unwrap, attachmentURL, uploadAttachment, ApiError, type CanonicalC
 import { useBankCategories, useBanks, useCards, useCategories, useClients, useTierMap } from "../hooks";
 import { Badge, Btn, Card, CheckDot, ErrMsg, errorText, Field, GradientCard, Input, Pct, Select, Spinner } from "../components/ui";
 import { CategoryPicker, type PickedCategory } from "../components/CategoryPicker";
+import { Lightbox } from "../components/Lightbox";
 import { currencyBadge, fmtRange, midPeriodAddNote } from "../lib";
 
 function usePeriod(id: number) {
@@ -291,6 +292,7 @@ function EditOfferForm({
 function ScreenshotStrip({ periodID, attachmentIDs }: { periodID: number; attachmentIDs: string[] }) {
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["period", periodID] });
+  const [viewing, setViewing] = useState<number | null>(null);
 
   const add = useMutation({
     mutationFn: async (files: File[]) => {
@@ -319,12 +321,24 @@ function ScreenshotStrip({ periodID, attachmentIDs }: { periodID: number; attach
 
   return (
     <div data-sid="CB-03.c">
+      {viewing != null && (
+        <Lightbox
+          ids={attachmentIDs}
+          startIndex={viewing}
+          alt="скриншот меню"
+          onClose={() => setViewing(null)}
+        />
+      )}
       <div className="flex gap-2 overflow-x-auto">
-        {attachmentIDs.map((aid) => (
+        {attachmentIDs.map((aid, n) => (
           <div key={aid} className="relative flex-none">
-            <a href={attachmentURL(aid)} target="_blank" rel="noreferrer">
+            <button
+              type="button"
+              onClick={() => setViewing(n)}
+              aria-label={`Открыть скриншот ${n + 1}`}
+            >
               <img src={attachmentURL(aid)} alt="скриншот меню" className="h-20 rounded-xl border border-brd object-cover" />
-            </a>
+            </button>
             <button
               type="button"
               title="Убрать скриншот"
