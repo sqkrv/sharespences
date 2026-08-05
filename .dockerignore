@@ -7,7 +7,10 @@
 !cmd
 !internal
 !web
+!admin
 # produced inside the build stages, never taken from the host
 web/node_modules
+admin/node_modules
 internal/web/dist
+internal/adminweb/dist
 **/.DS_Store

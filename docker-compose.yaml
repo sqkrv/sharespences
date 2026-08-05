@@ -29,6 +29,10 @@ x-backend: &backend
     VISION_MODEL: ${VISION_MODEL:-}
     OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    # Admin sidecar (ADR-0008): all interfaces INSIDE the container so the
+    # loopback-only port publish below can reach it; the binary's own default
+    # is 127.0.0.1:8081 for native runs. Other services ignore this var.
+    ADMIN_LISTEN_ADDR: :8081
 
 services:
   db:
@@ -86,6 +90,18 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
+
+  admin:
+    <<: *backend
+    entrypoint: ["/usr/local/bin/sharespences-admin"]
+    # The loopback publish IS the access control (ADR-0008): the operator
+    # reaches the panel through an SSH tunnel; nothing is exposed publicly.
+    # Never widen this to a plain "8081:8081".
+    ports:
+      - "127.0.0.1:${ADMIN_PORT:-8081}:8081"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   db-data:

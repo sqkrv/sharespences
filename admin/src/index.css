@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+/*
+ * Dark-only: the `--t-*` dark palette copied from web/src/index.css (the
+ * Claude Design doc's dark IS the design). The admin UI is an operator tool
+ * — no theme toggle, no bundled font (system stack), desktop-first.
+ * Semantics survive here too: mint = кешбек рублями, lilac = баллами.
+ */
+:root {
+  --t-bg: #0f0b1c;
+  --t-srf: #181227;
+  --t-srf2: #161029;
+  --t-inset: #221a3a;
+  --t-brd: #271f42;
+  --t-brd2: #262041;
+  --t-dash: #322a4e;
+  --t-tx: #ece9f6;
+  --t-tx2: #b7b1ce;
+  --t-tx3: #8d86a8;
+  --t-tx4: #6f688c;
+  --t-acc: #8b6fff;
+  --t-acc2: #5b3fe0;
+  --t-accl: #bcb4ff;
+  --t-mint: #6fe9c0;
+  --t-gold: #e7ce86;
+  --t-warn: #e29b9b;
+  --t-glow: radial-gradient(120% 78% at 50% -12%, #241c3e 0%, #0f0b1c 58%);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-bg: var(--t-bg);
+  --color-srf: var(--t-srf);
+  --color-srf2: var(--t-srf2);
+  --color-inset: var(--t-inset);
+  --color-brd: var(--t-brd);
+  --color-brd2: var(--t-brd2);
+  --color-dash: var(--t-dash);
+  --color-tx: var(--t-tx);
+  --color-tx2: var(--t-tx2);
+  --color-tx3: var(--t-tx3);
+  --color-tx4: var(--t-tx4);
+  --color-acc: var(--t-acc);
+  --color-acc2: var(--t-acc2);
+  --color-accl: var(--t-accl);
+  --color-mint: var(--t-mint);
+  --color-gold: var(--t-gold);
+  --color-warn: var(--t-warn);
+}
+
+body {
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+  @apply bg-bg text-tx antialiased;
+  background-image: var(--t-glow);
+  background-repeat: no-repeat;
+  background-size: 100% 100vh;
+}
+
+.grad-acc {
+  background: linear-gradient(140deg, #8b6fff, #5b3fe0);
+}
