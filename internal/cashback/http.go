@@ -28,14 +28,34 @@ func decToStr(d *decimal.Decimal) *string {
 	return &s
 }
 
+// Bounds on a money/percent field, both checked before the value can reach
+// the driver. The columns are numeric(19,4), so nothing legitimate comes close
+// to either limit — but shopspring's parser accepts a 500 000-digit integer
+// and an exponent up to MaxInt32, and pgx then materialises whichever it gets
+// as a big.Int while encoding the statement. Measured on this code: `1e-200000`
+// cost 1.6 s of server time for a 40-byte body and was accepted (201); larger
+// exponents do not come back at all, and http.Server sets no WriteTimeout, so
+// nothing cuts the request off.
+const (
+	maxDecimalLen = 32  // digits a human types, with room to spare
+	maxDecimalExp = 100 // numeric(19,4) needs -4..0
+)
+
 func strToDec(s *string, field string) (*decimal.Decimal, error) {
 	if s == nil {
 		return nil, nil
 	}
+	notANumber := huma.Error422UnprocessableEntity(fmt.Sprintf("%s: «%s» — не число", field, *s))
+	if len(*s) > maxDecimalLen {
+		return nil, notANumber
+	}
 	// RU keyboards type «1,5» — the comma is a decimal separator here.
 	d, err := decimal.NewFromString(strings.ReplaceAll(*s, ",", "."))
 	if err != nil {
-		return nil, huma.Error422UnprocessableEntity(fmt.Sprintf("%s: «%s» — не число", field, *s))
+		return nil, notANumber
+	}
+	if e := d.Exponent(); e < -maxDecimalExp || e > maxDecimalExp {
+		return nil, notANumber
 	}
 	return &d, nil
 }
