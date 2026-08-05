@@ -606,7 +606,7 @@ set title                 = $2,
     active                = $6
 where id = $1
   and is_custom
-returning id, bank_id, title, canonical_category_id, kind, emoji, is_custom, active
+returning id, bank_id, title, canonical_category_id, kind, emoji, is_custom, active, created_by
 `
 
 type AdminUpdateCustomBankCategoryParams struct {
@@ -637,6 +637,7 @@ func (q *Queries) AdminUpdateCustomBankCategory(ctx context.Context, arg AdminUp
 		&i.Emoji,
 		&i.IsCustom,
 		&i.Active,
+		&i.CreatedBy,
 	)
 	return i, err
 }
