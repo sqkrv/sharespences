@@ -353,8 +353,8 @@ where op.bank_client_id = any (sqlc.arg(client_ids)::bigint[]);
 
 -- name: CreatePartnerOffer :one
 insert into partner_offer (user_id, bank_id, bank_client_id, merchant_title, percent,
-                           valid_from, valid_to, cap_value, notes)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                           valid_from, valid_to, cap_value, notes, min_amount)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 returning *;
 
 -- name: ListPartnerOffersForUser :many
@@ -363,6 +363,28 @@ from partner_offer po
          join bank b on b.id = po.bank_id
 where po.user_id = $1
 order by po.id;
+
+-- name: GetPartnerOfferForUser :one
+select po.*, b.name as bank_name
+from partner_offer po
+         join bank b on b.id = po.bank_id
+where po.id = $1
+  and po.user_id = $2;
+
+-- name: UpdatePartnerOfferForUser :one
+update partner_offer
+set bank_id        = $3,
+    bank_client_id = $4,
+    merchant_title = $5,
+    percent        = $6,
+    valid_from     = $7,
+    valid_to       = $8,
+    cap_value      = $9,
+    notes          = $10,
+    min_amount     = $11
+where id = $1
+  and user_id = $2
+returning *;
 
 -- name: DeletePartnerOfferForUser :execrows
 delete
@@ -374,3 +396,15 @@ where id = $1
 insert into partner_offer_attachment (partner_offer_id, attachment_id)
 values ($1, $2)
 on conflict do nothing;
+
+-- name: ListPartnerOfferAttachments :many
+select a.*
+from attachment a
+         join partner_offer_attachment poa on poa.attachment_id = a.id
+where poa.partner_offer_id = $1;
+
+-- name: DetachFromPartnerOffer :execrows
+delete
+from partner_offer_attachment
+where partner_offer_id = $1
+  and attachment_id = $2;

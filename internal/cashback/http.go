@@ -256,7 +256,75 @@ type PartnerOfferDTO struct {
 	ValidFrom     *string `json:"valid_from,omitempty"`
 	ValidTo       *string `json:"valid_to,omitempty"`
 	CapValue      *string `json:"cap_value,omitempty"`
-	Notes         *string `json:"notes,omitempty"`
+	// MinAmount bounds the qualifying purchase («при заказе от 2 000 ₽»);
+	// CapValue bounds the payout. Independent — an offer may carry either.
+	MinAmount     *string     `json:"min_amount,omitempty"`
+	Notes         *string     `json:"notes,omitempty"`
+	AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty"`
+}
+
+// partnerOfferDTO maps the shared columns. Callers add BankName and
+// AttachmentIDs, which come from joins the write queries do not return.
+func partnerOfferDTO(p db.PartnerOffer) PartnerOfferDTO {
+	return PartnerOfferDTO{
+		ID: p.ID, BankID: p.BankID, BankClientID: p.BankClientID,
+		MerchantTitle: p.MerchantTitle, Percent: decToStr(p.Percent),
+		ValidFrom: fmtDatePtr(p.ValidFrom), ValidTo: fmtDatePtr(p.ValidTo),
+		CapValue: decToStr(p.CapValue), MinAmount: decToStr(p.MinAmount),
+		Notes: p.Notes,
+	}
+}
+
+// partnerFields is the parsed form of the four free-text/date inputs that
+// create and update share verbatim.
+type partnerFields struct {
+	percent, cap, min *decimal.Decimal
+	from, to          *time.Time
+}
+
+func parsePartnerFields(percent, capValue, minAmount, validFrom, validTo *string) (partnerFields, error) {
+	var f partnerFields
+	var err error
+	if f.percent, err = strToDec(percent, "percent"); err != nil {
+		return f, err
+	}
+	if f.cap, err = strToDec(capValue, "cap_value"); err != nil {
+		return f, err
+	}
+	if f.min, err = strToDec(minAmount, "min_amount"); err != nil {
+		return f, err
+	}
+	if validFrom != nil {
+		t, err := parseDate(*validFrom, "valid_from")
+		if err != nil {
+			return f, err
+		}
+		f.from = &t
+	}
+	if validTo != nil {
+		t, err := parseDate(*validTo, "valid_to")
+		if err != nil {
+			return f, err
+		}
+		f.to = &t
+	}
+	return f, nil
+}
+
+// attachToPartner links screenshots after checking each one belongs to the
+// caller — an attachment id is guessable, so ownership is verified per file.
+func (s *Service) attachToPartner(ctx context.Context, userID uuid.UUID, offerID int64, ids []uuid.UUID) error {
+	for _, aid := range ids {
+		if _, err := s.Q.GetAttachmentForUser(ctx, db.GetAttachmentForUserParams{ID: aid, UserID: &userID}); err != nil {
+			return httpErr(notFound(err))
+		}
+		if err := s.Q.AttachToPartnerOffer(ctx, db.AttachToPartnerOfferParams{
+			PartnerOfferID: offerID, AttachmentID: aid,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func fmtDatePtr(t *time.Time) *string {
@@ -1054,7 +1122,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				ID: p.ID, BankID: p.BankID, BankName: p.BankName, BankClientID: p.BankClientID,
 				MerchantTitle: p.MerchantTitle, Percent: decToStr(p.Percent),
 				ValidFrom: fmtDatePtr(p.ValidFrom), ValidTo: fmtDatePtr(p.ValidTo),
-				CapValue: decToStr(p.CapValue), Notes: p.Notes,
+				CapValue: decToStr(p.CapValue), MinAmount: decToStr(p.MinAmount), Notes: p.Notes,
 			})
 		}
 		// The dead-end message only when there is truly nothing — neither
@@ -1080,55 +1148,139 @@ func RegisterHTTP(api huma.API, s *Service) {
 			ValidFrom     *string     `json:"valid_from,omitempty" format:"date"`
 			ValidTo       *string     `json:"valid_to,omitempty" format:"date"`
 			CapValue      *string     `json:"cap_value,omitempty"`
+			MinAmount     *string     `json:"min_amount,omitempty" doc:"minimum qualifying purchase («от 2 000 ₽»); display only"`
 			Notes         *string     `json:"notes,omitempty"`
 			AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty"`
 		}
 	}) (*struct{ Body PartnerOfferDTO }, error) {
-		pctVal, err := strToDec(in.Body.Percent, "percent")
+		f, err := parsePartnerFields(in.Body.Percent, in.Body.CapValue, in.Body.MinAmount,
+			in.Body.ValidFrom, in.Body.ValidTo)
 		if err != nil {
 			return nil, err
-		}
-		capVal, err := strToDec(in.Body.CapValue, "cap_value")
-		if err != nil {
-			return nil, err
-		}
-		var from, to *time.Time
-		if in.Body.ValidFrom != nil {
-			t, err := parseDate(*in.Body.ValidFrom, "valid_from")
-			if err != nil {
-				return nil, err
-			}
-			from = &t
-		}
-		if in.Body.ValidTo != nil {
-			t, err := parseDate(*in.Body.ValidTo, "valid_to")
-			if err != nil {
-				return nil, err
-			}
-			to = &t
 		}
 		p, err := s.Q.CreatePartnerOffer(ctx, db.CreatePartnerOfferParams{
 			UserID: auth.UserID(ctx), BankID: in.Body.BankID, BankClientID: in.Body.BankClientID,
-			MerchantTitle: in.Body.MerchantTitle, Percent: pctVal,
-			ValidFrom: from, ValidTo: to, CapValue: capVal, Notes: in.Body.Notes,
+			MerchantTitle: in.Body.MerchantTitle, Percent: f.percent,
+			ValidFrom: f.from, ValidTo: f.to, CapValue: f.cap, MinAmount: f.min,
+			Notes: in.Body.Notes,
 		})
 		if err != nil {
 			return nil, httpErr(err)
 		}
-		for _, aid := range in.Body.AttachmentIDs {
-			userID := auth.UserID(ctx)
-			if _, err := s.Q.GetAttachmentForUser(ctx, db.GetAttachmentForUserParams{ID: aid, UserID: &userID}); err != nil {
-				return nil, httpErr(notFound(err))
-			}
-			if err := s.Q.AttachToPartnerOffer(ctx, db.AttachToPartnerOfferParams{PartnerOfferID: p.ID, AttachmentID: aid}); err != nil {
-				return nil, err
-			}
+		if err := s.attachToPartner(ctx, auth.UserID(ctx), p.ID, in.Body.AttachmentIDs); err != nil {
+			return nil, err
 		}
-		return &struct{ Body PartnerOfferDTO }{PartnerOfferDTO{
-			ID: p.ID, BankID: p.BankID, BankClientID: p.BankClientID, MerchantTitle: p.MerchantTitle,
-			Percent: decToStr(p.Percent), ValidFrom: fmtDatePtr(p.ValidFrom), ValidTo: fmtDatePtr(p.ValidTo),
-			CapValue: decToStr(p.CapValue), Notes: p.Notes,
-		}}, nil
+		out := partnerOfferDTO(p)
+		out.AttachmentIDs = in.Body.AttachmentIDs
+		return &struct{ Body PartnerOfferDTO }{out}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-partner-offer-get", Method: http.MethodGet,
+		Path: "/api/v1/cashback/partner-offers/{id}", Summary: "One partner offer with its screenshots", Tags: []string{"cashback"},
+	}, func(ctx context.Context, in *struct {
+		ID int64 `path:"id"`
+	}) (*struct{ Body PartnerOfferDTO }, error) {
+		row, err := s.Q.GetPartnerOfferForUser(ctx, db.GetPartnerOfferForUserParams{
+			ID: in.ID, UserID: auth.UserID(ctx),
+		})
+		if err != nil {
+			return nil, httpErr(notFound(err))
+		}
+		out := PartnerOfferDTO{
+			ID: row.ID, BankID: row.BankID, BankName: row.BankName, BankClientID: row.BankClientID,
+			MerchantTitle: row.MerchantTitle, Percent: decToStr(row.Percent),
+			ValidFrom: fmtDatePtr(row.ValidFrom), ValidTo: fmtDatePtr(row.ValidTo),
+			CapValue: decToStr(row.CapValue), MinAmount: decToStr(row.MinAmount), Notes: row.Notes,
+		}
+		atts, err := s.Q.ListPartnerOfferAttachments(ctx, in.ID)
+		if err != nil {
+			return nil, err
+		}
+		out.AttachmentIDs = make([]uuid.UUID, len(atts))
+		for i, a := range atts {
+			out.AttachmentIDs[i] = a.ID
+		}
+		return &struct{ Body PartnerOfferDTO }{out}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-partner-offer-update", Method: http.MethodPut,
+		Path: "/api/v1/cashback/partner-offers/{id}", Summary: "Correct a recorded partner offer", Tags: []string{"cashback"},
+	}, func(ctx context.Context, in *struct {
+		ID   int64 `path:"id"`
+		Body struct {
+			BankID        int32   `json:"bank_id"`
+			BankClientID  *int64  `json:"bank_client_id,omitempty"`
+			MerchantTitle string  `json:"merchant_title" minLength:"1"`
+			Percent       *string `json:"percent,omitempty"`
+			ValidFrom     *string `json:"valid_from,omitempty" format:"date"`
+			ValidTo       *string `json:"valid_to,omitempty" format:"date"`
+			CapValue      *string `json:"cap_value,omitempty"`
+			MinAmount     *string `json:"min_amount,omitempty"`
+			Notes         *string `json:"notes,omitempty"`
+		}
+	}) (*struct{ Body PartnerOfferDTO }, error) {
+		f, err := parsePartnerFields(in.Body.Percent, in.Body.CapValue, in.Body.MinAmount,
+			in.Body.ValidFrom, in.Body.ValidTo)
+		if err != nil {
+			return nil, err
+		}
+		p, err := s.Q.UpdatePartnerOfferForUser(ctx, db.UpdatePartnerOfferForUserParams{
+			ID: in.ID, UserID: auth.UserID(ctx),
+			BankID: in.Body.BankID, BankClientID: in.Body.BankClientID,
+			MerchantTitle: in.Body.MerchantTitle, Percent: f.percent,
+			ValidFrom: f.from, ValidTo: f.to, CapValue: f.cap, MinAmount: f.min,
+			Notes: in.Body.Notes,
+		})
+		if err != nil {
+			return nil, httpErr(notFound(err))
+		}
+		return &struct{ Body PartnerOfferDTO }{partnerOfferDTO(p)}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-partner-offer-attach", Method: http.MethodPost,
+		Path: "/api/v1/cashback/partner-offers/{id}/attachments", Summary: "Attach a screenshot", Tags: []string{"cashback"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID   int64 `path:"id"`
+		Body struct {
+			AttachmentID uuid.UUID `json:"attachment_id"`
+		}
+	}) (*struct{}, error) {
+		userID := auth.UserID(ctx)
+		if _, err := s.Q.GetPartnerOfferForUser(ctx, db.GetPartnerOfferForUserParams{ID: in.ID, UserID: userID}); err != nil {
+			return nil, httpErr(notFound(err))
+		}
+		if err := s.attachToPartner(ctx, userID, in.ID, []uuid.UUID{in.Body.AttachmentID}); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-partner-offer-detach", Method: http.MethodDelete,
+		Path: "/api/v1/cashback/partner-offers/{id}/attachments/{attachment_id}", Summary: "Remove a screenshot", Tags: []string{"cashback"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID           int64     `path:"id"`
+		AttachmentID uuid.UUID `path:"attachment_id"`
+	}) (*struct{}, error) {
+		userID := auth.UserID(ctx)
+		if _, err := s.Q.GetPartnerOfferForUser(ctx, db.GetPartnerOfferForUserParams{ID: in.ID, UserID: userID}); err != nil {
+			return nil, httpErr(notFound(err))
+		}
+		n, err := s.Q.DetachFromPartnerOffer(ctx, db.DetachFromPartnerOfferParams{
+			PartnerOfferID: in.ID, AttachmentID: in.AttachmentID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			return nil, huma.Error404NotFound("скриншот не найден")
+		}
+		return nil, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -1145,7 +1297,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				ID: p.ID, BankID: p.BankID, BankName: p.BankName, BankClientID: p.BankClientID,
 				MerchantTitle: p.MerchantTitle, Percent: decToStr(p.Percent),
 				ValidFrom: fmtDatePtr(p.ValidFrom), ValidTo: fmtDatePtr(p.ValidTo),
-				CapValue: decToStr(p.CapValue), Notes: p.Notes,
+				CapValue: decToStr(p.CapValue), MinAmount: decToStr(p.MinAmount), Notes: p.Notes,
 			}
 		}
 		return &struct{ Body []PartnerOfferDTO }{out}, nil

@@ -659,25 +659,25 @@ type OverviewClientCard struct {
 // offer_period covering the date («нет периода», the design's dashed card
 // with «Добавить»).
 type OverviewClient struct {
-	ClientID      int64
-	BankID        int32
-	BankName      string
-	HolderLabel   *string
-	Cards         []OverviewClientCard
-	TierName      *string
-	IsPaidTier    bool
-	CapValue      *decimal.Decimal
-	CapScope      CapScope
-	CapPerCat     *decimal.Decimal
+	ClientID     int64
+	BankID       int32
+	BankName     string
+	HolderLabel  *string
+	Cards        []OverviewClientCard
+	TierName     *string
+	IsPaidTier   bool
+	CapValue     *decimal.Decimal
+	CapScope     CapScope
+	CapPerCat    *decimal.Decimal
 	CurrencyKind CurrencyKind
 	PointsLabel  string
 	// MidPeriodAdd/Activation are the two policy axes that actually govern
 	// «can I still pick this right now?» (migration 00008). They replaced
 	// SelectionMode here: atomic|incremental described how the picker submits,
 	// which no screen and no rule ever needed.
-	MidPeriodAdd string
-	Activation   string
-	PeriodID     *int64
+	MidPeriodAdd  string
+	Activation    string
+	PeriodID      *int64
 	PeriodStart   *time.Time
 	PeriodEnd     *time.Time
 	SlotsUsed     int
