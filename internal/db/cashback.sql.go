@@ -235,57 +235,6 @@ func (q *Queries) CreatePartnerOffer(ctx context.Context, arg CreatePartnerOffer
 	return i, err
 }
 
-const createProgram = `-- name: CreateProgram :one
-
-insert into cashback_program (bank_id, name, period_type, selection_mode, currency_kind,
-                              points_label, selection_opens_day, notes)
-values ($1, $2, $3, $4, $5, $6, $7, $8)
-returning id, bank_id, name, period_type, selection_mode, currency_kind, points_label, selection_opens_day, notes, mid_period_add, activation
-`
-
-type CreateProgramParams struct {
-	BankID            int32
-	Name              string
-	PeriodType        CashbackPeriodType
-	SelectionMode     CashbackSelectionMode
-	CurrencyKind      CashbackCurrencyKind
-	PointsLabel       *string
-	SelectionOpensDay *int32
-	Notes             *string
-}
-
-// Cashback module queries. Seam note: joins to bank / bank_client are the
-// module's read-only reference reads (decided at skeleton, see
-// 00003_cashback.sql header; re-keyed card→client in 00006); no other
-// module touches cashback tables.
-func (q *Queries) CreateProgram(ctx context.Context, arg CreateProgramParams) (CashbackProgram, error) {
-	row := q.db.QueryRow(ctx, createProgram,
-		arg.BankID,
-		arg.Name,
-		arg.PeriodType,
-		arg.SelectionMode,
-		arg.CurrencyKind,
-		arg.PointsLabel,
-		arg.SelectionOpensDay,
-		arg.Notes,
-	)
-	var i CashbackProgram
-	err := row.Scan(
-		&i.ID,
-		&i.BankID,
-		&i.Name,
-		&i.PeriodType,
-		&i.SelectionMode,
-		&i.CurrencyKind,
-		&i.PointsLabel,
-		&i.SelectionOpensDay,
-		&i.Notes,
-		&i.MidPeriodAdd,
-		&i.Activation,
-	)
-	return i, err
-}
-
 const createSelection = `-- name: CreateSelection :one
 insert into selection (category_offer_id, selected_at)
 values ($1, $2)
@@ -301,50 +250,6 @@ func (q *Queries) CreateSelection(ctx context.Context, arg CreateSelectionParams
 	row := q.db.QueryRow(ctx, createSelection, arg.CategoryOfferID, arg.SelectedAt)
 	var i Selection
 	err := row.Scan(&i.ID, &i.CategoryOfferID, &i.SelectedAt)
-	return i, err
-}
-
-const createTier = `-- name: CreateTier :one
-insert into program_tier (program_id, name, is_paid_subscription, cap_value, cap_scope,
-                          cap_per_category, max_categories, notes)
-values ($1, $2, $3, $4, $5, $6, $7, $8)
-returning id, program_id, name, is_paid_subscription, cap_value, cap_scope, cap_per_category, max_categories, notes
-`
-
-type CreateTierParams struct {
-	ProgramID          int64
-	Name               string
-	IsPaidSubscription bool
-	CapValue           *decimal.Decimal
-	CapScope           CashbackCapScope
-	CapPerCategory     *decimal.Decimal
-	MaxCategories      *int32
-	Notes              *string
-}
-
-func (q *Queries) CreateTier(ctx context.Context, arg CreateTierParams) (ProgramTier, error) {
-	row := q.db.QueryRow(ctx, createTier,
-		arg.ProgramID,
-		arg.Name,
-		arg.IsPaidSubscription,
-		arg.CapValue,
-		arg.CapScope,
-		arg.CapPerCategory,
-		arg.MaxCategories,
-		arg.Notes,
-	)
-	var i ProgramTier
-	err := row.Scan(
-		&i.ID,
-		&i.ProgramID,
-		&i.Name,
-		&i.IsPaidSubscription,
-		&i.CapValue,
-		&i.CapScope,
-		&i.CapPerCategory,
-		&i.MaxCategories,
-		&i.Notes,
-	)
 	return i, err
 }
 
@@ -1182,6 +1087,7 @@ func (q *Queries) ListPeriodRangesForClient(ctx context.Context, bankClientID in
 }
 
 const listPrograms = `-- name: ListPrograms :many
+
 select cp.id, cp.bank_id, cp.name, cp.period_type, cp.selection_mode, cp.currency_kind, cp.points_label, cp.selection_opens_day, cp.notes, cp.mid_period_add, cp.activation, b.name as bank_name
 from cashback_program cp
          join bank b on b.id = cp.bank_id
@@ -1203,6 +1109,10 @@ type ListProgramsRow struct {
 	BankName          string
 }
 
+// Cashback module queries. Seam note: joins to bank / bank_client are the
+// module's read-only reference reads (decided at skeleton, see
+// 00003_cashback.sql header; re-keyed card→client in 00006); no other
+// module touches cashback tables.
 func (q *Queries) ListPrograms(ctx context.Context) ([]ListProgramsRow, error) {
 	rows, err := q.db.Query(ctx, listPrograms)
 	if err != nil {

@@ -3,12 +3,6 @@
 -- 00003_cashback.sql header; re-keyed card→client in 00006); no other
 -- module touches cashback tables.
 
--- name: CreateProgram :one
-insert into cashback_program (bank_id, name, period_type, selection_mode, currency_kind,
-                              points_label, selection_opens_day, notes)
-values ($1, $2, $3, $4, $5, $6, $7, $8)
-returning *;
-
 -- name: ListPrograms :many
 select cp.*, b.name as bank_name
 from cashback_program cp
@@ -36,12 +30,6 @@ returning *;
 delete
 from cashback_program
 where id = $1;
-
--- name: CreateTier :one
-insert into program_tier (program_id, name, is_paid_subscription, cap_value, cap_scope,
-                          cap_per_category, max_categories, notes)
-values ($1, $2, $3, $4, $5, $6, $7, $8)
-returning *;
 
 -- name: ListTiersForProgram :many
 select *
