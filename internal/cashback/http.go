@@ -1147,6 +1147,9 @@ func RegisterHTTP(api huma.API, s *Service) {
 		if err != nil {
 			return nil, err
 		}
+		if err := s.AssertOwnsClient(ctx, auth.UserID(ctx), in.Body.BankClientID); err != nil {
+			return nil, httpErr(err)
+		}
 		p, err := s.Q.CreatePartnerOffer(ctx, db.CreatePartnerOfferParams{
 			UserID: auth.UserID(ctx), BankID: in.Body.BankID, BankClientID: in.Body.BankClientID,
 			MerchantTitle: in.Body.MerchantTitle, Percent: f.percent,
@@ -1214,6 +1217,9 @@ func RegisterHTTP(api huma.API, s *Service) {
 			in.Body.ValidFrom, in.Body.ValidTo)
 		if err != nil {
 			return nil, err
+		}
+		if err := s.AssertOwnsClient(ctx, auth.UserID(ctx), in.Body.BankClientID); err != nil {
+			return nil, httpErr(err)
 		}
 		p, err := s.Q.UpdatePartnerOfferForUser(ctx, db.UpdatePartnerOfferForUserParams{
 			ID: in.ID, UserID: auth.UserID(ctx),

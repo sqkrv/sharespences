@@ -162,6 +162,24 @@ func activeSelectionOf(row db.ListUserOffersRow) ActiveSelection {
 	}
 }
 
+// AssertOwnsClient rejects a bank_client_id belonging to another account.
+//
+// Every other reference to a bank client reaches the service through a
+// user-scoped lookup, but a partner offer takes it from the request body, where
+// nothing upstream has scoped it. Unchecked, an offer files itself against a
+// stranger's client: invisible to them (their own list is scoped by user_id)
+// and enough to make DeleteBankClientForUser answer 409 forever, citing history
+// they cannot see. nil is the ordinary «not tied to a client» case.
+func (s *Service) AssertOwnsClient(ctx context.Context, userID uuid.UUID, clientID *int64) error {
+	if clientID == nil {
+		return nil
+	}
+	if _, err := s.Q.GetBankClientForUser(ctx, db.GetBankClientForUserParams{ID: *clientID, UserID: userID}); err != nil {
+		return notFound(err)
+	}
+	return nil
+}
+
 // CreateOfferPeriod enforces invariant 4 in the service; the DB exclusion
 // constraint backstops races.
 func (s *Service) CreateOfferPeriod(ctx context.Context, userID uuid.UUID, clientID int64, start, end time.Time, attachmentIDs []uuid.UUID) (db.OfferPeriod, error) {

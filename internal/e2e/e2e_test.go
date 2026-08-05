@@ -1328,6 +1328,27 @@ func TestCashbackE2E(t *testing.T) {
 	if got := other.do("GET", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", partnerOffer.ID), nil, nil); got != http.StatusNotFound {
 		t.Fatalf("foreign partner-offer get: %d, want 404", got)
 	}
+	// An offer `other` legitimately owns — the subject of the update probe below.
+	var foreignProbe struct {
+		ID int64 `json:"id"`
+	}
+	other.must("POST", "/api/v1/cashback/partner-offers", map[string]any{
+		"bank_id": vtbID, "merchant_title": "своё",
+	}, &foreignProbe, http.StatusCreated)
+	// The offer's OWN id is scoped, but bank_client_id arrives in the body:
+	// pointing it at someone else's client would file an invisible row against
+	// that account and leave them unable to delete their own client (the FK
+	// answers 409 for history they cannot see).
+	if got := other.do("POST", "/api/v1/cashback/partner-offers", map[string]any{
+		"bank_id": vtbID, "bank_client_id": partnerClient.ID, "merchant_title": "захват",
+	}, nil); got != http.StatusNotFound {
+		t.Fatalf("partner-offer create on a foreign bank client: %d, want 404", got)
+	}
+	if got := other.do("PUT", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", foreignProbe.ID), map[string]any{
+		"bank_id": vtbID, "bank_client_id": partnerClient.ID, "merchant_title": "захват",
+	}, nil); got != http.StatusNotFound {
+		t.Fatalf("partner-offer update onto a foreign bank client: %d, want 404", got)
+	}
 	owner.must("DELETE", fmt.Sprintf("/api/v1/cashback/partner-offers/%d/attachments/%s", partnerOffer.ID, shotID),
 		nil, nil, http.StatusNoContent)
 
