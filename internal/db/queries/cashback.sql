@@ -385,6 +385,11 @@ from attachment a
          join partner_offer_attachment poa on poa.attachment_id = a.id
 where poa.partner_offer_id = $1;
 
+-- name: DeletePartnerOfferAttachments :exec
+delete
+from partner_offer_attachment
+where partner_offer_id = $1;
+
 -- name: DetachFromPartnerOffer :execrows
 delete
 from partner_offer_attachment

@@ -1282,18 +1282,8 @@ func RegisterHTTP(api huma.API, s *Service) {
 		ID           int64     `path:"id"`
 		AttachmentID uuid.UUID `path:"attachment_id"`
 	}) (*struct{}, error) {
-		userID := auth.UserID(ctx)
-		if _, err := s.Q.GetPartnerOfferForUser(ctx, db.GetPartnerOfferForUserParams{ID: in.ID, UserID: userID}); err != nil {
-			return nil, httpErr(notFound(err))
-		}
-		n, err := s.Q.DetachFromPartnerOffer(ctx, db.DetachFromPartnerOfferParams{
-			PartnerOfferID: in.ID, AttachmentID: in.AttachmentID,
-		})
-		if err != nil {
-			return nil, err
-		}
-		if n == 0 {
-			return nil, huma.Error404NotFound("скриншот не найден")
+		if err := s.DetachPartnerScreenshot(ctx, auth.UserID(ctx), in.ID, in.AttachmentID); err != nil {
+			return nil, httpErr(err)
 		}
 		return nil, nil
 	})
@@ -1325,12 +1315,8 @@ func RegisterHTTP(api huma.API, s *Service) {
 	}, func(ctx context.Context, in *struct {
 		ID int64 `path:"id"`
 	}) (*struct{}, error) {
-		n, err := s.Q.DeletePartnerOfferForUser(ctx, db.DeletePartnerOfferForUserParams{ID: in.ID, UserID: auth.UserID(ctx)})
-		if err != nil {
-			return nil, err
-		}
-		if n == 0 {
-			return nil, huma.Error404NotFound("не найдено")
+		if err := s.DeletePartnerOffer(ctx, auth.UserID(ctx), in.ID); err != nil {
+			return nil, httpErr(err)
 		}
 		return &struct{}{}, nil
 	})

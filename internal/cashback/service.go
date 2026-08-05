@@ -242,18 +242,73 @@ func (s *Service) DetachScreenshot(ctx context.Context, userID uuid.UUID, period
 	if n == 0 {
 		return ErrNotFound
 	}
+	return s.reclaimAttachments(ctx, userID, attachmentID)
+}
+
+// reclaimAttachments drops the row and the disk file of every id nothing links
+// to any more. Policy §7.4 promises uploaded files go with the record they were
+// attached to, so every unlink path has to end here — an attachment left behind
+// is reachable through its content URL forever with nothing left to delete it.
+func (s *Service) reclaimAttachments(ctx context.Context, userID uuid.UUID, ids ...uuid.UUID) error {
 	uid := userID
-	orphaned, err := s.Q.DeleteAttachmentIfOrphan(ctx, db.DeleteAttachmentIfOrphanParams{ID: attachmentID, UserID: &uid})
-	if err != nil {
-		return err
-	}
-	if orphaned > 0 && s.RemoveAttachmentFile != nil {
-		if err := s.RemoveAttachmentFile(attachmentID); err != nil {
+	for _, id := range ids {
+		orphaned, err := s.Q.DeleteAttachmentIfOrphan(ctx, db.DeleteAttachmentIfOrphanParams{ID: id, UserID: &uid})
+		if err != nil {
+			return err
+		}
+		if orphaned > 0 && s.RemoveAttachmentFile != nil {
 			// The row is gone; a stale file is a cleanup nit, not a failure.
-			return nil
+			_ = s.RemoveAttachmentFile(id)
 		}
 	}
 	return nil
+}
+
+// DetachPartnerScreenshot unlinks a screenshot from a partner offer, reclaiming
+// it when nothing else references it — the mirror of DetachScreenshot.
+func (s *Service) DetachPartnerScreenshot(ctx context.Context, userID uuid.UUID, offerID int64, attachmentID uuid.UUID) error {
+	if _, err := s.Q.GetPartnerOfferForUser(ctx, db.GetPartnerOfferForUserParams{ID: offerID, UserID: userID}); err != nil {
+		return notFound(err)
+	}
+	n, err := s.Q.DetachFromPartnerOffer(ctx, db.DetachFromPartnerOfferParams{
+		PartnerOfferID: offerID, AttachmentID: attachmentID,
+	})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return s.reclaimAttachments(ctx, userID, attachmentID)
+}
+
+// DeletePartnerOffer removes the offer with its screenshot links, reclaiming
+// any attachment left with nothing pointing at it. The link rows have to go
+// first: partner_offer_attachment carries a plain foreign key, so deleting the
+// offer underneath it raises 23503 and surfaced as a 500.
+func (s *Service) DeletePartnerOffer(ctx context.Context, userID uuid.UUID, offerID int64) error {
+	if _, err := s.Q.GetPartnerOfferForUser(ctx, db.GetPartnerOfferForUserParams{ID: offerID, UserID: userID}); err != nil {
+		return notFound(err)
+	}
+	atts, err := s.Q.ListPartnerOfferAttachments(ctx, offerID)
+	if err != nil {
+		return err
+	}
+	if err := s.Q.DeletePartnerOfferAttachments(ctx, offerID); err != nil {
+		return err
+	}
+	n, err := s.Q.DeletePartnerOfferForUser(ctx, db.DeletePartnerOfferForUserParams{ID: offerID, UserID: userID})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	ids := make([]uuid.UUID, len(atts))
+	for i, a := range atts {
+		ids[i] = a.ID
+	}
+	return s.reclaimAttachments(ctx, userID, ids...)
 }
 
 // SuggestAlias implements the S1 pre-suggestion for a raw menu title on the
@@ -525,11 +580,17 @@ func (s *Service) SetPeriodMaxOverride(ctx context.Context, userID uuid.UUID, pe
 	return p, nil
 }
 
-// DeleteOfferPeriod removes a period with everything under it (menu rows,
-// their selections, attachment links — the attachment files stay).
+// DeleteOfferPeriod removes a period with everything under it — menu rows,
+// their selections, attachment links, and any screenshot the unlink leaves
+// with nothing pointing at it (policy §7.4).
 func (s *Service) DeleteOfferPeriod(ctx context.Context, userID uuid.UUID, periodID int64) error {
 	if _, err := s.Q.GetOfferPeriodForUser(ctx, db.GetOfferPeriodForUserParams{ID: periodID, UserID: userID}); err != nil {
 		return notFound(err)
+	}
+	// Read the links before they are deleted — afterwards nothing can name them.
+	atts, err := s.Q.ListOfferPeriodAttachments(ctx, periodID)
+	if err != nil {
+		return err
 	}
 	offerIDs, err := s.Q.ListOfferIDsForPeriod(ctx, periodID)
 	if err != nil {
@@ -546,7 +607,14 @@ func (s *Service) DeleteOfferPeriod(ctx context.Context, userID uuid.UUID, perio
 	if err := s.Q.DeleteOfferPeriodAttachments(ctx, periodID); err != nil {
 		return err
 	}
-	return s.Q.DeleteOfferPeriod(ctx, periodID)
+	if err := s.Q.DeleteOfferPeriod(ctx, periodID); err != nil {
+		return err
+	}
+	ids := make([]uuid.UUID, len(atts))
+	for i, a := range atts {
+		ids[i] = a.ID
+	}
+	return s.reclaimAttachments(ctx, userID, ids...)
 }
 
 func (s *Service) DeleteSelection(ctx context.Context, userID uuid.UUID, selectionID int64) error {

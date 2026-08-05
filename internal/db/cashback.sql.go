@@ -317,6 +317,17 @@ func (q *Queries) DeleteOfferPeriodAttachments(ctx context.Context, offerPeriodI
 	return err
 }
 
+const deletePartnerOfferAttachments = `-- name: DeletePartnerOfferAttachments :exec
+delete
+from partner_offer_attachment
+where partner_offer_id = $1
+`
+
+func (q *Queries) DeletePartnerOfferAttachments(ctx context.Context, partnerOfferID int64) error {
+	_, err := q.db.Exec(ctx, deletePartnerOfferAttachments, partnerOfferID)
+	return err
+}
+
 const deletePartnerOfferForUser = `-- name: DeletePartnerOfferForUser :execrows
 delete
 from partner_offer
