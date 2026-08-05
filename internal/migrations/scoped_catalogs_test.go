@@ -18,7 +18,7 @@ import (
 
 func TestDown00019(t *testing.T) {
 	ctx := context.Background()
-	pg, err := postgres.Run(ctx, "postgis/postgis:16-3.4",
+	pg, err := postgres.Run(ctx, "postgis/postgis:18-3.6",
 		postgres.WithDatabase("sharespences"),
 		postgres.WithUsername("sharespences"),
 		postgres.WithPassword("sharespences"),
@@ -134,7 +134,7 @@ func TestDown00019(t *testing.T) {
 // reaches it: stop at 00018, write the pre-migration shapes, then apply.
 func TestBackfill00019(t *testing.T) {
 	ctx := context.Background()
-	pg, err := postgres.Run(ctx, "postgis/postgis:16-3.4",
+	pg, err := postgres.Run(ctx, "postgis/postgis:18-3.6",
 		postgres.WithDatabase("sharespences"),
 		postgres.WithUsername("sharespences"),
 		postgres.WithPassword("sharespences"),

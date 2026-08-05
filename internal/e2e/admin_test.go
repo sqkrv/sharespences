@@ -26,7 +26,7 @@ func TestAdminE2E(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	pg, err := postgres.Run(ctx, "postgis/postgis:16-3.4",
+	pg, err := postgres.Run(ctx, "postgis/postgis:18-3.6",
 		postgres.WithDatabase("sharespences"),
 		postgres.WithUsername("sharespences"),
 		postgres.WithPassword("sharespences"),
