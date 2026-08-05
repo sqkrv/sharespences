@@ -69,10 +69,9 @@ select *
 from canonical_category
 where slug = $1;
 
--- name: CreateCanonicalCategory :one
-insert into canonical_category (slug, title_ru, emoji)
-values ($1, $2, $3)
-returning *;
+-- The catalog is global rows (created_by null, seed-managed) plus the caller's
+-- own; another account's custom row is invisible and, through
+-- GetBankCategory, unattachable to an offer (00019).
 
 -- name: ListBankCategories :many
 select bc.*,
@@ -81,29 +80,46 @@ select bc.*,
        cc.emoji    as canonical_emoji
 from bank_category bc
          left join canonical_category cc on cc.id = bc.canonical_category_id
-where bc.bank_id = $1
+where bc.bank_id = sqlc.arg(bank_id)
   and bc.active
+  and (bc.created_by is null or bc.created_by = sqlc.arg(user_id)::uuid)
 order by bc.kind, bc.title;
 
 -- name: GetBankCategory :one
 select *
 from bank_category
-where id = $1;
+where id = sqlc.arg(id)
+  and (created_by is null or created_by = sqlc.arg(user_id)::uuid);
+
+-- The unique constraint spans the owner, so it no longer catches a custom row
+-- that shadows a SEEDED title — this does, over exactly the rows the caller
+-- can see.
+-- name: CountVisibleBankCategoriesWithTitle :one
+select count(*)
+from bank_category
+where bank_id = sqlc.arg(bank_id)
+  and title = sqlc.arg(title)
+  and (created_by is null or created_by = sqlc.arg(user_id)::uuid);
 
 -- name: CreateBankCategory :one
-insert into bank_category (bank_id, title, canonical_category_id, kind, emoji, is_custom)
-values ($1, $2, $3, $4, $5, true)
+insert into bank_category (bank_id, title, canonical_category_id, kind, emoji, is_custom, created_by)
+values (sqlc.arg(bank_id), sqlc.arg(title), sqlc.arg(canonical_category_id), sqlc.arg(kind),
+        sqlc.arg(emoji), true, sqlc.arg(created_by)::uuid)
 returning *;
 
+-- One row per raw title: the caller's own mapping shadows the seeded one
+-- (`nulls last` sorts a non-null owner first).
 -- name: ListAliasesForBank :many
-select *
+select distinct on (raw_title) *
 from bank_category_alias
-where bank_id = $1;
+where bank_id = sqlc.arg(bank_id)
+  and (user_id is null or user_id = sqlc.arg(user_id)::uuid)
+order by raw_title, user_id nulls last;
 
 -- name: UpsertAlias :exec
-insert into bank_category_alias (canonical_category_id, bank_id, raw_title)
-values ($1, $2, $3)
-on conflict (bank_id, raw_title) do update set canonical_category_id = excluded.canonical_category_id;
+insert into bank_category_alias (canonical_category_id, bank_id, raw_title, user_id)
+values (sqlc.arg(canonical_category_id), sqlc.arg(bank_id), sqlc.arg(raw_title), sqlc.arg(user_id)::uuid)
+on conflict (bank_id, raw_title, user_id) do update set canonical_category_id = excluded.canonical_category_id;
 
 -- name: CreateOfferPeriod :one
 insert into offer_period (bank_client_id, period_start, period_end)

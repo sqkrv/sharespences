@@ -658,12 +658,14 @@ type BankCategory struct {
 	Emoji               *string
 	IsCustom            bool
 	Active              bool
+	CreatedBy           *uuid.UUID
 }
 
 type BankCategoryAlias struct {
 	CanonicalCategoryID int64
 	BankID              int32
 	RawTitle            string
+	UserID              *uuid.UUID
 }
 
 type BankCategoryMcc struct {

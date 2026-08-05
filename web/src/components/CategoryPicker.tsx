@@ -220,10 +220,11 @@ export function CategoryPicker({
 }
 
 // The escape hatch: the bank shows a category the base doesn't know yet.
-// Creates a bank_category row (is_custom); the canonical mapping is
-// optional — an unmapped row keeps the «не попадёт в „Какой картой?"»
-// warning downstream. Creating a brand-new canonical inline is still
-// possible (the emoji then goes to the canonical and is inherited).
+// Creates a bank_category row (is_custom) visible to its author alone; the
+// canonical mapping is optional — an unmapped row keeps the «не попадёт в
+// „Какой картой?"» warning downstream. The canonical list itself is
+// seed-managed and read-only: a category the taxonomy lacks is recorded
+// without one.
 function AddCustomForm({
   bankID,
   periodID,
@@ -243,9 +244,6 @@ function AddCustomForm({
   const [emoji, setEmoji] = useState("");
   const [canonicalID, setCanonicalID] = useState("");
   const [canonicalTouched, setCanonicalTouched] = useState(false);
-  const [newCat, setNewCat] = useState(false);
-  const [newSlug, setNewSlug] = useState("");
-  const [newTitle, setNewTitle] = useState("");
 
   // Debounced alias pre-suggestion (S1) — a typed title the alias table
   // already knows pre-fills the canonical select.
@@ -268,16 +266,7 @@ function AddCustomForm({
 
   const create = useMutation({
     mutationFn: async () => {
-      let catID = canonicalID ? Number(canonicalID) : undefined;
-      if (newCat && newSlug && newTitle) {
-        const created = unwrap(
-          await api.POST("/api/v1/cashback/canonical-categories", {
-            body: { slug: newSlug, title_ru: newTitle, ...(emoji.trim() ? { emoji: emoji.trim() } : {}) },
-          }),
-        );
-        catID = created.id;
-        qc.invalidateQueries({ queryKey: ["categories"] });
-      }
+      const catID = canonicalID ? Number(canonicalID) : undefined;
       // Catalog rows are always kind=regular — canonical-less ones are
       // ordinary categories without a cross-bank identity, not «спец»
       // (2026-07-21; special is for granted bonus mechanics).
@@ -288,8 +277,7 @@ function AddCustomForm({
             title: title.trim(),
             kind: "regular",
             ...(catID != null ? { canonical_category_id: catID } : {}),
-            // A new canonical already carries the emoji — the row inherits it.
-            ...(emoji.trim() && !newCat ? { emoji: emoji.trim() } : {}),
+            ...(emoji.trim() ? { emoji: emoji.trim() } : {}),
           },
         }),
       );
@@ -316,7 +304,6 @@ function AddCustomForm({
               setCanonicalID(e.target.value);
               setCanonicalTouched(true);
             }}
-            disabled={newCat}
             className="!py-2"
           >
             <option value="">— без категории —</option>
@@ -328,22 +315,6 @@ function AddCustomForm({
           </Select>
         </Field>
       </div>
-      <div className="flex flex-wrap items-center gap-3 text-[11px] font-medium text-tx2">
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={newCat} onChange={(e) => setNewCat(e.target.checked)} />
-          новая каноническая
-        </label>
-      </div>
-      {newCat && (
-        <div className="grid grid-cols-2 gap-2.5">
-          <Field label="Slug (латиницей)">
-            <Input value={newSlug} onChange={(e) => setNewSlug(e.target.value)} pattern="[a-z0-9-]+" title="Латиница в нижнем регистре, цифры и дефис" placeholder="coffee-shops" className="!py-2" />
-          </Field>
-          <Field label="Название (по-русски)">
-            <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Кофейни" className="!py-2" />
-          </Field>
-        </div>
-      )}
       <div className="flex gap-2">
         <Btn type="button" className="!px-3 !py-1.5 text-xs" disabled={create.isPending || !title.trim()} onClick={() => create.mutate()}>
           Добавить

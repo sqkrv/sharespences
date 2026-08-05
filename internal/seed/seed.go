@@ -886,15 +886,21 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 
+	// The global alias (user_id null) is knowledge-derived, so it REFRESHES on
+	// re-runs like the catalog rows below. Until 00019 this was `do nothing`
+	// while the API upserted the same row, so a mapping recorded by any single
+	// account overwrote the seeded one for everyone and the seed could not take
+	// it back. Per-account mappings are separate rows and stay untouched.
 	for _, a := range aliases {
 		if _, err := pool.Exec(ctx, `
-			insert into bank_category_alias (canonical_category_id, bank_id, raw_title)
-			select cc.id, b.id, $3
+			insert into bank_category_alias (canonical_category_id, bank_id, raw_title, user_id)
+			select cc.id, b.id, $3, null
 			from canonical_category cc,
 			     bank b
 			where cc.slug = $1
 			  and b.name = $2
-			on conflict (bank_id, raw_title) do nothing`, a.slug, a.bank, a.raw); err != nil {
+			on conflict (bank_id, raw_title, user_id)
+				do update set canonical_category_id = excluded.canonical_category_id`, a.slug, a.bank, a.raw); err != nil {
 			return fmt.Errorf("seed alias %s/%s: %w", a.bank, a.raw, err)
 		}
 	}
@@ -905,7 +911,8 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 			using bank b
 			where b.id = a.bank_id
 			  and b.name = $1
-			  and a.raw_title = $2`, r.bank, r.raw); err != nil {
+			  and a.raw_title = $2
+			  and a.user_id is null`, r.bank, r.raw); err != nil {
 			return fmt.Errorf("seed retire alias %s/%s: %w", r.bank, r.raw, err)
 		}
 	}
@@ -918,6 +925,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 			where b.id = bc.bank_id
 			  and b.name = $1
 			  and bc.title = $2
+			  and bc.created_by is null
 			  and not bc.is_custom`, r.bank, r.title); err != nil {
 			return fmt.Errorf("seed retire bank category %s/%s: %w", r.bank, r.title, err)
 		}
@@ -925,21 +933,24 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 
 	// Picker catalogs: seeded rows are knowledge-derived, so kind/canonical/
 	// emoji REFRESH on re-runs (the 2026-07-21 спец→regular correction proved
-	// manual-SQL-per-correction unworkable) — but only on non-custom rows: a
-	// user-created row with the same (bank, title) always wins untouched.
+	// manual-SQL-per-correction unworkable). The conflict target is the global
+	// row (created_by null) — since 00019 a user's row with the same (bank,
+	// title) is a separate row that no longer squats the title, and the
+	// is_custom guard now only spares a pre-00019 custom row that could not be
+	// attributed to an account.
 	for _, c := range bankCategories {
 		kind := c.kind
 		if kind == "" {
 			kind = "regular"
 		}
 		if _, err := pool.Exec(ctx, `
-			insert into bank_category (bank_id, title, canonical_category_id, kind, emoji, is_custom)
+			insert into bank_category (bank_id, title, canonical_category_id, kind, emoji, is_custom, created_by)
 			select b.id, $2,
 			       (select cc.id from canonical_category cc where cc.slug = nullif($3, '')),
-			       $4::cashback_offer_kind, nullif($5, ''), false
+			       $4::cashback_offer_kind, nullif($5, ''), false, null
 			from bank b
 			where b.name = $1
-			on conflict (bank_id, title) do update
+			on conflict (bank_id, title, created_by) do update
 				set canonical_category_id = excluded.canonical_category_id,
 				    kind                  = excluded.kind,
 				    emoji                 = excluded.emoji

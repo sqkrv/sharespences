@@ -239,7 +239,7 @@ func (g *gen) loadReference(ctx context.Context) error {
 	}
 
 	for name, id := range g.banks {
-		rows, err := g.svc.ListBankCategories(ctx, id)
+		rows, err := g.svc.ListBankCategories(ctx, g.userID, id)
 		if err != nil {
 			return err
 		}

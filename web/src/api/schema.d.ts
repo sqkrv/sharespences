@@ -204,7 +204,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Add a custom category to a bank's picker catalog */
+        /** Add a custom category to a bank's picker catalog (visible to its author only) */
         post: operations["cashback-bank-category-create"];
         delete?: never;
         options?: never;
@@ -239,8 +239,7 @@ export interface paths {
         /** List canonical categories */
         get: operations["cashback-canonical-list"];
         put?: never;
-        /** Create a canonical category */
-        post: operations["cashback-canonical-create"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1034,12 +1033,6 @@ export interface components {
             name: string;
         };
         CanonicalCategoryDTO: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/CanonicalCategoryDTO.json
-             */
-            readonly $schema?: string;
             emoji?: string;
             /** Format: int64 */
             id: number;
@@ -1121,17 +1114,6 @@ export interface components {
              */
             kind: "regular" | "super" | "special";
             title: string;
-        };
-        "Cashback-canonical-createRequest": {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/Cashback-canonical-createRequest.json
-             */
-            readonly $schema?: string;
-            emoji?: string;
-            slug: string;
-            title_ru: string;
         };
         "Cashback-category-offer-createRequest": {
             /**
@@ -2528,39 +2510,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CanonicalCategoryDTO"][] | null;
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
-    "cashback-canonical-create": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Cashback-canonical-createRequest"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CanonicalCategoryDTO"];
                 };
             };
             /** @description Error */
