@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
+import { purgeResponseCaches } from "../auth";
 import { Btn, Card, Field, Input, ErrMsg, validityProps } from "../components/ui";
 import { USERNAME_HINT, USERNAME_MAX, USERNAME_MIN, USERNAME_PATTERN } from "../lib";
 import { BrandMark, LegalFooter } from "./Login";
@@ -23,8 +24,10 @@ export default function Register() {
 
   const register = useMutation({
     mutationFn: async () => unwrap(await api.POST("/api/v1/auth/register", { body: form })),
-    onSuccess: (user) => {
-      // Registration signs in (server sets the session cookie).
+    onSuccess: async (user) => {
+      // Registration signs in (server sets the session cookie). Same reason
+      // as sign-in: whoever used this browser last may not have signed out.
+      await purgeResponseCaches();
       qc.setQueryData(["me"], user);
       navigate(from, { replace: true });
     },

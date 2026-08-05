@@ -5,6 +5,22 @@ import { api, unwrap, ApiError } from "./api/client";
 import { clearAllRecognitions } from "./recognition";
 import { Spinner, ErrMsg } from "./components/ui";
 
+// purgeResponseCaches drops every Cache Storage entry. The service worker
+// caches read endpoints NetworkFirst with ignoreVary (scs stamps Vary: Cookie,
+// which would otherwise defeat the cache — see docs/specs/pwa.md), so entries
+// are keyed by URL alone and carry no notion of who they belong to. Logout
+// clears them; sign-in has to clear them too, because the previous user may
+// simply have closed the tab, and then a slow network on the next sign-in
+// would answer from their cached data.
+//
+// Recognition drafts are deliberately left to logout: they are the user's own
+// unfinished work, and a returning user would lose it.
+export async function purgeResponseCaches() {
+  if (!("caches" in window)) return;
+  const keys = await caches.keys();
+  await Promise.all(keys.map((k) => caches.delete(k)));
+}
+
 export function useMe() {
   return useQuery({
     queryKey: ["me"],
@@ -43,10 +59,7 @@ export function useLogout() {
       clearAllRecognitions();
       // Offline-read caches hold personal data (держатели, last-4) — they
       // must not survive logout on a shared device (docs/specs/pwa.md).
-      if ("caches" in window) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((k) => caches.delete(k)));
-      }
+      await purgeResponseCaches();
       navigate("/login");
     },
   });
