@@ -36,7 +36,7 @@ x-backend: &backend
 
 services:
   db:
-    image: postgis/postgis:16-3.4 # same image as the e2e tests
+    image: postgis/postgis:18-3.6 # same image as the e2e tests
     environment:
       POSTGRES_USER: sharespences
       POSTGRES_PASSWORD: sharespences
