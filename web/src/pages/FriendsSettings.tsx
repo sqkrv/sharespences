@@ -99,6 +99,9 @@ function FriendRow({ f }: { f: Friend }) {
             );
           })}
           <ErrMsg error={toggle.error} />
+          <p className="text-[10px] leading-snug font-medium text-tx4">
+            Видит категории, проценты и вид валюты. Лимиты не передаются никогда.
+          </p>
 
           {confirmRemove ? (
             <div className="space-y-2 rounded-xl bg-warn/5 p-3">

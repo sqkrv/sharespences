@@ -36,9 +36,11 @@ export const SCREENS: Screen[] = [
 // Shared widgets keep one ID wherever they appear, so «W-01» always means the
 // month picker. That is what spares the components a `sid` prop from every
 // parent screen; they carry their `data-sid` literal themselves.
-//   W-01 components/MonthPicker.tsx
+//   W-01 components/MonthPicker.tsx (v2: bottom sheet with fill logos)
 //   W-02 components/CategoryPicker.tsx
 //   W-03 components/NavBar.tsx
+//   W-04 components/Lightbox.tsx
+//   W-05 components/Sheet.tsx (shared bottom sheet)
 //
 // Static pages live outside the SPA entirely — plain HTML in web/public/,
 // served by internal/web/web.go at their extensionless URLs. React never

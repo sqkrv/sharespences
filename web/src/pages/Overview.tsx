@@ -59,12 +59,14 @@ function mechanicChip(e: LookupEntry) {
 // The 3a expansion: the category's full ranking (rubles, then points — never
 // converted), plus the «можно выбрать» rows with verdicts. Lazily fetched on
 // first expand; usePrefetchOffline warms the active slugs for offline.
-function ExpandedCategory({ slug, date, friendsOn }: { slug: string; date: string; friendsOn: boolean }) {
+function ExpandedCategory({ slug, date, friendsOn }: { slug: string; date: string | null; friendsOn: boolean }) {
   const qc = useQueryClient();
+  // date null = the current month: the key then matches what
+  // usePrefetchOffline warmed, so expansion works at a no-signal checkout.
   const lookup = useQuery({
-    queryKey: ["lookup", slug, date],
+    queryKey: date ? ["lookup", slug, date] : ["lookup", slug],
     queryFn: async () =>
-      unwrap(await api.GET("/api/v1/cashback/lookup", { params: { query: { category: slug, date } } })),
+      unwrap(await api.GET("/api/v1/cashback/lookup", { params: { query: { category: slug, ...(date ? { date } : {}) } } })),
   });
   const mark = useMutation({
     mutationFn: async (offerID: number) =>
@@ -133,7 +135,7 @@ function ExpandedCategory({ slug, date, friendsOn }: { slug: string; date: strin
 
 // One feed row (строка как в 1a): category-first, bank second line, percent
 // right; expands in place — the tap that used to be a screen hop (CB-04).
-function FeedRow({ g, date, friendsOn }: { g: CategoryGroup; date: string; friendsOn: boolean }) {
+function FeedRow({ g, date, friendsOn }: { g: CategoryGroup; date: string | null; friendsOn: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const w = winnerOf(g, friendsOn);
   if (!w) return null;
@@ -292,7 +294,7 @@ export default function Overview() {
             <div className="space-y-1.5">
               <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Кешбеки друзей</p>
               {sortedCategories.map((g) => (
-                <FeedRow key={g.category_id} g={g} date={monthDate} friendsOn={friendsOn} />
+                <FeedRow key={g.category_id} g={g} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} />
               ))}
             </div>
           )}
@@ -362,7 +364,7 @@ export default function Overview() {
 
           <div className="space-y-1.5" data-sid="CB-01.c">
             {sortedCategories.map((g) => (
-              <FeedRow key={g.category_id} g={g} date={monthDate} friendsOn={friendsOn} />
+              <FeedRow key={g.category_id} g={g} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} />
             ))}
 
             {singles.length > 0 && (
