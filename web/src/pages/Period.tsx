@@ -131,7 +131,7 @@ function AddOfferForm({
         {kind !== "regular" && (
           <p className="text-[10.5px] font-medium text-tx4">
             {kind === "super"
-              ? "барабан = суперкэшбэк на весь период, суммируется с выбранной категорией"
+              ? "барабан = суперкешбэк на весь период, суммируется с выбранной категорией"
               : "спец = Пятница / колесо / флеш-акция — с условием (день, сервис)"}
           </p>
         )}
@@ -249,7 +249,7 @@ function EditOfferForm({
         <Field label="Тип">
           <Select value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="regular">обычная</option>
-            <option value="super">барабан (суперкэшбэк)</option>
+            <option value="super">барабан (суперкешбэк)</option>
             <option value="special">спец (Пятница/колесо)</option>
           </Select>
         </Field>
@@ -451,6 +451,9 @@ export default function Period() {
   const [backfill, setBackfill] = useState(false);
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [editingID, setEditingID] = useState<number | null>(null);
+  // 2d: neighbor comparisons and collision details live behind a tap on the
+  // row — the list stays scannable, the sticky bar still counts collisions.
+  const [expandedID, setExpandedID] = useState<number | null>(null);
 
   const helperByOffer = useMemo(() => {
     const m = new Map<number, HelperRow>();
@@ -617,37 +620,40 @@ export default function Period() {
             return (
               <div key={offer.id} className="rounded-xl border border-dashed border-gold/30 bg-gold/5 px-3 py-2.5">
                 <div className="flex items-center gap-2.5">
-                  <span className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md bg-gold/15 text-[11px] font-extrabold text-gold">★</span>
+                  {/* The star is the toggle (2d: «кнопки исчезли») — filled
+                      when the grant is marked, outlined when not. */}
+                  <button
+                    type="button"
+                    disabled={select.isPending || unselect.isPending}
+                    title={selected ? "Снять отметку" : "Отметить — банк начислил этот бонус"}
+                    onClick={() =>
+                      selected
+                        ? unselect.mutate({ selectionID: offer.selection_id!, offerID: offer.id })
+                        : select.mutate(offer.id)
+                    }
+                    className={`flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md text-[11px] font-extrabold ${
+                      selected ? "bg-gold/25 text-gold" : "border border-gold/40 text-gold/50"
+                    }`}
+                  >
+                    ★
+                  </button>
                   <div className="min-w-0 flex-1">
                     <p className="text-[12.5px] font-semibold text-gold">
                       {offerEmoji(offer) && <span className="mr-1">{offerEmoji(offer)}</span>}
                       {offer.raw_title} · {offer.kind === "super" ? "барабан" : "спец"}
                     </p>
                     <p className="text-[9.5px] font-medium text-tx4">
-                      не занимает слот · {offer.kind === "super" ? "ранжируется в «Какой картой?»" : "сверх меню"}
+                      не занимает слот · {offer.kind === "super" ? "ранжируется в подборе карты" : "сверх меню"}
                       {offer.cap_value && ` · до ${offer.cap_value} ${currency === "points" ? "баллов" : "₽"}`}
                     </p>
                     {unmapped && (
                       <p className="mt-0.5 flex items-center gap-1.5 text-[9.5px] font-semibold text-warn">
                         <span className="h-[5px] w-[5px] rounded-full bg-warn" />
-                        сопоставьте категорию — не попадёт в «Какой картой?»
+                        канона нет — попадёт в «Только в одном банке», не в подбор по категории
                       </p>
                     )}
                   </div>
-                  {selected ? (
-                    <Btn
-                      variant="danger"
-                      className="!px-2.5 !py-1.5 text-xs"
-                      onClick={() => unselect.mutate({ selectionID: offer.selection_id!, offerID: offer.id })}
-                      disabled={unselect.isPending}
-                    >
-                      Снять
-                    </Btn>
-                  ) : (
-                    <Btn variant="soft" className="!px-2.5 !py-1.5 text-xs" onClick={() => select.mutate(offer.id)} disabled={select.isPending}>
-                      Отметить
-                    </Btn>
-                  )}
+                  <Pct percent={offer.percent} currency={currency} className="text-[14px]" />
                   <button type="button" className="px-1 text-tx4" onClick={() => setEditingID(editingID === offer.id ? null : offer.id)} title="Редактировать">
                     ✎
                   </button>
@@ -664,11 +670,37 @@ export default function Period() {
               </div>
             );
           }
+          const notesCount = (hrow?.collisions ?? []).length + ((hrow?.comparisons ?? []).length > 0 ? 1 : 0);
+          const expanded = expandedID === offer.id;
           return (
-            <div key={offer.id} className={`rounded-xl border px-3 py-2.5 ${selected ? "border-brd bg-srf" : "border-brd2 bg-transparent"}`}>
+            <div
+              key={offer.id}
+              className={`rounded-xl border px-3 py-2.5 ${
+                blocked ? "border-brd2 bg-srf/45 opacity-65" : selected ? "border-brd bg-srf" : "border-brd2 bg-transparent"
+              }`}
+            >
               <div className="flex items-center gap-2.5">
-                <CheckDot checked={selected} />
-                <div className="min-w-0 flex-1">
+                {/* The dot IS the switch (2d): tap records / removes the
+                    selection made in the bank app — a mirror, not a plan. */}
+                <button
+                  type="button"
+                  disabled={select.isPending || unselect.isPending || (!selected && blocked)}
+                  title={
+                    !selected && blocked
+                      ? "Слоты заняты — в этом месяце уже не выбрать"
+                      : selected
+                        ? "Снять отметку"
+                        : "Отметить — выбрано в банке"
+                  }
+                  onClick={() =>
+                    selected
+                      ? unselect.mutate({ selectionID: offer.selection_id!, offerID: offer.id })
+                      : select.mutate(offer.id)
+                  }
+                >
+                  <CheckDot checked={selected} />
+                </button>
+                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setExpandedID(expanded ? null : offer.id)}>
                   <p className="truncate text-[13px] font-semibold">
                     {offerEmoji(offer) && <span className="mr-1">{offerEmoji(offer)}</span>}
                     {offer.raw_title}
@@ -677,58 +709,42 @@ export default function Period() {
                   {unmapped && (
                     <p className="mt-0.5 flex items-center gap-1.5 text-[9.5px] font-semibold text-warn">
                       <span className="h-[5px] w-[5px] rounded-full bg-warn" />
-                      сопоставьте категорию — не попадёт в «Какой картой?»
+                      канона нет — попадёт в «Только в одном банке», не в подбор по категории
                     </p>
                   )}
+                  {blocked && <p className="mt-0.5 text-[9.5px] font-medium text-tx4">слоты {h.slots_used}/{h.max_categories} — в этом месяце уже не выбрать</p>}
                   {selected && offer.selected_at && (
                     <p className="mt-0.5 text-[9.5px] font-medium text-tx4">выбрано {new Date(offer.selected_at).toLocaleDateString("ru-RU")}</p>
                   )}
                   {offer.cap_value && (
                     <p className="mt-0.5 text-[9.5px] font-medium text-tx4">кешбэк до {offer.cap_value} {currency === "points" ? "баллов" : "₽"}</p>
                   )}
-                </div>
-                {selected ? (
-                  <>
-                    <Pct percent={offer.percent} currency={currency} className="text-[14px]" />
-                    <Btn
-                      variant="danger"
-                      className="!px-2.5 !py-1.5 text-xs"
-                      onClick={() => unselect.mutate({ selectionID: offer.selection_id!, offerID: offer.id })}
-                      disabled={unselect.isPending}
-                    >
-                      Снять
-                    </Btn>
-                  </>
-                ) : (
-                  <>
-                    <Pct percent={offer.percent} currency={currency} className="text-[14px]" />
-                    <Btn
-                      variant="soft"
-                      className="!px-2.5 !py-1.5 text-xs whitespace-nowrap"
-                      onClick={() => select.mutate(offer.id)}
-                      disabled={select.isPending || blocked}
-                      title={blocked ? "Лимит категорий исчерпан" : undefined}
-                    >
-                      выбрать
-                    </Btn>
-                  </>
-                )}
+                </button>
+                {notesCount > 0 && !expanded && <span className="h-1.5 w-1.5 flex-none rounded-full bg-gold" title="есть предупреждения — тап по строке" />}
+                <Pct percent={offer.percent} currency={currency} className="text-[14px]" />
                 <button type="button" className="px-1 text-tx4" onClick={() => setEditingID(editingID === offer.id ? null : offer.id)} title="Редактировать">
                   ✎
                 </button>
               </div>
-              {blocked && <p className="mt-1 ml-8 text-[10px] font-medium text-tx4">лимит категорий исчерпан</p>}
               {rowErrors[offer.id] && <p className="mt-1.5 ml-8 rounded-lg bg-warn/10 px-2 py-1 text-[10.5px] font-medium text-warn">{rowErrors[offer.id]}</p>}
-              {(hrow?.collisions ?? []).map((c, i) => (
-                <p key={i} className="mt-1.5 ml-8 flex items-center gap-1.5 rounded-lg border border-gold/25 bg-gold/10 px-2 py-1 text-[10px] font-medium text-gold">
-                  <span className="h-[5px] w-[5px] flex-none rounded-full bg-gold" />
-                  {c.message}
-                </p>
-              ))}
-              {(hrow?.comparisons ?? []).length > 0 && (
-                <p className="mt-1.5 ml-8 text-[10px] font-medium text-tx4">
-                  Сравнение: {(hrow?.comparisons ?? []).map((cmp) => `${cmp.client_label} — ${cmp.percent != null ? cmp.percent + "%" : "—"}`).join(" · ")}
-                </p>
+              {/* Collision + neighbor comparison unfold on tap (2d
+                  «развёрнуто тапом») — the gold dot above flags they exist. */}
+              {expanded && (
+                <div className="mt-1.5 ml-8 space-y-1.5 border-t border-brd/60 pt-1.5">
+                  {(hrow?.collisions ?? []).map((c, i) => (
+                    <p key={i} className="flex items-center gap-1.5 rounded-lg border border-gold/25 bg-gold/10 px-2 py-1 text-[10px] font-medium text-gold">
+                      <span className="h-[5px] w-[5px] flex-none rounded-full bg-gold" />
+                      {c.message}
+                    </p>
+                  ))}
+                  {(hrow?.comparisons ?? []).map((cmp, i) => (
+                    <p key={i} className="flex items-center gap-1.5 text-[10.5px] font-medium text-tx3">
+                      <span className="flex-1">{cmp.bank_name} · {cmp.client_label || "Я"}</span>
+                      <span className="font-bold">{cmp.percent != null ? `${cmp.percent}%` : "—"}</span>
+                    </p>
+                  ))}
+                  {notesCount === 0 && <p className="text-[10px] font-medium text-tx4">Совпадений с другими банками нет.</p>}
+                </div>
               )}
               {editingID === offer.id && (
                 <EditOfferForm offer={offer} categories={categories.data ?? []} bankID={p.bank_id} bankName={p.bank_name} bankColor={bankColor} onDone={() => setEditingID(null)} />
@@ -760,6 +776,10 @@ export default function Period() {
           Готово
         </Btn>
       </div>
+
+      <p className="px-0.5 text-[10px] leading-snug font-medium text-tx4">
+        Отметки фиксируют выбор, уже сделанный в приложении банка; «задним числом» — для заполнения истории.
+      </p>
 
       <AddOfferForm periodID={id} bankID={p.bank_id} bankName={p.bank_name} bankColor={bankColor} />
 

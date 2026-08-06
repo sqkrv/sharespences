@@ -146,7 +146,7 @@ export function fmtPercent(p?: string): string {
 }
 
 export const MONTHS_NOM = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
-const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+export const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 
 // «июль 2026» — the overview header chip.
 export function fmtMonthYear(d = new Date()): string {
@@ -199,6 +199,34 @@ export function monthKey(iso: string): string {
 // The month word of an ISO date («июль» for 2026-07-15).
 export function monthNameOf(iso: string): string {
   return MONTHS_NOM[Number(iso.slice(5, 7)) - 1];
+}
+
+// Genitive month of an ISO date («августа») — «Меню августа» headlines.
+export function monthGenOf(iso: string): string {
+  return MONTHS_GEN[Number(iso.slice(5, 7)) - 1];
+}
+
+// Months (0-based) the recognizer's verbatim period_texts hint at: «на
+// август», «май», «до 31.07», «01.08–31.08». Used only to WARN when the
+// screenshots disagree with the month being filled (3b) — never to change
+// it silently; the strings stay unparsed on the server by design.
+export function parseMonthHints(texts: string[]): number[] {
+  const out = new Set<number>();
+  for (const raw of texts) {
+    const t = raw.toLowerCase();
+    MONTHS_NOM.forEach((nom, i) => {
+      // One stem covers «август/августа/августе»; ь-months stem the same
+      // way («сентябр…»); «май» declines off a 2-letter stem, so its three
+      // forms are spelled out rather than matching «март» by accident.
+      const stems = nom === "май" ? ["май", "мая", "мае"] : [nom.endsWith("ь") ? nom.slice(0, -1) : nom];
+      if (stems.some((s) => t.includes(s))) out.add(i);
+    });
+    for (const m of t.matchAll(/\b\d{1,2}\.(\d{2})(?:\.\d{2,4})?\b/g)) {
+      const mm = Number(m[1]);
+      if (mm >= 1 && mm <= 12) out.add(mm - 1);
+    }
+  }
+  return [...out];
 }
 
 // Category icon fallback — a canonical category may carry no emoji yet
