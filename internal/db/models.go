@@ -404,6 +404,48 @@ func (ns NullMccChangeAction) Value() (driver.Value, error) {
 	return string(ns.MccChangeAction), nil
 }
 
+type PartnerScope string
+
+const (
+	PartnerScopeMerchant PartnerScope = "merchant"
+	PartnerScopeCategory PartnerScope = "category"
+)
+
+func (e *PartnerScope) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PartnerScope(s)
+	case string:
+		*e = PartnerScope(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PartnerScope: %T", src)
+	}
+	return nil
+}
+
+type NullPartnerScope struct {
+	PartnerScope PartnerScope
+	Valid        bool // Valid is true if PartnerScope is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPartnerScope) Scan(value interface{}) error {
+	if value == nil {
+		ns.PartnerScope, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PartnerScope.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPartnerScope) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PartnerScope), nil
+}
+
 type PaymentSystem string
 
 const (
@@ -813,7 +855,15 @@ type PartnerOffer struct {
 	Notes         *string
 	BankClientID  *int64
 	// minimum qualifying purchase, e.g. «при заказе от 2 000 ₽»; display only
-	MinAmount *decimal.Decimal
+	MinAmount           *decimal.Decimal
+	ScopeKind           PartnerScope
+	CanonicalCategoryID *int64
+	MerchantKind        NullPointOfSaleType
+	CurrencyKind        NullCashbackCurrencyKind
+	RequiresActivation  bool
+	ActivatedAt         *time.Time
+	// ended by the user («Завершить»); valid_to keeps the bank's own term
+	EndedAt *time.Time
 }
 
 type PartnerOfferAttachment struct {

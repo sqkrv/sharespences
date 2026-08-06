@@ -1378,6 +1378,69 @@ func TestCashbackE2E(t *testing.T) {
 	owner.must("DELETE", fmt.Sprintf("/api/v1/cashback/partner-offers/%d/attachments/%s", partnerOffer.ID, shotID),
 		nil, nil, http.StatusNoContent)
 
+	// --- Партнёрки v2 (2026-08-06): a canonical hint ranks the offer in
+	// that category's lookup as kind=partner; a category scope without a
+	// canonical is rejected; «Завершить» is an undoable event. ---
+	owner.must("PUT", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", partnerOffer.ID), map[string]any{
+		"bank_id": vtbID, "bank_client_id": partnerClient.ID, "merchant_title": "25% в Авито",
+		"percent": "25", "min_amount": "3000",
+		"canonical_category_id": flowersID, "currency_kind": "rub", "requires_activation": true,
+	}, nil, http.StatusOK)
+	var pv2 struct {
+		ScopeKind    string  `json:"scope_kind"`
+		CurrencyKind *string `json:"currency_kind"`
+		Status       string  `json:"status"`
+	}
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", partnerOffer.ID), nil, &pv2, http.StatusOK)
+	if pv2.ScopeKind != "merchant" || pv2.CurrencyKind == nil || *pv2.CurrencyKind != "rub" || pv2.Status != "active" {
+		t.Fatalf("partner v2 row = %+v, want merchant/rub/active", pv2)
+	}
+	if got := owner.do("POST", "/api/v1/cashback/partner-offers", map[string]any{
+		"bank_id": vtbID, "merchant_title": "категорийная без канона", "scope_kind": "category",
+	}, nil); got != http.StatusUnprocessableEntity {
+		t.Fatalf("category scope without canonical: %d, want 422", got)
+	}
+	// Flowers already has the 5% regular pick; the 25% rub партнёрка ranks
+	// above it (same currency group, percent desc) carrying its facts.
+	var pLookup struct {
+		Ranked []struct {
+			Kind            string `json:"kind"`
+			PartnerID       int64  `json:"partner_id"`
+			PartnerScope    string `json:"partner_scope"`
+			NeedsActivation bool   `json:"needs_activation"`
+		} `json:"ranked"`
+	}
+	owner.must("GET", "/api/v1/cashback/lookup?category=flowers&date=2026-07-15", nil, &pLookup, http.StatusOK)
+	if len(pLookup.Ranked) != 2 || pLookup.Ranked[0].Kind != "partner" || pLookup.Ranked[0].PartnerID != partnerOffer.ID ||
+		pLookup.Ranked[0].PartnerScope != "merchant" || !pLookup.Ranked[0].NeedsActivation || pLookup.Ranked[1].Kind != "regular" {
+		t.Fatalf("flowers lookup ranked = %+v, want the merchant партнёрка (needing activation) above the 5%% pick", pLookup.Ranked)
+	}
+	// The точка продаж match is name-based, both directions normalized.
+	var pMatch struct {
+		Matches []struct {
+			PartnerID int64 `json:"partner_id"`
+		} `json:"matches"`
+	}
+	owner.must("GET", "/api/v1/cashback/partner-offers/match?query="+url.QueryEscape("Авито"), nil, &pMatch, http.StatusOK)
+	if len(pMatch.Matches) != 1 || pMatch.Matches[0].PartnerID != partnerOffer.ID {
+		t.Fatalf("partner match = %+v, want the Авито offer", pMatch.Matches)
+	}
+	// End: out of every ranking, status ended; reopen restores it.
+	owner.must("POST", fmt.Sprintf("/api/v1/cashback/partner-offers/%d/end", partnerOffer.ID), nil, nil, http.StatusNoContent)
+	owner.must("GET", "/api/v1/cashback/lookup?category=flowers&date=2026-07-15", nil, &pLookup, http.StatusOK)
+	if len(pLookup.Ranked) != 1 || pLookup.Ranked[0].Kind != "regular" {
+		t.Fatalf("ended партнёрка still ranks: %+v", pLookup.Ranked)
+	}
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", partnerOffer.ID), nil, &pv2, http.StatusOK)
+	if pv2.Status != "ended" {
+		t.Fatalf("status after end = %q, want ended", pv2.Status)
+	}
+	owner.must("POST", fmt.Sprintf("/api/v1/cashback/partner-offers/%d/reopen", partnerOffer.ID), nil, nil, http.StatusNoContent)
+	owner.must("GET", "/api/v1/cashback/lookup?category=flowers&date=2026-07-15", nil, &pLookup, http.StatusOK)
+	if len(pLookup.Ranked) != 2 {
+		t.Fatalf("reopened партнёрка does not rank again: %+v", pLookup.Ranked)
+	}
+
 	if got := owner.do("DELETE", fmt.Sprintf("/api/v1/bank-clients/%d", partnerClient.ID), nil, nil); got != http.StatusConflict {
 		t.Fatalf("delete client with partner offer: %d, want 409", got)
 	}

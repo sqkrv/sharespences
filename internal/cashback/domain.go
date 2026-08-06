@@ -57,7 +57,54 @@ const (
 	OfferRegular OfferKind = "regular"
 	OfferSuper   OfferKind = "super"
 	OfferSpecial OfferKind = "special"
+	// OfferPartner marks a partner_offer entry inside a ranking (партнёрки
+	// v2, 2026-08-06). NOT a cashback_offer_kind enum label — partner offers
+	// live in their own table; the kind exists so ranked lists can carry
+	// them uniformly. Like special: never a slot, never a comparison
+	// candidate, never stacked, never S3b; unlike special it has no
+	// per-week condition — the scope (merchant/category) is the condition.
+	OfferPartner OfferKind = "partner"
 )
+
+// PartnerScope mirrors partner_offer.scope_kind: where the offer applies.
+// merchant — one магазин/сервис, matched by normalized name (the canonical
+// category is an optional hint); category — the whole canonical category.
+type PartnerScope string
+
+const (
+	PartnerScopeMerchant PartnerScope = "merchant"
+	PartnerScopeCategory PartnerScope = "category"
+)
+
+// PartnerStatus derives the lifecycle chip: ended (by the user — a dated
+// event, valid_to untouched) wins over the calendar; then scheduled /
+// expired / active come from the validity bounds, nil = open.
+func PartnerStatus(now time.Time, validFrom, validTo, endedAt *time.Time) string {
+	switch {
+	case endedAt != nil:
+		return "ended"
+	case validFrom != nil && dateOnly(now).Before(dateOnly(*validFrom)):
+		return "scheduled"
+	case validTo != nil && dateOnly(now).After(dateOnly(*validTo)):
+		return "expired"
+	default:
+		return "active"
+	}
+}
+
+// PartnerPeriod turns the nullable validity bounds into the inclusive
+// DateRange the rankers filter on; an open bound extends to the calendar's
+// edge so «бессрочно» offers stay active on any lookup date.
+func PartnerPeriod(validFrom, validTo *time.Time) DateRange {
+	r := DateRange{Start: Date(1, time.January, 1), End: Date(9999, time.December, 31)}
+	if validFrom != nil {
+		r.Start = dateOnly(*validFrom)
+	}
+	if validTo != nil {
+		r.End = dateOnly(*validTo)
+	}
+	return r
+}
 
 // PeriodType mirrors cashback_program.period_type.
 type PeriodType string
@@ -344,6 +391,14 @@ type LookupEntry struct {
 	// (invariant 4 — caps never serialize to a viewer).
 	FriendName     string
 	FriendUsername string
+	// PartnerID/PartnerScope/NeedsActivation mark a партнёрка entry (kind =
+	// OfferPartner): the source row's id, where it applies (merchant scope in
+	// a category ranking carries the «только в …» caveat), and whether the
+	// bank still wants an activation tap — it ranks anyway, with a warning
+	// (the S3b philosophy: activating is an on-the-spot action).
+	PartnerID       int64
+	PartnerScope    PartnerScope
+	NeedsActivation bool
 }
 
 // MidPeriodAddPolicy mirrors cashback_program.mid_period_add (2026-07-16):

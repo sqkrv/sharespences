@@ -927,6 +927,73 @@ func TestSplitFeedWinner(t *testing.T) {
 	}
 }
 
+// TestPartnerStatus covers the партнёрки v2 lifecycle chip: «Завершить» is
+// a dated event that wins over the calendar; the validity bounds say the
+// rest; nil bounds mean an open offer.
+func TestPartnerStatus(t *testing.T) {
+	now := Date(2026, time.August, 6)
+	from := Date(2026, time.August, 1)
+	to := Date(2026, time.August, 31)
+	past := Date(2026, time.July, 31)
+	future := Date(2026, time.September, 1)
+	ended := Date(2026, time.August, 3)
+	cases := []struct {
+		name              string
+		from, to, endedAt *time.Time
+		want              string
+	}{
+		{"open-ended active", nil, nil, nil, "active"},
+		{"inside the window", &from, &to, nil, "active"},
+		{"future start", &future, nil, nil, "scheduled"},
+		{"past end", nil, &past, nil, "expired"},
+		{"ended wins over active", &from, &to, &ended, "ended"},
+		{"ended wins over expired", nil, &past, &ended, "ended"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := PartnerStatus(now, tc.from, tc.to, tc.endedAt); got != tc.want {
+				t.Fatalf("PartnerStatus = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRankWithPartner pins the партнёрки v2 ranking rules: invariant 5 keeps
+// a points партнёрка below every ruble row regardless of percent; a partner
+// entry never merges into stackSupers; unknown currency ranks last; and a
+// partner entry is never a friend's (the sharing seam never reads partner
+// tables — the zero FriendName here is what the serializer relies on).
+func TestRankWithPartner(t *testing.T) {
+	on := Date(2026, time.August, 6)
+	openPeriod := PartnerPeriod(nil, nil)
+	ownRub := LookupEntry{ClientID: 1, BankName: "Альфа-Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: august2026}
+	drum := LookupEntry{ClientID: 1, BankName: "Альфа-Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferSuper, Period: august2026}
+	partnerPts := LookupEntry{PartnerID: 5, RawTitle: "Яндекс Лавка", BankName: "Яндекс Пэй", Percent: pct("10"), CurrencyKind: CurrencyPoints, Kind: OfferPartner, Period: openPeriod, PartnerScope: PartnerScopeMerchant}
+	partnerUnknown := LookupEntry{PartnerID: 6, RawTitle: "Акция", BankName: "Газпромбанк", Percent: pct("25"), CurrencyKind: CurrencyUnknown, Kind: OfferPartner, Period: openPeriod}
+
+	got := RankActiveSelections(on, []LookupEntry{partnerUnknown, partnerPts, ownRub, drum}).Ranked
+	if len(got) != 3 {
+		t.Fatalf("Ranked has %d entries, want 3 (барабан merged into the pick, partners intact)", len(got))
+	}
+	// The stacked 14% rub row first — the 10% points партнёрка must not
+	// outrank it by number (invariant 5), and the барабан must not have
+	// merged into the partner entry.
+	if got[0].Kind != OfferRegular || got[0].Percent.String() != "14" {
+		t.Fatalf("Ranked[0] = %s %s%%, want the stacked 14%% rub pick", got[0].Kind, got[0].Percent)
+	}
+	if got[1].PartnerID != 5 || got[1].StackedSuper != nil {
+		t.Fatalf("Ranked[1] = %+v, want the points партнёрка, unstacked", got[1])
+	}
+	if got[2].PartnerID != 6 {
+		t.Fatalf("Ranked[2] = %+v, want the unknown-currency партнёрка last", got[2])
+	}
+	for _, e := range got {
+		if e.PartnerID != 0 && e.FriendName != "" {
+			t.Fatalf("partner entry carries FriendName %q — partner offers are never shared", e.FriendName)
+		}
+	}
+}
+
 // TestFriendShareWindow covers friends-sharing invariant 8: a granted
 // friend reads periods overlapping [today .. the end of next month] — the
 // current picture plus the next-month coordination window, never history.

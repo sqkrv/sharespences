@@ -210,7 +210,7 @@ type LookupEntryDTO struct {
 	ClientLabel    string  `json:"client_label"`
 	HolderLabel    string  `json:"holder_label,omitempty"`
 	RawTitle       string  `json:"raw_title" doc:"the bank's own menu title — names the mechanic on marked super/special rows («Пятница»)"`
-	Kind           string  `json:"kind"` // regular | super | special — all rank; the UI marks барабан/спец (amendment 2026-07-27)
+	Kind           string  `json:"kind"` // regular | super | special | partner — all rank; the UI marks барабан/спец/партнёрку
 	Percent        *string `json:"percent,omitempty"`
 	CurrencyKind   string  `json:"currency_kind"`
 	PointsLabel    string  `json:"points_label,omitempty"`
@@ -224,6 +224,12 @@ type LookupEntryDTO struct {
 	StackedSuper   *string `json:"stacked_super,omitempty" doc:"the барабан granted on top of that pick — mark the row «барабан» when this is set"`
 	FriendName     string  `json:"friend_name,omitempty" doc:"карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда"`
 	FriendUsername string  `json:"friend_username,omitempty"`
+	// Партнёрка entries (kind=partner, v2 2026-08-06): the source row's id;
+	// merchant scope in a category ranking means «только в „<raw_title>“»;
+	// needs_activation ranks with a warning, never silently.
+	PartnerID       int64  `json:"partner_id,omitempty"`
+	PartnerScope    string `json:"partner_scope,omitempty" enum:"merchant,category,"`
+	NeedsActivation bool   `json:"needs_activation,omitempty"`
 }
 
 func lookupEntryDTOPtr(e *LookupEntry) *LookupEntryDTO {
@@ -261,6 +267,7 @@ func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 		PeriodEnd:      e.Period.End.Format("2006-01-02"),
 		StackedRegular: decToStr(e.StackedRegular), StackedSuper: decToStr(e.StackedSuper),
 		FriendName: e.FriendName, FriendUsername: e.FriendUsername,
+		PartnerID: e.PartnerID, PartnerScope: string(e.PartnerScope), NeedsActivation: e.NeedsActivation,
 	}
 }
 
@@ -288,18 +295,118 @@ type PartnerOfferDTO struct {
 	MinAmount     *string     `json:"min_amount,omitempty"`
 	Notes         *string     `json:"notes,omitempty"`
 	AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty"`
+	// v2 (2026-08-06): where the offer applies, what it pays in, and the
+	// lifecycle. cap_value's unit follows currency_kind — never assume ₽.
+	ScopeKind           string  `json:"scope_kind" enum:"merchant,category"`
+	CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty"`
+	CanonicalSlug       *string `json:"canonical_slug,omitempty"`
+	CanonicalTitleRu    *string `json:"canonical_title_ru,omitempty"`
+	MerchantKind        *string `json:"merchant_kind,omitempty" doc:"offline | online | app | other — the «магазин» type chip"`
+	CurrencyKind        *string `json:"currency_kind,omitempty" doc:"rub | points; absent = unknown, ranks last"`
+	PointsLabel         *string `json:"points_label,omitempty"`
+	HolderLabel         *string `json:"holder_label,omitempty"`
+	RequiresActivation  bool    `json:"requires_activation"`
+	ActivatedAt         *string `json:"activated_at,omitempty"`
+	EndedAt             *string `json:"ended_at,omitempty"`
+	Status              string  `json:"status,omitempty" enum:"active,scheduled,expired,ended" doc:"derived; «Завершить» sets ended without touching valid_to"`
 }
 
-// partnerOfferDTO maps the shared columns. Callers add BankName and
-// AttachmentIDs, which come from joins the write queries do not return.
+// partnerOfferDTO maps the shared columns. Callers add BankName, the
+// canonical/holder/points joins and AttachmentIDs, which come from joins
+// the write queries do not return.
 func partnerOfferDTO(p db.PartnerOffer) PartnerOfferDTO {
-	return PartnerOfferDTO{
+	dto := PartnerOfferDTO{
 		ID: p.ID, BankID: p.BankID, BankClientID: p.BankClientID,
 		MerchantTitle: p.MerchantTitle, Percent: decToStr(p.Percent),
 		ValidFrom: fmtDatePtr(p.ValidFrom), ValidTo: fmtDatePtr(p.ValidTo),
 		CapValue: decToStr(p.CapValue), MinAmount: decToStr(p.MinAmount),
-		Notes: p.Notes,
+		Notes:     p.Notes,
+		ScopeKind: string(p.ScopeKind), CanonicalCategoryID: p.CanonicalCategoryID,
+		RequiresActivation: p.RequiresActivation,
+		ActivatedAt:        fmtTimePtr(p.ActivatedAt), EndedAt: fmtTimePtr(p.EndedAt),
+		Status: PartnerStatus(time.Now(), p.ValidFrom, p.ValidTo, p.EndedAt),
 	}
+	if p.MerchantKind.Valid {
+		mk := string(p.MerchantKind.PointOfSaleType)
+		dto.MerchantKind = &mk
+	}
+	if p.CurrencyKind.Valid {
+		ck := string(p.CurrencyKind.CashbackCurrencyKind)
+		dto.CurrencyKind = &ck
+	}
+	return dto
+}
+
+func fmtTimePtr(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := t.Format(time.RFC3339)
+	return &s
+}
+
+// partnerRowDTO decorates the shared columns with the list/get joins
+// (bank name, canonical, держатель, points label). Get and List return the
+// same column set; sqlc merely names the row types differently.
+func partnerRowDTO(p db.ListPartnerOffersForUserRow) PartnerOfferDTO {
+	dto := partnerOfferDTO(db.PartnerOffer{
+		ID: p.ID, UserID: p.UserID, BankID: p.BankID, MerchantTitle: p.MerchantTitle,
+		Percent: p.Percent, ValidFrom: p.ValidFrom, ValidTo: p.ValidTo, CapValue: p.CapValue,
+		Notes: p.Notes, BankClientID: p.BankClientID, MinAmount: p.MinAmount,
+		ScopeKind: p.ScopeKind, CanonicalCategoryID: p.CanonicalCategoryID,
+		MerchantKind: p.MerchantKind, CurrencyKind: p.CurrencyKind,
+		RequiresActivation: p.RequiresActivation, ActivatedAt: p.ActivatedAt, EndedAt: p.EndedAt,
+	})
+	dto.BankName = p.BankName
+	dto.CanonicalSlug = p.CanonicalSlug
+	dto.CanonicalTitleRu = p.CanonicalTitleRu
+	dto.HolderLabel = p.HolderLabel
+	if dto.CurrencyKind != nil && *dto.CurrencyKind == "points" {
+		dto.PointsLabel = p.PointsLabel
+	}
+	return dto
+}
+
+// PartnerV2Input carries the v2 fields create and update share (embedded
+// into both bodies — huma flattens it into the schema).
+type PartnerV2Input struct {
+	ScopeKind           *string `json:"scope_kind,omitempty" enum:"merchant,category" doc:"где действует; default merchant"`
+	CanonicalCategoryID *int64  `json:"canonical_category_id,omitempty" doc:"required for category scope; an optional hint for merchant scope (ranks in that category's lookup with a «только в …» caveat)"`
+	MerchantKind        *string `json:"merchant_kind,omitempty" enum:"offline,online,app,other"`
+	CurrencyKind        *string `json:"currency_kind,omitempty" enum:"rub,points" doc:"what the offer pays in; absent ranks in the unknown group"`
+	RequiresActivation  bool    `json:"requires_activation,omitempty"`
+	Activated           bool    `json:"activated,omitempty" doc:"true stamps the activation moment (kept on update); false clears it"`
+}
+
+// partnerV2Params validates and converts the v2 fields. prevActivatedAt
+// keeps an update from re-stamping an already-recorded activation moment.
+func partnerV2Params(in PartnerV2Input, prevActivatedAt *time.Time) (db.PartnerScope, db.NullPointOfSaleType, db.NullCashbackCurrencyKind, *time.Time, error) {
+	scope := db.PartnerScopeMerchant
+	if in.ScopeKind != nil {
+		scope = db.PartnerScope(*in.ScopeKind)
+	}
+	if scope == db.PartnerScopeCategory && in.CanonicalCategoryID == nil {
+		return "", db.NullPointOfSaleType{}, db.NullCashbackCurrencyKind{}, nil,
+			huma.Error422UnprocessableEntity("для акции на всю категорию укажите каноническую категорию")
+	}
+	var mk db.NullPointOfSaleType
+	if in.MerchantKind != nil {
+		mk = db.NullPointOfSaleType{PointOfSaleType: db.PointOfSaleType(*in.MerchantKind), Valid: true}
+	}
+	var ck db.NullCashbackCurrencyKind
+	if in.CurrencyKind != nil {
+		ck = db.NullCashbackCurrencyKind{CashbackCurrencyKind: db.CashbackCurrencyKind(*in.CurrencyKind), Valid: true}
+	}
+	var activatedAt *time.Time
+	if in.Activated {
+		if prevActivatedAt != nil {
+			activatedAt = prevActivatedAt
+		} else {
+			now := time.Now()
+			activatedAt = &now
+		}
+	}
+	return scope, mk, ck, activatedAt, nil
 }
 
 // partnerFields is the parsed form of the four free-text/date inputs that
@@ -404,6 +511,25 @@ type OverviewCategoryDTO struct {
 	OthersCount int                `json:"others_count" doc:"other own cards beyond best; friends are not counted"`
 }
 
+// PartnerFeedDTO is one партнёрка feed row (v2): its rankable entry plus
+// the lifecycle facts the row states («по 31.08», требует активации).
+type PartnerFeedDTO struct {
+	LookupEntryDTO
+	ValidTo *string `json:"valid_to,omitempty"`
+	Status  string  `json:"status" enum:"active,scheduled,expired,ended"`
+}
+
+// OverviewPartnerChipDTO is a партнёрка chip on a bank client card (3c);
+// ended/expired ones fold into the card's collapsed group client-side.
+type OverviewPartnerChipDTO struct {
+	ID            int64   `json:"id"`
+	MerchantTitle string  `json:"merchant_title"`
+	Percent       *string `json:"percent,omitempty"`
+	CurrencyKind  string  `json:"currency_kind"`
+	ValidTo       *string `json:"valid_to,omitempty"`
+	Status        string  `json:"status" enum:"active,scheduled,expired,ended"`
+}
+
 // OverviewChipDTO is a selected menu row rendered as a chip on a card.
 type OverviewChipDTO struct {
 	OfferID  int64   `json:"offer_id"`
@@ -452,6 +578,9 @@ type OverviewClientDTO struct {
 	MaxCategories  *int32                `json:"max_categories,omitempty"`
 	Selected       []OverviewChipDTO     `json:"selected"`
 	Specials       []OverviewChipDTO     `json:"specials,omitempty"`
+	// PartnerOffers carries every status; alive ones render as gold chips,
+	// ended/expired fold into the card's collapsed group (v2, 3c).
+	PartnerOffers []OverviewPartnerChipDTO `json:"partner_offers,omitempty"`
 }
 
 // RegisterHTTP mounts the module's API (spec «Interfaces & files»).
@@ -1015,6 +1144,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Categories        []OverviewCategoryDTO `json:"categories"`
 			Base              *OverviewBaseDTO      `json:"base,omitempty"`
 			SingleBank        []LookupEntryDTO      `json:"single_bank,omitempty" doc:"«Только в одном банке»: selected canonical-less rows, shown collapsed"`
+			Partners          []PartnerFeedDTO      `json:"partners,omitempty" doc:"alive партнёрки active on the date, ranked by the category-row key — interleave, points never above rubles"`
 			Clients           []OverviewClientDTO   `json:"clients"`
 			SelectionOpensDay *int32                `json:"selection_opens_day,omitempty"`
 		}
@@ -1036,6 +1166,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Categories        []OverviewCategoryDTO `json:"categories"`
 				Base              *OverviewBaseDTO      `json:"base,omitempty"`
 				SingleBank        []LookupEntryDTO      `json:"single_bank,omitempty" doc:"«Только в одном банке»: selected canonical-less rows, shown collapsed"`
+				Partners          []PartnerFeedDTO      `json:"partners,omitempty" doc:"alive партнёрки active on the date, ranked by the category-row key — interleave, points never above rubles"`
 				Clients           []OverviewClientDTO   `json:"clients"`
 				SelectionOpensDay *int32                `json:"selection_opens_day,omitempty"`
 			}
@@ -1057,6 +1188,13 @@ func RegisterHTTP(api huma.API, s *Service) {
 		for _, e := range res.SingleBank {
 			out.Body.SingleBank = append(out.Body.SingleBank, lookupEntryDTO(e))
 		}
+		for _, p := range res.Partners {
+			out.Body.Partners = append(out.Body.Partners, PartnerFeedDTO{
+				LookupEntryDTO: lookupEntryDTO(p.Entry),
+				ValidTo:        fmtDatePtr(p.ValidTo),
+				Status:         p.Status,
+			})
+		}
 		out.Body.Clients = make([]OverviewClientDTO, len(res.Clients))
 		for i, c := range res.Clients {
 			dto := OverviewClientDTO{
@@ -1070,6 +1208,12 @@ func RegisterHTTP(api huma.API, s *Service) {
 			dto.Cards = make([]OverviewCardChipDTO, len(c.Cards))
 			for j, cc := range c.Cards {
 				dto.Cards[j] = OverviewCardChipDTO(cc)
+			}
+			for _, ch := range c.Partners {
+				dto.PartnerOffers = append(dto.PartnerOffers, OverviewPartnerChipDTO{
+					ID: ch.ID, MerchantTitle: ch.MerchantTitle, Percent: decToStr(ch.Percent),
+					CurrencyKind: string(ch.CurrencyKind), ValidTo: fmtDatePtr(ch.ValidTo), Status: ch.Status,
+				})
 			}
 			if c.PeriodStart != nil {
 				s := c.PeriodStart.Format("2006-01-02")
@@ -1178,6 +1322,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			MinAmount     *string     `json:"min_amount,omitempty" doc:"minimum qualifying purchase («от 2 000 ₽»); display only"`
 			Notes         *string     `json:"notes,omitempty"`
 			AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty"`
+			PartnerV2Input
 		}
 	}) (*struct{ Body PartnerOfferDTO }, error) {
 		f, err := parsePartnerFields(in.Body.Percent, in.Body.CapValue, in.Body.MinAmount,
@@ -1185,11 +1330,18 @@ func RegisterHTTP(api huma.API, s *Service) {
 		if err != nil {
 			return nil, err
 		}
+		scope, mk, ck, activatedAt, err := partnerV2Params(in.Body.PartnerV2Input, nil)
+		if err != nil {
+			return nil, err
+		}
 		p, err := s.Q.CreatePartnerOffer(ctx, db.CreatePartnerOfferParams{
 			UserID: auth.UserID(ctx), BankID: in.Body.BankID, BankClientID: in.Body.BankClientID,
 			MerchantTitle: in.Body.MerchantTitle, Percent: f.percent,
 			ValidFrom: f.from, ValidTo: f.to, CapValue: f.cap, MinAmount: f.min,
-			Notes: in.Body.Notes,
+			Notes:     in.Body.Notes,
+			ScopeKind: scope, CanonicalCategoryID: in.Body.CanonicalCategoryID,
+			MerchantKind: mk, CurrencyKind: ck,
+			RequiresActivation: in.Body.RequiresActivation, ActivatedAt: activatedAt,
 		})
 		if err != nil {
 			return nil, httpErr(err)
@@ -1214,12 +1366,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		if err != nil {
 			return nil, httpErr(notFound(err))
 		}
-		out := PartnerOfferDTO{
-			ID: row.ID, BankID: row.BankID, BankName: row.BankName, BankClientID: row.BankClientID,
-			MerchantTitle: row.MerchantTitle, Percent: decToStr(row.Percent),
-			ValidFrom: fmtDatePtr(row.ValidFrom), ValidTo: fmtDatePtr(row.ValidTo),
-			CapValue: decToStr(row.CapValue), MinAmount: decToStr(row.MinAmount), Notes: row.Notes,
-		}
+		out := partnerRowDTO(db.ListPartnerOffersForUserRow(row))
 		atts, err := s.Q.ListPartnerOfferAttachments(ctx, in.ID)
 		if err != nil {
 			return nil, err
@@ -1246,10 +1393,21 @@ func RegisterHTTP(api huma.API, s *Service) {
 			CapValue      *string `json:"cap_value,omitempty"`
 			MinAmount     *string `json:"min_amount,omitempty"`
 			Notes         *string `json:"notes,omitempty"`
+			PartnerV2Input
 		}
 	}) (*struct{ Body PartnerOfferDTO }, error) {
 		f, err := parsePartnerFields(in.Body.Percent, in.Body.CapValue, in.Body.MinAmount,
 			in.Body.ValidFrom, in.Body.ValidTo)
+		if err != nil {
+			return nil, err
+		}
+		// The current row supplies the activation moment: re-sending
+		// activated=true must not move a timestamp already recorded.
+		prev, err := s.Q.GetPartnerOfferForUser(ctx, db.GetPartnerOfferForUserParams{ID: in.ID, UserID: auth.UserID(ctx)})
+		if err != nil {
+			return nil, httpErr(notFound(err))
+		}
+		scope, mk, ck, activatedAt, err := partnerV2Params(in.Body.PartnerV2Input, prev.ActivatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -1258,12 +1416,88 @@ func RegisterHTTP(api huma.API, s *Service) {
 			BankID: in.Body.BankID, BankClientID: in.Body.BankClientID,
 			MerchantTitle: in.Body.MerchantTitle, Percent: f.percent,
 			ValidFrom: f.from, ValidTo: f.to, CapValue: f.cap, MinAmount: f.min,
-			Notes: in.Body.Notes,
+			Notes:     in.Body.Notes,
+			ScopeKind: scope, CanonicalCategoryID: in.Body.CanonicalCategoryID,
+			MerchantKind: mk, CurrencyKind: ck,
+			RequiresActivation: in.Body.RequiresActivation, ActivatedAt: activatedAt,
 		})
 		if err != nil {
 			return nil, httpErr(notFound(err))
 		}
 		return &struct{ Body PartnerOfferDTO }{partnerOfferDTO(p)}, nil
+	})
+
+	// «Завершить» / «Вернуть»: a dated event pair — valid_to is never
+	// rewritten (it stays the recorded bank term), so undo is lossless.
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-partner-offer-end", Method: http.MethodPost,
+		Path: "/api/v1/cashback/partner-offers/{id}/end", Summary: "End a partner offer (undoable)", Tags: []string{"cashback"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID int64 `path:"id"`
+	}) (*struct{}, error) {
+		n, err := s.Q.EndPartnerOfferForUser(ctx, db.EndPartnerOfferForUserParams{ID: in.ID, UserID: auth.UserID(ctx)})
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			return nil, huma.Error404NotFound("не найдено")
+		}
+		return &struct{}{}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-partner-offer-reopen", Method: http.MethodPost,
+		Path: "/api/v1/cashback/partner-offers/{id}/reopen", Summary: "Reopen an ended partner offer", Tags: []string{"cashback"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID int64 `path:"id"`
+	}) (*struct{}, error) {
+		n, err := s.Q.ReopenPartnerOfferForUser(ctx, db.ReopenPartnerOfferForUserParams{ID: in.ID, UserID: auth.UserID(ctx)})
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			return nil, huma.Error404NotFound("не найдено")
+		}
+		return &struct{}{}, nil
+	})
+
+	// The точка продаж match: alive offers whose merchant name matches the
+	// queried point, normalized both directions — honest name-based
+	// matching, flagged as such by shape (it is a separate list, never
+	// merged into the category ranking).
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-partner-offer-match", Method: http.MethodGet,
+		Path: "/api/v1/cashback/partner-offers/match", Summary: "Partner offers matching a merchant name", Tags: []string{"cashback"},
+	}, func(ctx context.Context, in *struct {
+		Query string `query:"query" minLength:"1" doc:"merchant / точка продаж name"`
+		Date  string `query:"date" doc:"YYYY-MM-DD; defaults to today"`
+	}) (*struct {
+		Body struct {
+			Matches []LookupEntryDTO `json:"matches,omitempty"`
+		}
+	}, error) {
+		onDate := time.Now()
+		if in.Date != "" {
+			var err error
+			if onDate, err = parseDate(in.Date, "date"); err != nil {
+				return nil, err
+			}
+		}
+		entries, err := s.MatchPartnerOffers(ctx, auth.UserID(ctx), in.Query, onDate)
+		if err != nil {
+			return nil, err
+		}
+		out := &struct {
+			Body struct {
+				Matches []LookupEntryDTO `json:"matches,omitempty"`
+			}
+		}{}
+		for _, e := range entries {
+			out.Body.Matches = append(out.Body.Matches, lookupEntryDTO(e))
+		}
+		return out, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -1320,12 +1554,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		out := make([]PartnerOfferDTO, len(rows))
 		for i, p := range rows {
-			out[i] = PartnerOfferDTO{
-				ID: p.ID, BankID: p.BankID, BankName: p.BankName, BankClientID: p.BankClientID,
-				MerchantTitle: p.MerchantTitle, Percent: decToStr(p.Percent),
-				ValidFrom: fmtDatePtr(p.ValidFrom), ValidTo: fmtDatePtr(p.ValidTo),
-				CapValue: decToStr(p.CapValue), MinAmount: decToStr(p.MinAmount), Notes: p.Notes,
-			}
+			out[i] = partnerRowDTO(p)
 		}
 		return &struct{ Body []PartnerOfferDTO }{out}, nil
 	})

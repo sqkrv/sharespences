@@ -718,6 +718,21 @@ type OverviewClient struct {
 	MaxCategories *int32 // effective: period override, else tier
 	Selected      []OverviewSelectedRow
 	Specials      []OverviewSelectedRow
+	// Partners are the client's партнёрки as gold chips (v2, 3c): every
+	// status — the SPA shows alive ones inline and folds ended/expired into
+	// a collapsed group, so past offers keep a home after CB-05 dissolves.
+	// A bank-level offer (no client) hangs off the bank's first client.
+	Partners []OverviewPartnerChip
+}
+
+// OverviewPartnerChip is one партнёрка on a bank client card.
+type OverviewPartnerChip struct {
+	ID            int64
+	MerchantTitle string
+	Percent       *decimal.Decimal
+	CurrencyKind  CurrencyKind
+	ValidTo       *time.Time
+	Status        string
 }
 
 // OverviewBase is the «Остальное» row: the best base-rate card («За все
@@ -739,6 +754,14 @@ func emojiOf(c db.CanonicalCategory) string {
 
 // OverviewResult answers GET /cashback/overview: the design's two cuts of
 // the same month (screens 01/02), plus the passive «selection opens» day.
+// OverviewPartnerRow is one партнёрка in the feed: its rankable entry plus
+// the lifecycle facts the row states («по 31.08», требует активации).
+type OverviewPartnerRow struct {
+	Entry   LookupEntry
+	ValidTo *time.Time
+	Status  string
+}
+
 type OverviewResult struct {
 	Categories []OverviewCategoryGroup
 	Base       *OverviewBase
@@ -746,7 +769,13 @@ type OverviewResult struct {
 	// SingleBank is the «Только в одном банке» tail (redesign 2026-08-06):
 	// selected canonical-less rows — a bank's own service categories that
 	// cannot group across banks. Ranked for a stable order, shown collapsed.
-	SingleBank        []LookupEntry
+	SingleBank []LookupEntry
+	// Partners are the alive партнёрки active on the date, ranked by the
+	// same key as category rows (currency group → percent desc) so the SPA
+	// can interleave without ever putting points above rubles (invariant 5).
+	// They live outside Categories: a merchant offer is its own row, named
+	// by the merchant, alive even when no month menu is entered.
+	Partners          []OverviewPartnerRow
 	SelectionOpensDay *int32 // earliest across the user's clients' programs
 }
 
@@ -982,6 +1011,31 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 	}
 	res.SingleBank = RankActiveSelections(onDate, singles).Ranked
 
+	// Партнёрки (v2): alive offers active on the date become their own
+	// merchant-named feed rows, ranked by the category-row key. They ignore
+	// periods entirely — the «жив без меню месяца» promise holds by shape.
+	partners, err := s.Q.ListPartnerOffersForUser(ctx, userID)
+	if err != nil {
+		return OverviewResult{}, err
+	}
+	partnerByID := make(map[int64]db.ListPartnerOffersForUserRow, len(partners))
+	var partnerEntries []LookupEntry
+	for _, p := range partners {
+		if !alivePartner(p) {
+			continue
+		}
+		partnerByID[p.ID] = p
+		partnerEntries = append(partnerEntries, partnerEntryOf(p))
+	}
+	for _, e := range RankActiveSelections(onDate, partnerEntries).Ranked {
+		p := partnerByID[e.PartnerID]
+		res.Partners = append(res.Partners, OverviewPartnerRow{
+			Entry:   e,
+			ValidTo: p.ValidTo,
+			Status:  PartnerStatus(onDate, p.ValidFrom, p.ValidTo, p.EndedAt),
+		})
+	}
+
 	// «Остальное»: best selected «За все покупки» across clients.
 	fb := RankActiveSelections(onDate, fallbackEntries(offers, allPurposesID, nil, entryOf))
 	if len(fb.Ranked) > 0 {
@@ -994,6 +1048,14 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 
 	// --- «Карты»: every bank client with its plastics, and the client's
 	// active period when one exists (all its cards share it). ---
+	// A bank-level партнёрка (no client) hangs off the bank's first client,
+	// so it renders exactly once.
+	firstClientOfBank := make(map[int32]int64, len(clients))
+	for _, c := range clients {
+		if _, ok := firstClientOfBank[c.BankID]; !ok {
+			firstClientOfBank[c.BankID] = c.ID
+		}
+	}
 	for _, client := range clients {
 		oc := OverviewClient{
 			ClientID:     client.ID,
@@ -1058,19 +1120,75 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 				oc.Selected = append(oc.Selected, row)
 			}
 		}
+		for _, p := range partners {
+			owns := (p.BankClientID != nil && *p.BankClientID == client.ID) ||
+				(p.BankClientID == nil && p.BankID == client.BankID && firstClientOfBank[p.BankID] == client.ID)
+			if !owns {
+				continue
+			}
+			chip := OverviewPartnerChip{
+				ID: p.ID, MerchantTitle: p.MerchantTitle, Percent: p.Percent,
+				CurrencyKind: CurrencyUnknown, ValidTo: p.ValidTo,
+				Status: PartnerStatus(onDate, p.ValidFrom, p.ValidTo, p.EndedAt),
+			}
+			if p.CurrencyKind.Valid {
+				chip.CurrencyKind = CurrencyKind(p.CurrencyKind.CashbackCurrencyKind)
+			}
+			oc.Partners = append(oc.Partners, chip)
+		}
 		res.Clients = append(res.Clients, oc)
 	}
 	return res, nil
 }
 
-// LookupResultView answers S3, with partner offers as an unranked footnote
-// (matched by merchant/notes text against the category title).
+// LookupResultView answers S3. Partner offers rank since партнёрки v2
+// (2026-08-06): a canonical-scoped/hinted партнёрка enters Ranked as
+// kind=partner; the legacy substring footnote survives only for rows
+// without a canonical, until their owner maps them.
 type LookupResultView struct {
 	Category  db.CanonicalCategory
-	Ranked    []LookupEntry    // regular + super + special, marked by kind (amendment 2026-07-27)
+	Ranked    []LookupEntry    // regular + super + special + partner, marked by kind
 	Fallback  []LookupEntry    // selected «За все покупки» — pays when nothing ranks
 	Available []AvailableEntry // S3b: offered-but-unselected rows with verdicts
 	Partner   []db.ListPartnerOffersForUserRow
+}
+
+// partnerEntryOf turns one partner_offer row into a rankable entry. Caps
+// stay on the row's own fields (cap bounds the payout in the offer's OWN
+// currency); nil currency lands in the unknown group, honestly last.
+func partnerEntryOf(p db.ListPartnerOffersForUserRow) LookupEntry {
+	e := LookupEntry{
+		BankName:        p.BankName,
+		RawTitle:        p.MerchantTitle,
+		Percent:         p.Percent,
+		CurrencyKind:    CurrencyUnknown,
+		Kind:            OfferPartner,
+		Period:          PartnerPeriod(p.ValidFrom, p.ValidTo),
+		OfferCapValue:   p.CapValue,
+		PartnerID:       p.ID,
+		PartnerScope:    PartnerScope(p.ScopeKind),
+		NeedsActivation: p.RequiresActivation && p.ActivatedAt == nil,
+	}
+	if p.CurrencyKind.Valid {
+		e.CurrencyKind = CurrencyKind(p.CurrencyKind.CashbackCurrencyKind)
+	}
+	if e.CurrencyKind == CurrencyPoints && p.PointsLabel != nil {
+		e.PointsLabel = *p.PointsLabel
+	}
+	if p.BankClientID != nil {
+		e.ClientID = *p.BankClientID
+	}
+	if p.HolderLabel != nil {
+		e.HolderLabel = *p.HolderLabel
+		e.ClientLabel = *p.HolderLabel
+	}
+	return e
+}
+
+// alivePartner: not ended by the user. The date filter itself is the
+// ranking's period check (PartnerPeriod covers open bounds).
+func alivePartner(p db.ListPartnerOffersForUserRow) bool {
+	return p.EndedAt == nil
 }
 
 func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug string, onDate time.Time) (LookupResultView, error) {
@@ -1096,6 +1214,18 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 		return LookupResultView{}, err
 	}
 	entries = append(entries, friendEntries...)
+	// Партнёрки of this canonical rank too (v2): merchant-scoped ones carry
+	// their scope so the UI states «только в „…“» — ranked, but marked.
+	partners, err := s.Q.ListPartnerOffersForUser(ctx, userID)
+	if err != nil {
+		return LookupResultView{}, err
+	}
+	for _, p := range partners {
+		if !alivePartner(p) || p.CanonicalCategoryID == nil || *p.CanonicalCategoryID != cat.ID {
+			continue
+		}
+		entries = append(entries, partnerEntryOf(p))
+	}
 	ranked := RankActiveSelections(onDate, entries)
 
 	// S3b «Можно выбрать»: menu rows of this category sitting in an active
@@ -1145,13 +1275,14 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 	fb := RankActiveSelections(onDate, fallbackEntries(all, allPurposesID, &catID, entryOf))
 	fallback := fb.Ranked
 
-	partners, err := s.Q.ListPartnerOffersForUser(ctx, userID)
-	if err != nil {
-		return LookupResultView{}, err
-	}
+	// Legacy footnote — only canonical-less партнёрки still substring-match
+	// here (deprecated: mapping the row promotes it into Ranked above).
 	var footnote []db.ListPartnerOffersForUserRow
 	needle := NormalizeTitle(cat.TitleRu)
 	for _, p := range partners {
+		if !alivePartner(p) || p.CanonicalCategoryID != nil {
+			continue
+		}
 		if p.ValidFrom != nil && dateOnly(onDate).Before(dateOnly(*p.ValidFrom)) {
 			continue
 		}
@@ -1170,6 +1301,36 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 		Category: cat, Ranked: ranked.Ranked,
 		Fallback: fallback, Available: RankAvailable(available), Partner: footnote,
 	}, nil
+}
+
+// MatchPartnerOffers answers the точка продаж: alive offers whose merchant
+// title (or notes) match the queried name, normalized both directions —
+// honest name-based matching, never presented as a merchant link (the POS
+// base is import-owned and per-location; a FK would be false precision).
+func (s *Service) MatchPartnerOffers(ctx context.Context, userID uuid.UUID, query string, onDate time.Time) ([]LookupEntry, error) {
+	if strings.TrimSpace(query) == "" {
+		return nil, nil
+	}
+	partners, err := s.Q.ListPartnerOffersForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	needle := NormalizeTitle(query)
+	var entries []LookupEntry
+	for _, p := range partners {
+		if !alivePartner(p) {
+			continue
+		}
+		hay := NormalizeTitle(p.MerchantTitle)
+		if p.Notes != nil {
+			hay += " " + NormalizeTitle(*p.Notes)
+		}
+		if !strings.Contains(hay, needle) && !strings.Contains(needle, NormalizeTitle(p.MerchantTitle)) {
+			continue
+		}
+		entries = append(entries, partnerEntryOf(p))
+	}
+	return RankActiveSelections(onDate, entries).Ranked, nil
 }
 
 func notFound(err error) error {

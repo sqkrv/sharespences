@@ -454,6 +454,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cashback/partner-offers/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Partner offers matching a merchant name */
+        get: operations["cashback-partner-offer-match"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cashback/partner-offers/{id}": {
         parameters: {
             query?: never;
@@ -502,6 +519,40 @@ export interface paths {
         post?: never;
         /** Remove a screenshot */
         delete: operations["cashback-partner-offer-detach"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cashback/partner-offers/{id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End a partner offer (undoable) */
+        post: operations["cashback-partner-offer-end"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cashback/partner-offers/{id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen an ended partner offer */
+        post: operations["cashback-partner-offer-reopen"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -943,6 +994,7 @@ export interface components {
             friend_username?: string;
             holder_label?: string;
             kind: string;
+            needs_activation?: boolean;
             /** @description per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap */
             offer_cap_value?: string;
             /**
@@ -950,6 +1002,10 @@ export interface components {
              * @description category_offer id — «Отметить выбранной» posts the ordinary selection for it
              */
             offer_id: number;
+            /** Format: int64 */
+            partner_id?: number;
+            /** @enum {string} */
+            partner_scope?: "merchant" | "category" | "";
             percent?: string;
             period_end: string;
             period_start: string;
@@ -1253,6 +1309,8 @@ export interface components {
             categories: components["schemas"]["OverviewCategoryDTO"][] | null;
             clients: components["schemas"]["OverviewClientDTO"][] | null;
             date: string;
+            /** @description alive партнёрки active on the date, ranked by the category-row key — interleave, points never above rubles */
+            partners?: components["schemas"]["PartnerFeedDTO"][] | null;
             /** Format: int32 */
             selection_opens_day?: number;
             /** @description «Только в одном банке»: selected canonical-less rows, shown collapsed */
@@ -1274,21 +1332,50 @@ export interface components {
              * @example https://example.com/schemas/Cashback-partner-offer-createRequest.json
              */
             readonly $schema?: string;
+            /** @description true stamps the activation moment (kept on update); false clears it */
+            activated?: boolean;
             attachment_ids?: string[] | null;
             /** Format: int64 */
             bank_client_id?: number;
             /** Format: int32 */
             bank_id: number;
+            /**
+             * Format: int64
+             * @description required for category scope; an optional hint for merchant scope (ranks in that category's lookup with a «только в …» caveat)
+             */
+            canonical_category_id?: number;
             cap_value?: string;
+            /**
+             * @description what the offer pays in; absent ranks in the unknown group
+             * @enum {string}
+             */
+            currency_kind?: "rub" | "points";
+            /** @enum {string} */
+            merchant_kind?: "offline" | "online" | "app" | "other";
             merchant_title: string;
             /** @description minimum qualifying purchase («от 2 000 ₽»); display only */
             min_amount?: string;
             notes?: string;
             percent?: string;
+            requires_activation?: boolean;
+            /**
+             * @description где действует; default merchant
+             * @enum {string}
+             */
+            scope_kind?: "merchant" | "category";
             /** Format: date */
             valid_from?: string;
             /** Format: date */
             valid_to?: string;
+        };
+        "Cashback-partner-offer-matchResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Cashback-partner-offer-matchResponse.json
+             */
+            readonly $schema?: string;
+            matches?: components["schemas"]["LookupEntryDTO"][] | null;
         };
         "Cashback-partner-offer-updateRequest": {
             /**
@@ -1297,15 +1384,35 @@ export interface components {
              * @example https://example.com/schemas/Cashback-partner-offer-updateRequest.json
              */
             readonly $schema?: string;
+            /** @description true stamps the activation moment (kept on update); false clears it */
+            activated?: boolean;
             /** Format: int64 */
             bank_client_id?: number;
             /** Format: int32 */
             bank_id: number;
+            /**
+             * Format: int64
+             * @description required for category scope; an optional hint for merchant scope (ranks in that category's lookup with a «только в …» caveat)
+             */
+            canonical_category_id?: number;
             cap_value?: string;
+            /**
+             * @description what the offer pays in; absent ranks in the unknown group
+             * @enum {string}
+             */
+            currency_kind?: "rub" | "points";
+            /** @enum {string} */
+            merchant_kind?: "offline" | "online" | "app" | "other";
             merchant_title: string;
             min_amount?: string;
             notes?: string;
             percent?: string;
+            requires_activation?: boolean;
+            /**
+             * @description где действует; default merchant
+             * @enum {string}
+             */
+            scope_kind?: "merchant" | "category";
             /** Format: date */
             valid_from?: string;
             /** Format: date */
@@ -1634,8 +1741,13 @@ export interface components {
             friend_username?: string;
             holder_label?: string;
             kind: string;
+            needs_activation?: boolean;
             /** @description per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap */
             offer_cap_value?: string;
+            /** Format: int64 */
+            partner_id?: number;
+            /** @enum {string} */
+            partner_scope?: "merchant" | "category" | "";
             percent?: string;
             period_end: string;
             period_start: string;
@@ -1767,6 +1879,7 @@ export interface components {
              * @enum {string}
              */
             mid_period_add?: "allowed" | "locked_after_first" | "paid" | "unknown";
+            partner_offers?: components["schemas"]["OverviewPartnerChipDTO"][] | null;
             period_end?: string;
             /** Format: int64 */
             period_id?: number;
@@ -1778,6 +1891,51 @@ export interface components {
             specials?: components["schemas"]["OverviewChipDTO"][] | null;
             tier_name?: string;
         };
+        OverviewPartnerChipDTO: {
+            currency_kind: string;
+            /** Format: int64 */
+            id: number;
+            merchant_title: string;
+            percent?: string;
+            /** @enum {string} */
+            status: "active" | "scheduled" | "expired" | "ended";
+            valid_to?: string;
+        };
+        PartnerFeedDTO: {
+            /** Format: int64 */
+            bank_client_id: number;
+            bank_name: string;
+            cap_per_category?: string;
+            cap_scope?: string;
+            cap_value?: string;
+            client_label: string;
+            currency_kind: string;
+            /** @description карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда */
+            friend_name?: string;
+            friend_username?: string;
+            holder_label?: string;
+            kind: string;
+            needs_activation?: boolean;
+            /** @description per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap */
+            offer_cap_value?: string;
+            /** Format: int64 */
+            partner_id?: number;
+            /** @enum {string} */
+            partner_scope?: "merchant" | "category" | "";
+            percent?: string;
+            period_end: string;
+            period_start: string;
+            points_label?: string;
+            /** @description the bank's own menu title — names the mechanic on marked super/special rows («Пятница») */
+            raw_title: string;
+            /** @description percent is a sum: the client's own monthly pick. Set together with stacked_super (invariant 6 amendment 2026-07-31) */
+            stacked_regular?: string;
+            /** @description the барабан granted on top of that pick — mark the row «барабан» when this is set */
+            stacked_super?: string;
+            /** @enum {string} */
+            status: "active" | "scheduled" | "expired" | "ended";
+            valid_to?: string;
+        };
         PartnerOfferDTO: {
             /**
              * Format: uri
@@ -1785,19 +1943,39 @@ export interface components {
              * @example https://example.com/schemas/PartnerOfferDTO.json
              */
             readonly $schema?: string;
+            activated_at?: string;
             attachment_ids?: string[] | null;
             /** Format: int64 */
             bank_client_id?: number;
             /** Format: int32 */
             bank_id: number;
             bank_name?: string;
+            /** Format: int64 */
+            canonical_category_id?: number;
+            canonical_slug?: string;
+            canonical_title_ru?: string;
             cap_value?: string;
+            /** @description rub | points; absent = unknown, ranks last */
+            currency_kind?: string;
+            ended_at?: string;
+            holder_label?: string;
             /** Format: int64 */
             id: number;
+            /** @description offline | online | app | other — the «магазин» type chip */
+            merchant_kind?: string;
             merchant_title: string;
             min_amount?: string;
             notes?: string;
             percent?: string;
+            points_label?: string;
+            requires_activation: boolean;
+            /** @enum {string} */
+            scope_kind: "merchant" | "category";
+            /**
+             * @description derived; «Завершить» sets ended without touching valid_to
+             * @enum {string}
+             */
+            status?: "active" | "scheduled" | "expired" | "ended";
             valid_from?: string;
             valid_to?: string;
         };
@@ -3044,6 +3222,40 @@ export interface operations {
             };
         };
     };
+    "cashback-partner-offer-match": {
+        parameters: {
+            query?: {
+                /** @description merchant / точка продаж name */
+                query?: string;
+                /** @description YYYY-MM-DD; defaults to today */
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cashback-partner-offer-matchResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "cashback-partner-offer-get": {
         parameters: {
             query?: never;
@@ -3179,6 +3391,64 @@ export interface operations {
             path: {
                 id: number;
                 attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-partner-offer-end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-partner-offer-reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
             };
             cookie?: never;
         };
