@@ -630,9 +630,13 @@ func TestCashbackE2E(t *testing.T) {
 		Categories []struct {
 			Slug        string `json:"slug"`
 			OthersCount int    `json:"others_count"`
-			Best        struct {
+			Best        *struct {
 				BankName string `json:"bank_name"`
 			} `json:"best"`
+			Available *struct {
+				BankName string `json:"bank_name"`
+				Verdict  string `json:"verdict"`
+			} `json:"available"`
 		} `json:"categories"`
 		Clients []struct {
 			BankName      string  `json:"bank_name"`
@@ -651,31 +655,67 @@ func TestCashbackE2E(t *testing.T) {
 				Percent  *string `json:"percent"`
 			} `json:"best"`
 		} `json:"base"`
+		SingleBank []struct {
+			RawTitle string `json:"raw_title"`
+			BankName string `json:"bank_name"`
+		} `json:"single_bank"`
 		SelectionOpensDay *int32 `json:"selection_opens_day"`
 	}
 	owner.must("GET", "/api/v1/cashback/overview?date=2026-07-15", nil, &overview, http.StatusOK)
-	// Транспорт is selected but unmapped → invisible here, like in lookup.
-	if len(overview.Categories) != 4 {
-		t.Fatalf("overview categories = %d, want 4 (supermarkets, gas-stations, pharmacies, flowers)", len(overview.Categories))
+	// Транспорт is selected but unmapped → invisible here, like in lookup
+	// (it reappears in single_bank once selected canonical-less rows exist —
+	// covered below). «Рестораны» (Альфа-Банк) was entered but never
+	// selected: since the redesign (2026-08-06) it surfaces as the feed's
+	// dashed «можно выбрать» row instead of vanishing — with the honest
+	// slots_full verdict, Альфа-Банк being 4/4 by this point.
+	if len(overview.Categories) != 5 {
+		t.Fatalf("overview categories = %d, want 5 (4 selected + 1 available-only)", len(overview.Categories))
 	}
-	var superRow *struct {
+	withBest, withAvail := 0, 0
+	type catRow = struct {
 		Slug        string `json:"slug"`
 		OthersCount int    `json:"others_count"`
-		Best        struct {
+		Best        *struct {
 			BankName string `json:"bank_name"`
 		} `json:"best"`
+		Available *struct {
+			BankName string `json:"bank_name"`
+			Verdict  string `json:"verdict"`
+		} `json:"available"`
 	}
+	var superRow, availRow *catRow
 	for i := range overview.Categories {
-		if overview.Categories[i].Slug == "supermarkets" {
-			superRow = &overview.Categories[i]
+		g := &overview.Categories[i]
+		if g.Best != nil {
+			withBest++
 		}
+		if g.Available != nil {
+			withAvail++
+			availRow = g
+		}
+		if g.Slug == "supermarkets" {
+			superRow = g
+		}
+	}
+	if withBest != 4 || withAvail != 1 {
+		t.Fatalf("overview categories: %d with best, %d with available — want 4 and 1", withBest, withAvail)
+	}
+	if availRow.Best != nil || availRow.Available.BankName != "Альфа-Банк" || availRow.Available.Verdict != "slots_full" {
+		t.Fatalf("available-only row = %+v, want Альфа-Банк slots_full and no best", availRow)
 	}
 	// Both offers are 5%, so the winner is decided by the name tie-break —
 	// and Latin «O» sorts before Cyrillic «А» (Russian collation agrees),
 	// so «Ozon Банк» leads since the 2026-07-28 rename. The assertion that
 	// matters is «one best + one other», not which of the tied two shows.
-	if superRow == nil || superRow.Best.BankName != "Ozon Банк" || superRow.OthersCount != 1 {
+	if superRow == nil || superRow.Best == nil || superRow.Best.BankName != "Ozon Банк" || superRow.OthersCount != 1 {
 		t.Fatalf("overview supermarkets = %+v, want best Ozon Банк with 1 other (5%% tie → bank-name order)", superRow)
+	}
+	// Selected-but-unmapped rows land in the «Только в одном банке» tail
+	// instead of being dropped from the feed (redesign 2026-08-06): Транспорт
+	// (Альфа-Банк, 7%) plus Ozon's Фастфуд and Кафе и Рестораны (5% each);
+	// the ranking puts the 7% row first.
+	if len(overview.SingleBank) != 3 || overview.SingleBank[0].RawTitle != "Транспорт" || overview.SingleBank[0].BankName != "Альфа-Банк" {
+		t.Fatalf("overview single_bank = %+v, want 3 unmapped selected rows led by Транспорт (Альфа-Банк, 7%%)", overview.SingleBank)
 	}
 	if len(overview.Clients) != 3 {
 		t.Fatalf("overview clients = %d, want 3", len(overview.Clients))
@@ -777,8 +817,15 @@ func TestCashbackE2E(t *testing.T) {
 	if overview.Base == nil || overview.Base.Best.BankName != "Альфа-Банк" || *overview.Base.Best.Percent != "1" {
 		t.Fatalf("overview base = %+v, want Альфа-Банк 1%%", overview.Base)
 	}
-	if len(overview.Categories) != 4 {
-		t.Fatalf("base row must not appear among categories, got %d", len(overview.Categories))
+	// 4 selected rows + the still-unselected Рестораны as the dashed
+	// available row; «За все покупки» itself must route to base, never here.
+	if len(overview.Categories) != 5 {
+		t.Fatalf("base row must not appear among categories, got %d, want 5", len(overview.Categories))
+	}
+	for _, g := range overview.Categories {
+		if g.Slug == "all-purchases" {
+			t.Fatalf("base row leaked into categories: %+v", g)
+		}
 	}
 
 	// Держатель is editable on the client (PUT /bank-clients/{id}).

@@ -1717,6 +1717,8 @@ export interface components {
             payment_system: string;
         };
         OverviewCategoryDTO: {
+            /** @description best «можно выбрать» row while nothing is selected for the category — the feed's dashed state */
+            available?: components["schemas"]["AvailableEntryDTO"];
             /** @description the viewer's own best card; absent when only a friend covers the category */
             best?: components["schemas"]["LookupEntryDTO"];
             /** Format: int64 */

@@ -662,8 +662,13 @@ type OverviewCategoryGroup struct {
 	// category. FriendBest is set only when a friend's card outranks every
 	// own one or fills such a hole (redesign 2026-08-06) — hiding friends
 	// falls the row back to Best instead of dropping it.
-	Best        *LookupEntry
-	FriendBest  *LookupEntry
+	Best       *LookupEntry
+	FriendBest *LookupEntry
+	// Available is the best S3b «можно выбрать» row, populated only while
+	// the viewer has no own selection for the category — the feed's dashed
+	// state («только то, что есть или реально доступно»); once something is
+	// selected the fuller available list stays a lookup concern.
+	Available   *AvailableEntry
 	OthersCount int // other OWN cards beyond Best; friends never counted
 }
 
@@ -841,7 +846,47 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		}
 		byCat[catID] = append(byCat[catID], entries...)
 	}
+	// S3b «можно выбрать» per category, for the feed's dashed rows: menu
+	// rows sitting unselected in an active period, verdict-first ranked —
+	// the same construction Lookup does for one category.
+	regCount := make(map[int64]int) // offer_period_id → selected regular rows
+	for _, o := range offers {
+		if o.Selected && OfferKind(o.Kind) == OfferRegular {
+			regCount[o.OfferPeriodID]++
+		}
+	}
+	availByCat := make(map[int64][]AvailableEntry)
+	for _, o := range offers {
+		if o.Selected || o.CanonicalCategoryID == nil {
+			continue
+		}
+		if allPurposesID != nil && *o.CanonicalCategoryID == *allPurposesID {
+			continue
+		}
+		kind := OfferKind(o.Kind)
+		if kind == OfferSpecial || !rowRange(o.PeriodStart, o.PeriodEnd).Contains(onDate) {
+			continue
+		}
+		max := o.MaxCategoriesOverride
+		if max == nil {
+			max = o.MaxCategories
+		}
+		availByCat[*o.CanonicalCategoryID] = append(availByCat[*o.CanonicalCategoryID], AvailableEntry{
+			Entry:   entryOf(o),
+			OfferID: o.CategoryOfferID,
+			Verdict: AssessAvailability(AvailabilityCheck{
+				Kind:                 kind,
+				Policy:               MidPeriodAddPolicy(o.MidPeriodAdd),
+				HasRegularSelection:  regCount[o.OfferPeriodID] > 0,
+				MaxCategories:        max,
+				RegularSelectedCount: regCount[o.OfferPeriodID],
+			}),
+			Activation: ActivationKind(o.Activation),
+		})
+	}
+	seenCats := make(map[int64]bool, len(byCat))
 	for catID, entries := range byCat {
+		seenCats[catID] = true
 		ranked := RankActiveSelections(onDate, entries)
 		cat, ok := catByID[catID]
 		if !ok {
@@ -850,8 +895,23 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		// All three kinds rank (invariant 6 amendment, 2026-07-27): the
 		// best card may be a барабан or a спец — the frontend marks it.
 		own, friendBest := SplitFeedWinner(ranked.Ranked)
-		if own == nil && friendBest == nil {
-			continue // nothing active
+		g := OverviewCategoryGroup{
+			CategoryID: catID,
+			Slug:       cat.Slug,
+			TitleRu:    cat.TitleRu,
+			Emoji:      emojiOf(cat),
+			Best:       own,
+			FriendBest: friendBest,
+		}
+		if own == nil {
+			// No own selection — the dashed state stays reachable even when
+			// a friend fills the hole (it is what the row falls back to).
+			if avail := RankAvailable(availByCat[catID]); len(avail) > 0 {
+				g.Available = &avail[0]
+			}
+			if friendBest == nil && g.Available == nil {
+				continue // nothing active
+			}
 		}
 		ownCount := 0
 		for _, e := range ranked.Ranked {
@@ -859,27 +919,43 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 				ownCount++
 			}
 		}
-		others := ownCount
 		if own != nil {
-			others--
+			ownCount--
 		}
+		g.OthersCount = ownCount
+		res.Categories = append(res.Categories, g)
+	}
+	// Categories with nothing selected anywhere but something offered: the
+	// feed's dashed «можно выбрать» rows (redesign, ТУР 1 «решено»: only
+	// what exists or is genuinely available — but available IS a row).
+	for catID, avails := range availByCat {
+		if seenCats[catID] {
+			continue
+		}
+		cat, ok := catByID[catID]
+		if !ok {
+			continue
+		}
+		ranked := RankAvailable(avails)
 		res.Categories = append(res.Categories, OverviewCategoryGroup{
-			CategoryID:  catID,
-			Slug:        cat.Slug,
-			TitleRu:     cat.TitleRu,
-			Emoji:       emojiOf(cat),
-			Best:        own,
-			FriendBest:  friendBest,
-			OthersCount: others,
+			CategoryID: catID,
+			Slug:       cat.Slug,
+			TitleRu:    cat.TitleRu,
+			Emoji:      emojiOf(cat),
+			Available:  &ranked[0],
 		})
 	}
 	// Sort: rub before points; then percent desc; then title. The key is the
-	// row's displayed winner — the friend when one is surfaced.
+	// row's displayed winner — the friend when one is surfaced, the dashed
+	// available row when nothing is selected at all.
 	winnerOf := func(g OverviewCategoryGroup) *LookupEntry {
 		if g.FriendBest != nil {
 			return g.FriendBest
 		}
-		return g.Best
+		if g.Best != nil {
+			return g.Best
+		}
+		return &g.Available.Entry
 	}
 	sort.SliceStable(res.Categories, func(i, j int) bool {
 		a, b := winnerOf(res.Categories[i]), winnerOf(res.Categories[j])

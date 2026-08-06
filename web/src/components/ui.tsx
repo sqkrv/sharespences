@@ -225,6 +225,9 @@ export function bankLogo(name: string): string | undefined {
 // they carry their own background. Banks without a file keep the two-letter
 // avatar («АБ», «ОЗ»…), lilac on soft accent or tinted with the brand color.
 export function BankBadge({ name, size = 33, color }: { name: string; size?: number; color?: string | null }) {
+  // Squircle at every size (redesign: radius ≈38% of the tile) — the old
+  // fixed 10px turned a 16px badge into a near-circle.
+  const radius = Math.round(size * 0.38);
   const logo = bankLogo(name);
   if (logo) {
     return (
@@ -234,18 +237,18 @@ export function BankBadge({ name, size = 33, color }: { name: string; size?: num
         width={size}
         height={size}
         loading="lazy"
-        className="flex-none rounded-[10px] object-contain"
-        style={{ width: size, height: size }}
+        className="flex-none object-contain"
+        style={{ width: size, height: size, borderRadius: radius }}
       />
     );
   }
-  const style: React.CSSProperties = { width: size, height: size, fontSize: Math.max(8, Math.round(size / 3)) };
+  const style: React.CSSProperties = { width: size, height: size, fontSize: Math.max(8, Math.round(size / 3)), borderRadius: radius };
   if (color) {
     style.background = `${color}26`; // ~15% alpha tint
     style.color = color;
   }
   return (
-    <span className="flex flex-none items-center justify-center rounded-[10px] bg-acc/15 font-bold text-accl" style={style}>
+    <span className="flex flex-none items-center justify-center bg-acc/15 font-bold text-accl" style={style}>
       {bankAbbrev(name)}
     </span>
   );
@@ -267,6 +270,86 @@ export function bankAbbrev(name: string): string {
   const words = name.split(/[\s-]+/).filter(Boolean);
   if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
   return name.slice(0, 2).toUpperCase();
+}
+
+// Tiny in-row marker chip (the redesign's second-line vocabulary): gold =
+// спец/барабан/партнёрка, friend = «друг · Кирилл», points = «Баллы Плюс»,
+// neutral = everything stateless. Smaller than Badge on purpose — it lives
+// inside a row's second line, not on a card.
+export function Chip({ children, tone = "neutral" }: { children: ReactNode; tone?: "gold" | "friend" | "points" | "neutral" }) {
+  const tones = {
+    gold: "bg-gold/15 text-gold",
+    friend: "bg-acc/20 text-accl",
+    points: "bg-accl/15 text-accl",
+    neutral: "bg-inset text-tx3",
+  }[tone];
+  return <span className={`inline-block flex-none rounded-[5px] px-1.5 py-px text-[9.5px] font-bold whitespace-nowrap ${tones}`}>{children}</span>;
+}
+
+// One list row in the redesign's shape (ТУР 2, строки как в 1a): lead icon
+// column, bold title, muted second line, value column on the right. The
+// variant is the state legend — solid (active), friend (accent border),
+// dashed («можно выбрать»), dim (unavailable, with a reason in `sub`),
+// gold (партнёрка). `children` render as an expansion panel under the row.
+export function ListRow({
+  emoji,
+  lead,
+  title,
+  sub,
+  right,
+  variant = "solid",
+  onClick,
+  className = "",
+  children,
+  ...rest
+}: {
+  emoji?: string;
+  lead?: ReactNode; // replaces the emoji column (mono MCC code, BankBadge…)
+  title: ReactNode;
+  sub?: ReactNode;
+  right?: ReactNode;
+  variant?: "solid" | "friend" | "dashed" | "dim" | "gold";
+  onClick?: () => void;
+  className?: string;
+  children?: ReactNode;
+} & Omit<React.HTMLAttributes<HTMLDivElement>, "title" | "onClick">) {
+  const variants = {
+    solid: "border border-brd bg-srf",
+    friend: "border border-acc/40 bg-srf",
+    dashed: "border border-dashed border-dash bg-srf/50",
+    dim: "border border-brd bg-srf/45 opacity-65",
+    gold: "border border-gold/30 bg-srf",
+  }[variant];
+  const row = (
+    <div className="flex items-center gap-2.5">
+      {emoji != null && <span className="w-[21px] flex-none text-center text-base leading-none">{emoji}</span>}
+      {lead}
+      <div className="min-w-0 flex-1">
+        <div className="text-sm leading-tight font-bold tracking-[-.01em]">{title}</div>
+        {sub != null && (
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-[11.5px] font-semibold text-tx4">{sub}</div>
+        )}
+      </div>
+      {right}
+    </div>
+  );
+  const cls = `rounded-2xl px-3 py-2.5 ${variants} ${className}`;
+  if (onClick) {
+    return (
+      <div {...rest} className={cls}>
+        <button type="button" onClick={onClick} className="block w-full text-left">
+          {row}
+        </button>
+        {children}
+      </div>
+    );
+  }
+  return (
+    <div {...rest} className={cls}>
+      {row}
+      {children}
+    </div>
+  );
 }
 
 // Percent colored by currency: mint = rubles, lilac = points (the design's

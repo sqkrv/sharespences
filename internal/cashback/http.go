@@ -234,6 +234,22 @@ func lookupEntryDTOPtr(e *LookupEntry) *LookupEntryDTO {
 	return &dto
 }
 
+func availableEntryDTO(a AvailableEntry) AvailableEntryDTO {
+	return AvailableEntryDTO{
+		LookupEntryDTO: lookupEntryDTO(a.Entry),
+		OfferID:        a.OfferID,
+		Verdict:        string(a.Verdict), Activation: string(a.Activation),
+	}
+}
+
+func availableEntryDTOPtr(a *AvailableEntry) *AvailableEntryDTO {
+	if a == nil {
+		return nil
+	}
+	dto := availableEntryDTO(*a)
+	return &dto
+}
+
 func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 	return LookupEntryDTO{
 		BankClientID: e.ClientID, Kind: string(e.Kind), RawTitle: e.RawTitle,
@@ -378,13 +394,14 @@ type BankCategoryDTO struct {
 // own one or fills such a hole — the row falls back to best when friends
 // are hidden, it never vanishes (redesign 2026-08-06).
 type OverviewCategoryDTO struct {
-	CategoryID  int64           `json:"category_id"`
-	Slug        string          `json:"slug"`
-	TitleRu     string          `json:"title_ru"`
-	Emoji       string          `json:"emoji,omitempty" doc:"canonical category icon for the list"`
-	Best        *LookupEntryDTO `json:"best,omitempty" doc:"the viewer's own best card; absent when only a friend covers the category"`
-	FriendBest  *LookupEntryDTO `json:"friend_best,omitempty" doc:"a friend's card that wins the ranking or fills a hole"`
-	OthersCount int             `json:"others_count" doc:"other own cards beyond best; friends are not counted"`
+	CategoryID  int64              `json:"category_id"`
+	Slug        string             `json:"slug"`
+	TitleRu     string             `json:"title_ru"`
+	Emoji       string             `json:"emoji,omitempty" doc:"canonical category icon for the list"`
+	Best        *LookupEntryDTO    `json:"best,omitempty" doc:"the viewer's own best card; absent when only a friend covers the category"`
+	FriendBest  *LookupEntryDTO    `json:"friend_best,omitempty" doc:"a friend's card that wins the ranking or fills a hole"`
+	Available   *AvailableEntryDTO `json:"available,omitempty" doc:"best «можно выбрать» row while nothing is selected for the category — the feed's dashed state"`
+	OthersCount int                `json:"others_count" doc:"other own cards beyond best; friends are not counted"`
 }
 
 // OverviewChipDTO is a selected menu row rendered as a chip on a card.
@@ -1033,6 +1050,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			out.Body.Categories[i] = OverviewCategoryDTO{
 				CategoryID: g.CategoryID, Slug: g.Slug, TitleRu: g.TitleRu, Emoji: g.Emoji,
 				Best: lookupEntryDTOPtr(g.Best), FriendBest: lookupEntryDTOPtr(g.FriendBest),
+				Available:   availableEntryDTOPtr(g.Available),
 				OthersCount: g.OthersCount,
 			}
 		}
@@ -1124,11 +1142,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			out.Body.Fallback = append(out.Body.Fallback, lookupEntryDTO(e))
 		}
 		for _, a := range res.Available {
-			out.Body.Available = append(out.Body.Available, AvailableEntryDTO{
-				LookupEntryDTO: lookupEntryDTO(a.Entry),
-				OfferID:        a.OfferID,
-				Verdict:        string(a.Verdict), Activation: string(a.Activation),
-			})
+			out.Body.Available = append(out.Body.Available, availableEntryDTO(a))
 		}
 		for _, p := range res.Partner {
 			out.Body.Partner = append(out.Body.Partner, PartnerOfferDTO{
