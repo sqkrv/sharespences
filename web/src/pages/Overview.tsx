@@ -394,7 +394,7 @@ export default function Overview() {
               <ListRow
                 emoji={data.base.emoji || FALLBACK_EMOJI}
                 variant="dim"
-                onClick={() => navigate("/lookup?cat=all-purchases")}
+                onClick={() => navigate("/pos?cat=all-purchases")}
                 title={<span className="text-tx3">Остальное — за все покупки</span>}
                 sub={
                   <>

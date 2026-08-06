@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet, Navigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "./api/client";
 import { RequireAuth } from "./auth";
 import { OfflineChip, ReloadPrompt, usePrefetchOffline } from "./pwa";
@@ -15,7 +15,8 @@ import Banks from "./pages/Banks";
 import BankNew from "./pages/BankNew";
 import PeriodNew from "./pages/PeriodNew";
 import Period from "./pages/Period";
-import Lookup from "./pages/Lookup";
+import Search from "./pages/Search";
+import Pos from "./pages/Pos";
 import Partners from "./pages/Partners";
 import Friends from "./pages/Friends";
 import FriendsSettings from "./pages/FriendsSettings";
@@ -37,6 +38,13 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// The retired /lookup URL, kept as a redirect for cached shells/bookmarks.
+function LegacyLookup() {
+  const [params] = useSearchParams();
+  const cat = params.get("cat");
+  return <Navigate replace to={cat ? `/pos?cat=${cat}` : "/search"} />;
+}
 
 // Phone-shaped shell per the design: content column + fixed bottom navbar.
 // Top padding honors the status bar in standalone PWA (viewport-fit=cover).
@@ -75,10 +83,12 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/banks/new" element={<BankNew />} />
             <Route path="/periods/new" element={<PeriodNew />} />
             <Route path="/periods/:id" element={<Period />} />
-            {/* /search is the redesign's entry; it takes over from /lookup
-                when the dedicated screen lands (CB-04 v2). */}
-            <Route path="/search" element={<Lookup />} />
-            <Route path="/lookup" element={<Lookup />} />
+            <Route path="/search" element={<Search />} />
+            <Route path="/pos" element={<Pos />} />
+            {/* The old CB-04 address — cached PWA shells and bookmarks still
+                open it: a category deep link becomes the POS view, the rest
+                lands on the search screen. */}
+            <Route path="/lookup" element={<LegacyLookup />} />
             <Route path="/partners" element={<Partners />} />
             <Route path="/friends" element={<Friends />} />
             <Route path="/friends/settings" element={<FriendsSettings />} />
