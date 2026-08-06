@@ -9,6 +9,7 @@ import {
   ACTIONABLE_VERDICTS,
   FALLBACK_EMOJI,
   capNote,
+  fmtDate,
   initWithFriends,
   midMonthISO,
   monthKey,
@@ -19,6 +20,7 @@ import {
 
 type CategoryGroup = Schemas["OverviewCategoryDTO"];
 type LookupEntry = Schemas["LookupEntryDTO"];
+type PartnerFeed = Schemas["PartnerFeedDTO"];
 
 function useOverview(date: string) {
   return useQuery({
@@ -91,10 +93,15 @@ function ExpandedCategory({ slug, date, friendsOn }: { slug: string; date: strin
           <BankBadge name={e.bank_name} size={18} />
           <span className="min-w-0 flex-1 truncate text-xs font-semibold text-tx2">
             {e.bank_name}
-            {e.holder_label ? ` · ${e.holder_label}` : e.friend_name ? "" : " · Я"}
+            {e.holder_label ? ` · ${e.holder_label}` : e.friend_name || e.kind === "partner" ? "" : " · Я"}
             {e.friend_name && <span className="ml-1.5"><Chip tone="friend">друг · {e.friend_name}</Chip></span>}
+            {e.kind === "partner" && (
+              <span className="ml-1.5">
+                <Chip tone="gold">партнёрка{e.partner_scope === "merchant" ? ` · только в «${e.raw_title}»` : ""}</Chip>
+              </span>
+            )}
             {e.currency_kind === "points" && <span className="ml-1.5"><Chip tone="points">{e.points_label || "баллы"}</Chip></span>}
-            {!e.friend_name && capNote(e) && <span className="font-medium text-tx4"> · {capNote(e)}</span>}
+            {!e.friend_name && e.kind !== "partner" && capNote(e) && <span className="font-medium text-tx4"> · {capNote(e)}</span>}
           </span>
           <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
         </div>
@@ -180,6 +187,59 @@ function FeedRow({ g, date, friendsOn }: { g: CategoryGroup; date: string | null
   );
 }
 
+// A партнёрка feed row (v2): merchant-named, gold, alive even when the
+// month's menus are empty. Tap goes to its home on the bank card.
+function PartnerFeedRow({ p }: { p: PartnerFeed }) {
+  const navigate = useNavigate();
+  return (
+    <ListRow
+      lead={<span className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md bg-gold/15 text-[11px] font-extrabold text-gold">★</span>}
+      variant="gold"
+      onClick={() => navigate("/banks")}
+      title={p.raw_title}
+      sub={
+        <>
+          <BankBadge name={p.bank_name} size={16} />
+          <span>{p.bank_name}</span>
+          <Chip tone="gold">партнёрка{p.valid_to ? ` · по ${fmtDate(p.valid_to)}` : ""}</Chip>
+          {p.needs_activation && <span className="font-semibold text-warn">требует активации</span>}
+          {p.currency_kind === "points" && <Chip tone="points">{p.points_label || "баллы"}</Chip>}
+        </>
+      }
+      right={
+        <span className="w-11 flex-none text-right">
+          <Pct percent={p.percent} currency={p.currency_kind} className="text-base" />
+        </span>
+      }
+    />
+  );
+}
+
+// Interleave category and партнёрка rows without breaking invariant 5: the
+// percent sort merges by (currency group, percent desc) — both lists arrive
+// from the API already in that order — and the alphabet sort is by name.
+type FeedItem = { key: string; title: string; entry: LookupEntry; cat?: CategoryGroup; partner?: PartnerFeed };
+
+function mergeFeed(categories: CategoryGroup[], partners: PartnerFeed[], sort: CatsSort, friendsOn: boolean): FeedItem[] {
+  const items: FeedItem[] = [];
+  for (const g of categories) {
+    const w = winnerOf(g, friendsOn);
+    if (w) items.push({ key: `c${g.category_id}`, title: g.title_ru, entry: w.entry, cat: g });
+  }
+  for (const p of partners) {
+    items.push({ key: `p${p.partner_id}`, title: p.raw_title, entry: p, partner: p });
+  }
+  if (sort === "alpha") return items.sort((a, b) => a.title.localeCompare(b.title, "ru"));
+  const group = (k?: string) => (k === "rub" ? 0 : k === "points" ? 1 : 2);
+  return items.sort((a, b) => {
+    if (group(a.entry.currency_kind) !== group(b.entry.currency_kind)) return group(a.entry.currency_kind) - group(b.entry.currency_kind);
+    const pa = a.entry.percent != null ? parseFloat(a.entry.percent) : -1;
+    const pb = b.entry.percent != null ? parseFloat(b.entry.percent) : -1;
+    if (pa !== pb) return pb - pa;
+    return a.title.localeCompare(b.title, "ru");
+  });
+}
+
 // 5a — the honest zero-banks state: search and friends already work, only
 // the month context is missing. The CTA opens the bank catalog.
 function FirstRun() {
@@ -247,8 +307,7 @@ export default function Overview() {
   const unfilled = roster.filter((c) => !filledClientIDs.has(c.id));
   const monthEmpty = roster.length > 0 && filledClientIDs.size === 0;
 
-  const sortedCategories =
-    catsSort === "alpha" ? [...categories].sort((a, b) => a.title_ru.localeCompare(b.title_ru, "ru")) : categories;
+  const feed = mergeFeed(categories, data.partners ?? [], catsSort, friendsOn);
 
   return (
     <>
@@ -290,12 +349,16 @@ export default function Overview() {
       {roster.length === 0 ? (
         <>
           <FirstRun />
-          {categories.length > 0 && (
+          {feed.length > 0 && (
             <div className="space-y-1.5">
               <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Кешбеки друзей</p>
-              {sortedCategories.map((g) => (
-                <FeedRow key={g.category_id} g={g} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} />
-              ))}
+              {feed.map((it) =>
+                it.cat ? (
+                  <FeedRow key={it.key} g={it.cat} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} />
+                ) : (
+                  <PartnerFeedRow key={it.key} p={it.partner!} />
+                ),
+              )}
             </div>
           )}
         </>
@@ -331,7 +394,7 @@ export default function Overview() {
             </Card>
           )}
 
-          {(categories.length > 0 || singles.length > 0) && (
+          {(feed.length > 0 || singles.length > 0) && (
             <div className="mx-0.5 flex items-baseline justify-between" data-sid="CB-01.b">
               <span className="text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">
                 {monthEmpty ? "Пока работает" : `${categories.length} категорий`}
@@ -356,16 +419,20 @@ export default function Overview() {
             </div>
           )}
 
-          {categories.length === 0 && singles.length === 0 && unfilled.length === 0 && (
+          {feed.length === 0 && singles.length === 0 && unfilled.length === 0 && (
             <Card className="p-4 text-center text-sm font-medium text-tx3">
               Меню занесены, но ничего не выбрано — отметь выборы в «Банках».
             </Card>
           )}
 
           <div className="space-y-1.5" data-sid="CB-01.c">
-            {sortedCategories.map((g) => (
-              <FeedRow key={g.category_id} g={g} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} />
-            ))}
+            {feed.map((it) =>
+              it.cat ? (
+                <FeedRow key={it.key} g={it.cat} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} />
+              ) : (
+                <PartnerFeedRow key={it.key} p={it.partner!} />
+              ),
+            )}
 
             {singles.length > 0 && (
               <div className="rounded-xl border border-brd bg-srf/60 px-3 py-2.5" data-sid="CB-01.e">

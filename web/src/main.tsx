@@ -17,7 +17,7 @@ import PeriodNew from "./pages/PeriodNew";
 import Period from "./pages/Period";
 import Search from "./pages/Search";
 import Pos from "./pages/Pos";
-import Partners from "./pages/Partners";
+import PartnerNew from "./pages/PartnerNew";
 import Friends from "./pages/Friends";
 import FriendsSettings from "./pages/FriendsSettings";
 import FriendJoin from "./pages/FriendJoin";
@@ -89,7 +89,10 @@ createRoot(document.getElementById("root")!).render(
                 open it: a category deep link becomes the POS view, the rest
                 lands on the search screen. */}
             <Route path="/lookup" element={<LegacyLookup />} />
-            <Route path="/partners" element={<Partners />} />
+            {/* Партнёрки live on the bank cards since v2; the old list
+                address forwards there. */}
+            <Route path="/partners" element={<Navigate replace to="/banks" />} />
+            <Route path="/partners/new" element={<PartnerNew />} />
             <Route path="/friends" element={<Friends />} />
             <Route path="/friends/settings" element={<FriendsSettings />} />
             <Route path="/friends/join/:token" element={<FriendJoin />} />

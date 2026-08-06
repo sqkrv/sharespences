@@ -25,10 +25,10 @@ import { pushRecent } from "../recent";
 // first and the balance rows keep their own currency, stated in place.
 
 function KindBadge({ kind, stacked }: { kind?: string; stacked?: boolean }) {
-  if (!stacked && kind !== "super" && kind !== "special") return null;
+  if (!stacked && kind !== "super" && kind !== "special" && kind !== "partner") return null;
   return (
     <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] text-[9px] font-bold text-gold">
-      {kind === "special" ? "спец" : "барабан"}
+      {kind === "special" ? "спец" : kind === "partner" ? "партнёрка" : "барабан"}
     </span>
   );
 }
@@ -57,9 +57,16 @@ function BankRow({ e, note }: { e: LookupEntry; note?: string }) {
         <p className="truncate text-[10px] font-medium text-tx4">
           {e.friend_name
             ? `друг · ${e.friend_name} — попроси оплатить`
-            : [e.holder_label && `держатель ${e.holder_label}`, note ?? "выбрано у тебя", e.kind === "special" ? specialNote(e) : stackNote(e) || capNote(e)]
-                .filter(Boolean)
-                .join(" · ")}
+            : e.kind === "partner"
+              ? [
+                  e.partner_scope === "merchant" ? `только в «${e.raw_title}»` : "партнёрская акция",
+                  e.needs_activation && "требует активации",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : [e.holder_label && `держатель ${e.holder_label}`, note ?? "выбрано у тебя", e.kind === "special" ? specialNote(e) : stackNote(e) || capNote(e)]
+                  .filter(Boolean)
+                  .join(" · ")}
         </p>
       </div>
       <Pct percent={e.percent} currency={e.currency_kind} className="text-[15px]" />
@@ -112,6 +119,16 @@ export default function Pos() {
       qc.invalidateQueries({ queryKey: ["overview"] });
     },
   });
+
+  // Партнёрки matched by the point's NAME (v2) — honest name-based matching,
+  // shown as their own block: in Лавке such an offer often IS the answer.
+  const partnerMatch = useQuery({
+    queryKey: ["partner-match", merchant],
+    enabled: merchant != null && merchant !== "",
+    queryFn: async () =>
+      unwrap(await api.GET("/api/v1/cashback/partner-offers/match", { params: { query: { query: merchant! } } })),
+  });
+  const matches = partnerMatch.data?.matches ?? [];
 
   // «Недавнее» on the search screen — session-only, no localStorage.
   useEffect(() => {
@@ -212,6 +229,24 @@ export default function Pos() {
           <p className="text-sm font-semibold text-tx2">{lookup.data.message}</p>
           <p className="text-[10.5px] font-medium text-tx4">Карта попадает сюда, когда в её меню есть эта категория и она выбрана.</p>
         </Card>
+      )}
+
+      {matches.length > 0 && (
+        <div className="space-y-1.5" data-sid="CB-11.e">
+          <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-gold uppercase">Партнёрка в этой точке</p>
+          {matches.map((e, i) => (
+            <div key={i} className="flex items-center gap-2.5 rounded-2xl border border-gold/30 bg-gold/5 px-3 py-2.5">
+              <span className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[9px] bg-gold/15 text-xs font-extrabold text-gold">★</span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-semibold text-gold">{e.raw_title}</p>
+                <p className="truncate text-[10px] font-medium text-tx4">
+                  {[e.bank_name, "совпадение по названию точки", e.needs_activation && "требует активации"].filter(Boolean).join(" · ")}
+                </p>
+              </div>
+              <Pct percent={e.percent} currency={e.currency_kind} className="text-[15px]" />
+            </div>
+          ))}
+        </div>
       )}
 
       {resolve.data && (
