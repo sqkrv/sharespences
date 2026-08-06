@@ -891,11 +891,19 @@ func (q *Queries) ListOfferPeriodAttachments(ctx context.Context, offerPeriodID 
 }
 
 const listOfferPeriodsForUser = `-- name: ListOfferPeriodsForUser :many
-select op.id, op.period_start, op.period_end, op.max_categories_override, op.bank_client_id, cl.bank_id, cl.label as holder_label, b.name as bank_name
+select op.id, op.period_start, op.period_end, op.max_categories_override, op.bank_client_id,
+       cl.bank_id,
+       cl.label          as holder_label,
+       b.name            as bank_name,
+       count(co.id)::int as offer_count,
+       count(s.id)::int  as selected_count
 from offer_period op
          join bank_client cl on cl.id = op.bank_client_id
          join bank b on b.id = cl.bank_id
+         left join category_offer co on co.offer_period_id = op.id
+         left join selection s on s.category_offer_id = co.id
 where cl.user_id = $1
+group by op.id, cl.bank_id, cl.label, b.name
 order by op.period_start desc, op.id
 `
 
@@ -908,8 +916,13 @@ type ListOfferPeriodsForUserRow struct {
 	BankID                int32
 	HolderLabel           *string
 	BankName              string
+	OfferCount            int32
+	SelectedCount         int32
 }
 
+// ListOfferPeriodsForUser carries fill counts so the month picker can render
+// «заполнен/нет» per client without N+1 period fetches. selection is unique
+// per category_offer, so the left joins cannot fan out the counts.
 func (q *Queries) ListOfferPeriodsForUser(ctx context.Context, userID uuid.UUID) ([]ListOfferPeriodsForUserRow, error) {
 	rows, err := q.db.Query(ctx, listOfferPeriodsForUser, userID)
 	if err != nil {
@@ -928,6 +941,8 @@ func (q *Queries) ListOfferPeriodsForUser(ctx context.Context, userID uuid.UUID)
 			&i.BankID,
 			&i.HolderLabel,
 			&i.BankName,
+			&i.OfferCount,
+			&i.SelectedCount,
 		); err != nil {
 			return nil, err
 		}

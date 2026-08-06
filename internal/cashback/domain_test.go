@@ -884,6 +884,49 @@ func TestRankActiveSelectionsWithFriends(t *testing.T) {
 	}
 }
 
+// TestSplitFeedWinner covers the feed's friend rule (redesign 2026-08-06):
+// a friend enters a category row only by winning the ranking or filling a
+// hole, and the own winner survives alongside so the row can fall back when
+// friends are hidden or the share is revoked.
+func TestSplitFeedWinner(t *testing.T) {
+	on := Date(2026, time.July, 15)
+	own5 := LookupEntry{ClientID: 1, BankName: "ВТБ", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026}
+	own7pts := LookupEntry{ClientID: 4, BankName: "Яндекс Пэй", Percent: pct("7"), CurrencyKind: CurrencyPoints, Kind: OfferRegular, Period: july2026}
+	friend10 := LookupEntry{ClientID: 2, BankName: "Т-Банк", Percent: pct("10"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, FriendName: "Кирилл", FriendUsername: "kirill"}
+	friend5 := LookupEntry{ClientID: 3, BankName: "Альфа-Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, FriendName: "Кирилл", FriendUsername: "kirill"}
+	friend9pts := LookupEntry{ClientID: 5, BankName: "Яндекс Пэй", Percent: pct("9"), CurrencyKind: CurrencyPoints, Kind: OfferRegular, Period: july2026, FriendName: "Стас", FriendUsername: "stas"}
+
+	cases := []struct {
+		name       string
+		entries    []LookupEntry
+		wantOwn    string // BankName; "" = nil
+		wantFriend string // BankName; "" = nil
+	}{
+		{"own only", []LookupEntry{own5}, "ВТБ", ""},
+		{"friend wins same currency, own retained", []LookupEntry{own5, friend10}, "ВТБ", "Т-Банк"},
+		{"tie goes to own, friend hidden", []LookupEntry{own5, friend5}, "ВТБ", ""},
+		{"friend fills a hole", []LookupEntry{friend10}, "", "Т-Банк"},
+		{"friend points never beat own rubles", []LookupEntry{own5, friend9pts}, "ВТБ", ""},
+		{"friend rubles rank above own points by position", []LookupEntry{own7pts, friend5}, "Яндекс Пэй", "Альфа-Банк"},
+		{"empty", nil, "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			own, friend := SplitFeedWinner(RankActiveSelections(on, tc.entries).Ranked)
+			gotOwn, gotFriend := "", ""
+			if own != nil {
+				gotOwn = own.BankName
+			}
+			if friend != nil {
+				gotFriend = friend.BankName
+			}
+			if gotOwn != tc.wantOwn || gotFriend != tc.wantFriend {
+				t.Fatalf("SplitFeedWinner: own=%q friend=%q, want own=%q friend=%q", gotOwn, gotFriend, tc.wantOwn, tc.wantFriend)
+			}
+		})
+	}
+}
+
 // TestFriendShareWindow covers friends-sharing invariant 8: a granted
 // friend reads periods overlapping [today .. the end of next month] — the
 // current picture plus the next-month coordination window, never history.

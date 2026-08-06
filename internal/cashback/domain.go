@@ -602,6 +602,25 @@ func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult 
 	return res
 }
 
+// SplitFeedWinner applies the feed's friend rule to one ranked category:
+// a friend appears in the row only when ranking put a friend's card first —
+// they win outright or fill a hole the viewer has no card for. The own best
+// is always returned alongside, so hiding friends (or a friend revoking the
+// share) falls the row back to the own winner instead of dropping it.
+// Both nil ⇔ the ranked list is empty.
+func SplitFeedWinner(ranked []LookupEntry) (own, friend *LookupEntry) {
+	for i := range ranked {
+		if ranked[i].FriendName == "" {
+			own = &ranked[i]
+			break
+		}
+	}
+	if len(ranked) > 0 && ranked[0].FriendName != "" {
+		friend = &ranked[0]
+	}
+	return own, friend
+}
+
 // homoglyphs maps the Latin letters that are pixel-identical to Cyrillic
 // ones onto their Cyrillic twins. Real Альфа menu titles mix them into
 // Cyrillic words («Кафе и pестораны», «Цвeты»). Applied to both sides of

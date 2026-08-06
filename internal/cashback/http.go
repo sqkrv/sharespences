@@ -167,10 +167,13 @@ type CategoryOfferDTO struct {
 }
 
 // OfferPeriodListItem is one row of the period list (needs a name so huma
-// doesn't auto-name slice elements and collide).
+// doesn't auto-name slice elements and collide). The fill counts let the
+// month picker mark a client's month «заполнен/нет» from the list alone.
 type OfferPeriodListItem struct {
 	OfferPeriodDTO
-	BankName string `json:"bank_name"`
+	BankName      string `json:"bank_name"`
+	OfferCount    int32  `json:"offer_count"`
+	SelectedCount int32  `json:"selected_count"`
 }
 
 // HelperRowDTO is one menu row in the helper-context response.
@@ -221,6 +224,14 @@ type LookupEntryDTO struct {
 	StackedSuper   *string `json:"stacked_super,omitempty" doc:"the барабан granted on top of that pick — mark the row «барабан» when this is set"`
 	FriendName     string  `json:"friend_name,omitempty" doc:"карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда"`
 	FriendUsername string  `json:"friend_username,omitempty"`
+}
+
+func lookupEntryDTOPtr(e *LookupEntry) *LookupEntryDTO {
+	if e == nil {
+		return nil
+	}
+	dto := lookupEntryDTO(*e)
+	return &dto
 }
 
 func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
@@ -362,13 +373,18 @@ type BankCategoryDTO struct {
 }
 
 // OverviewCategoryDTO is one «Категории» row: category + its best card.
+// best is the viewer's own winner (absent when only a friend covers the
+// category); friend_best appears only when a friend's card outranks every
+// own one or fills such a hole — the row falls back to best when friends
+// are hidden, it never vanishes (redesign 2026-08-06).
 type OverviewCategoryDTO struct {
-	CategoryID  int64          `json:"category_id"`
-	Slug        string         `json:"slug"`
-	TitleRu     string         `json:"title_ru"`
-	Emoji       string         `json:"emoji,omitempty" doc:"canonical category icon for the list"`
-	Best        LookupEntryDTO `json:"best"`
-	OthersCount int            `json:"others_count"`
+	CategoryID  int64           `json:"category_id"`
+	Slug        string          `json:"slug"`
+	TitleRu     string          `json:"title_ru"`
+	Emoji       string          `json:"emoji,omitempty" doc:"canonical category icon for the list"`
+	Best        *LookupEntryDTO `json:"best,omitempty" doc:"the viewer's own best card; absent when only a friend covers the category"`
+	FriendBest  *LookupEntryDTO `json:"friend_best,omitempty" doc:"a friend's card that wins the ranking or fills a hole"`
+	OthersCount int             `json:"others_count" doc:"other own cards beyond best; friends are not counted"`
 }
 
 // OverviewChipDTO is a selected menu row rendered as a chip on a card.
@@ -604,6 +620,8 @@ func RegisterHTTP(api huma.API, s *Service) {
 			out.Body = append(out.Body, OfferPeriodListItem{
 				OfferPeriodDTO: offerPeriodDTO(db.OfferPeriod{ID: r.ID, BankClientID: r.BankClientID, PeriodStart: r.PeriodStart, PeriodEnd: r.PeriodEnd, MaxCategoriesOverride: r.MaxCategoriesOverride}),
 				BankName:       r.BankName,
+				OfferCount:     r.OfferCount,
+				SelectedCount:  r.SelectedCount,
 			})
 		}
 		return out, nil
@@ -979,6 +997,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Date              string                `json:"date"`
 			Categories        []OverviewCategoryDTO `json:"categories"`
 			Base              *OverviewBaseDTO      `json:"base,omitempty"`
+			SingleBank        []LookupEntryDTO      `json:"single_bank,omitempty" doc:"«Только в одном банке»: selected canonical-less rows, shown collapsed"`
 			Clients           []OverviewClientDTO   `json:"clients"`
 			SelectionOpensDay *int32                `json:"selection_opens_day,omitempty"`
 		}
@@ -999,6 +1018,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Date              string                `json:"date"`
 				Categories        []OverviewCategoryDTO `json:"categories"`
 				Base              *OverviewBaseDTO      `json:"base,omitempty"`
+				SingleBank        []LookupEntryDTO      `json:"single_bank,omitempty" doc:"«Только в одном банке»: selected canonical-less rows, shown collapsed"`
 				Clients           []OverviewClientDTO   `json:"clients"`
 				SelectionOpensDay *int32                `json:"selection_opens_day,omitempty"`
 			}
@@ -1012,8 +1032,12 @@ func RegisterHTTP(api huma.API, s *Service) {
 		for i, g := range res.Categories {
 			out.Body.Categories[i] = OverviewCategoryDTO{
 				CategoryID: g.CategoryID, Slug: g.Slug, TitleRu: g.TitleRu, Emoji: g.Emoji,
-				Best: lookupEntryDTO(g.Best), OthersCount: g.OthersCount,
+				Best: lookupEntryDTOPtr(g.Best), FriendBest: lookupEntryDTOPtr(g.FriendBest),
+				OthersCount: g.OthersCount,
 			}
+		}
+		for _, e := range res.SingleBank {
+			out.Body.SingleBank = append(out.Body.SingleBank, lookupEntryDTO(e))
 		}
 		out.Body.Clients = make([]OverviewClientDTO, len(res.Clients))
 		for i, c := range res.Clients {

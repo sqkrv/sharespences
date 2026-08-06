@@ -165,8 +165,20 @@ func friendClientView(clientID int64, rows []db.ListOffersForClientsRow, window 
 // coordination), but can never reach history — the window itself derives
 // from server time.
 func (s *Service) friendLookupEntries(ctx context.Context, viewerID uuid.UUID, categoryID int64) ([]LookupEntry, error) {
-	friends, rows, err := s.sharedRows(ctx, viewerID)
+	byCat, err := s.friendEntriesByCategory(ctx, viewerID)
 	if err != nil {
+		return nil, err
+	}
+	return byCat[categoryID], nil
+}
+
+// friendEntriesByCategory buckets friends' SELECTED, canonical-mapped rows
+// by category — the feed (redesign 2026-08-06) needs every category in one
+// pass, so sharedRows loads once instead of once per category. All the
+// friendLookupEntries boundaries hold here.
+func (s *Service) friendEntriesByCategory(ctx context.Context, viewerID uuid.UUID) (map[int64][]LookupEntry, error) {
+	friends, rows, err := s.sharedRows(ctx, viewerID)
+	if err != nil || len(rows) == 0 {
 		return nil, err
 	}
 	window := FriendShareWindow(time.Now())
@@ -176,9 +188,9 @@ func (s *Service) friendLookupEntries(ctx context.Context, viewerID uuid.UUID, c
 			owner[id] = &friends[i]
 		}
 	}
-	var entries []LookupEntry
+	byCat := make(map[int64][]LookupEntry)
 	for _, r := range rows {
-		if !r.Selected || r.CanonicalCategoryID == nil || *r.CanonicalCategoryID != categoryID {
+		if !r.Selected || r.CanonicalCategoryID == nil {
 			continue
 		}
 		if !rowRange(r.PeriodStart, r.PeriodEnd).Overlaps(window) {
@@ -192,9 +204,9 @@ func (s *Service) friendLookupEntries(ctx context.Context, viewerID uuid.UUID, c
 		e.CapValue, e.CapPerCategory, e.OfferCapValue, e.CapScope = nil, nil, nil, ""
 		e.FriendName = f.DisplayName
 		e.FriendUsername = f.Username
-		entries = append(entries, e)
+		byCat[*r.CanonicalCategoryID] = append(byCat[*r.CanonicalCategoryID], e)
 	}
-	return entries, nil
+	return byCat, nil
 }
 
 // sharedRows resolves the viewer's friends + grants (via the injected seam)

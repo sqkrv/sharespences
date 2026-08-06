@@ -654,12 +654,17 @@ func (s *Service) HelperContext(ctx context.Context, userID uuid.UUID, offerPeri
 // before points, percent desc within a group) — deliberately NOT a numeric
 // cross-currency comparison (invariant 5); rubles win by list position only.
 type OverviewCategoryGroup struct {
-	CategoryID  int64
-	Slug        string
-	TitleRu     string
-	Emoji       string // canonical category icon for the list (2026-07-27)
-	Best        LookupEntry
-	OthersCount int
+	CategoryID int64
+	Slug       string
+	TitleRu    string
+	Emoji      string // canonical category icon for the list (2026-07-27)
+	// Best is the viewer's own winner; nil when only a friend covers the
+	// category. FriendBest is set only when a friend's card outranks every
+	// own one or fills such a hole (redesign 2026-08-06) — hiding friends
+	// falls the row back to Best instead of dropping it.
+	Best        *LookupEntry
+	FriendBest  *LookupEntry
+	OthersCount int // other OWN cards beyond Best; friends never counted
 }
 
 // OverviewSelectedRow is a selected menu row shown as a chip on a card.
@@ -730,9 +735,13 @@ func emojiOf(c db.CanonicalCategory) string {
 // OverviewResult answers GET /cashback/overview: the design's two cuts of
 // the same month (screens 01/02), plus the passive «selection opens» day.
 type OverviewResult struct {
-	Categories        []OverviewCategoryGroup
-	Base              *OverviewBase
-	Clients           []OverviewClient
+	Categories []OverviewCategoryGroup
+	Base       *OverviewBase
+	Clients    []OverviewClient
+	// SingleBank is the «Только в одном банке» tail (redesign 2026-08-06):
+	// selected canonical-less rows — a bank's own service categories that
+	// cannot group across banks. Ranked for a stable order, shown collapsed.
+	SingleBank        []LookupEntry
 	SelectionOpensDay *int32 // earliest across the user's clients' programs
 }
 
@@ -819,29 +828,61 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		}
 		byCat[*o.CanonicalCategoryID] = append(byCat[*o.CanonicalCategoryID], entryOf(o))
 	}
+	// Friends enter the feed rankings (redesign 2026-08-06) — surfaced only
+	// when they win or fill a hole (SplitFeedWinner). Their all-purchases
+	// rows stay out: base rates are personal, «Остальное» is own-only.
+	friendCats, err := s.friendEntriesByCategory(ctx, userID)
+	if err != nil {
+		return OverviewResult{}, err
+	}
+	for catID, entries := range friendCats {
+		if allPurposesID != nil && catID == *allPurposesID {
+			continue
+		}
+		byCat[catID] = append(byCat[catID], entries...)
+	}
 	for catID, entries := range byCat {
 		ranked := RankActiveSelections(onDate, entries)
 		cat, ok := catByID[catID]
 		if !ok {
 			continue
 		}
-		if len(ranked.Ranked) == 0 {
-			continue // nothing active
-		}
 		// All three kinds rank (invariant 6 amendment, 2026-07-27): the
 		// best card may be a барабан or a спец — the frontend marks it.
+		own, friendBest := SplitFeedWinner(ranked.Ranked)
+		if own == nil && friendBest == nil {
+			continue // nothing active
+		}
+		ownCount := 0
+		for _, e := range ranked.Ranked {
+			if e.FriendName == "" {
+				ownCount++
+			}
+		}
+		others := ownCount
+		if own != nil {
+			others--
+		}
 		res.Categories = append(res.Categories, OverviewCategoryGroup{
 			CategoryID:  catID,
 			Slug:        cat.Slug,
 			TitleRu:     cat.TitleRu,
 			Emoji:       emojiOf(cat),
-			Best:        ranked.Ranked[0],
-			OthersCount: len(ranked.Ranked) - 1,
+			Best:        own,
+			FriendBest:  friendBest,
+			OthersCount: others,
 		})
 	}
-	// Sort: rub before points; then percent desc; then title.
+	// Sort: rub before points; then percent desc; then title. The key is the
+	// row's displayed winner — the friend when one is surfaced.
+	winnerOf := func(g OverviewCategoryGroup) *LookupEntry {
+		if g.FriendBest != nil {
+			return g.FriendBest
+		}
+		return g.Best
+	}
 	sort.SliceStable(res.Categories, func(i, j int) bool {
-		a, b := res.Categories[i].Best, res.Categories[j].Best
+		a, b := winnerOf(res.Categories[i]), winnerOf(res.Categories[j])
 		ca := map[CurrencyKind]int{CurrencyRub: 0, CurrencyPoints: 1}[a.CurrencyKind]
 		cb := map[CurrencyKind]int{CurrencyRub: 0, CurrencyPoints: 1}[b.CurrencyKind]
 		if ca != cb {
@@ -852,6 +893,18 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		}
 		return res.Categories[i].TitleRu < res.Categories[j].TitleRu
 	})
+
+	// «Только в одном банке»: selected canonical-less rows — bank-own
+	// service categories («Альфа-Тревел», «ЖКУ») that no canonical groups.
+	// Unmapped rows used to be invisible here; the redesign shows them as a
+	// collapsed tail instead of dropping them from the feed.
+	var singles []LookupEntry
+	for _, o := range offers {
+		if o.Selected && o.CanonicalCategoryID == nil {
+			singles = append(singles, entryOf(o))
+		}
+	}
+	res.SingleBank = RankActiveSelections(onDate, singles).Ranked
 
 	// «Остальное»: best selected «За все покупки» across clients.
 	fb := RankActiveSelections(onDate, fallbackEntries(offers, allPurposesID, nil, entryOf))

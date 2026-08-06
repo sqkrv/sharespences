@@ -1255,6 +1255,8 @@ export interface components {
             date: string;
             /** Format: int32 */
             selection_opens_day?: number;
+            /** @description «Только в одном банке»: selected canonical-less rows, shown collapsed */
+            single_bank?: components["schemas"]["LookupEntryDTO"][] | null;
         };
         "Cashback-partner-offer-attachRequest": {
             /**
@@ -1693,8 +1695,12 @@ export interface components {
             id: number;
             /** Format: int32 */
             max_categories_override?: number;
+            /** Format: int32 */
+            offer_count: number;
             period_end: string;
             period_start: string;
+            /** Format: int32 */
+            selected_count: number;
         };
         OverviewBaseDTO: {
             best: components["schemas"]["LookupEntryDTO"];
@@ -1711,12 +1717,18 @@ export interface components {
             payment_system: string;
         };
         OverviewCategoryDTO: {
-            best: components["schemas"]["LookupEntryDTO"];
+            /** @description the viewer's own best card; absent when only a friend covers the category */
+            best?: components["schemas"]["LookupEntryDTO"];
             /** Format: int64 */
             category_id: number;
             /** @description canonical category icon for the list */
             emoji?: string;
-            /** Format: int64 */
+            /** @description a friend's card that wins the ranking or fills a hole */
+            friend_best?: components["schemas"]["LookupEntryDTO"];
+            /**
+             * Format: int64
+             * @description other own cards beyond best; friends are not counted
+             */
             others_count: number;
             slug: string;
             title_ru: string;
