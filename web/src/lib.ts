@@ -145,7 +145,7 @@ export function fmtPercent(p?: string): string {
   return p != null ? `${p}%` : "—%";
 }
 
-const MONTHS_NOM = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+export const MONTHS_NOM = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
 const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 
 // «июль 2026» — the overview header chip.
@@ -204,3 +204,38 @@ export function monthNameOf(iso: string): string {
 // Category icon fallback — a canonical category may carry no emoji yet
 // (custom rows, un-curated additions); the icon column still aligns.
 export const FALLBACK_EMOJI = "🏷️";
+
+// S3b verdict copy — fact-based states, never guesses (spec S3b). Shared by
+// the feed's dashed rows and the lookup's «Можно выбрать» section.
+export function verdictNote(e: { verdict: string; kind?: string; activation?: string }): string {
+  const parts: string[] = [];
+  switch (e.verdict) {
+    case "free":
+      parts.push(e.kind === "super" ? "барабан — не занимает слот" : "можно выбрать сейчас");
+      break;
+    case "paid":
+      parts.push("смена платная у банка");
+      break;
+    case "locked":
+      parts.push("выбор в банке уже зафиксирован");
+      break;
+    case "slots_full":
+      parts.push("слоты заняты — сначала сними другую");
+      break;
+    default:
+      parts.push("правила банка неизвестны — проверь в приложении");
+  }
+  if (e.activation === "next_day") parts.push("активируется завтра");
+  return parts.join(" · ");
+}
+
+export const ACTIONABLE_VERDICTS = new Set(["free", "paid", "unknown"]);
+
+// «Карты друзей» in rankings (friends-sharing FR-S4) — persisted under the
+// policy-listed lookup-friends key (privacy.html §3.2). Default on: the
+// shared card is the feature's whole point. The feed reads the same key —
+// with friends off a row falls back to the own winner, it never vanishes.
+export const FRIENDS_KEY = "lookup-friends";
+export function initWithFriends(): boolean {
+  return localStorage.getItem(FRIENDS_KEY) !== "off";
+}

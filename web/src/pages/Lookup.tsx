@@ -1,45 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { api, unwrap, ApiError, type LookupEntry, type Schemas } from "../api/client";
+import { api, unwrap, ApiError, type LookupEntry } from "../api/client";
 import { useCards, useCategories } from "../hooks";
 import { BankBadge, Btn, Card, ErrMsg, GradientCard, Pct, SegTabs, Spinner } from "../components/ui";
-import { capNote, currencyBadge, currencyWord, FALLBACK_EMOJI, fmtDate, fmtPercent } from "../lib";
-
-type AvailableEntry = Schemas["AvailableEntryDTO"];
-
-// S3b verdict copy — fact-based states, never guesses (spec S3b).
-function verdictNote(e: AvailableEntry): string {
-  const parts: string[] = [];
-  switch (e.verdict) {
-    case "free":
-      parts.push(e.kind === "super" ? "барабан — не занимает слот" : "можно выбрать сейчас");
-      break;
-    case "paid":
-      parts.push("смена платная у банка");
-      break;
-    case "locked":
-      parts.push("выбор в банке уже зафиксирован");
-      break;
-    case "slots_full":
-      parts.push("слоты заняты — сначала сними другую");
-      break;
-    default:
-      parts.push("правила банка неизвестны — проверь в приложении");
-  }
-  if (e.activation === "next_day") parts.push("активируется завтра");
-  return parts.join(" · ");
-}
-
-const ACTIONABLE = new Set(["free", "paid", "unknown"]);
-
-// «Карты друзей» in the ranking (friends-sharing FR-S4) — persisted under
-// the policy-listed lookup-friends key (privacy.html §3.2). Default on:
-// the shared card is the feature's whole point.
-const FRIENDS_KEY = "lookup-friends";
-function initWithFriends(): boolean {
-  return localStorage.getItem(FRIENDS_KEY) !== "off";
-}
+import { ACTIONABLE_VERDICTS as ACTIONABLE, capNote, currencyBadge, currencyWord, FALLBACK_EMOJI, fmtDate, fmtPercent, FRIENDS_KEY, initWithFriends, verdictNote } from "../lib";
 
 type Mode = "near" | "search" | "cat";
 

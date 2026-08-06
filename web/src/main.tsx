@@ -11,6 +11,8 @@ import NavBar from "./components/NavBar";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Overview from "./pages/Overview";
+import Banks from "./pages/Banks";
+import BankNew from "./pages/BankNew";
 import PeriodNew from "./pages/PeriodNew";
 import Period from "./pages/Period";
 import Lookup from "./pages/Lookup";
@@ -69,8 +71,13 @@ createRoot(document.getElementById("root")!).render(
             }
           >
             <Route path="/" element={<Overview />} />
+            <Route path="/banks" element={<Banks />} />
+            <Route path="/banks/new" element={<BankNew />} />
             <Route path="/periods/new" element={<PeriodNew />} />
             <Route path="/periods/:id" element={<Period />} />
+            {/* /search is the redesign's entry; it takes over from /lookup
+                when the dedicated screen lands (CB-04 v2). */}
+            <Route path="/search" element={<Lookup />} />
             <Route path="/lookup" element={<Lookup />} />
             <Route path="/partners" element={<Partners />} />
             <Route path="/friends" element={<Friends />} />
