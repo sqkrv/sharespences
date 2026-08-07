@@ -443,6 +443,9 @@ func (g *gen) fillOnePeriod(ctx context.Context, clientID int64, bank string, st
 		if _, err := g.q.CreatePartnerOffer(ctx, db.CreatePartnerOfferParams{
 			UserID: g.userID, BankID: g.banks[bank], BankClientID: &clientID,
 			MerchantTitle: m, Percent: &pct, ValidFrom: &from, ValidTo: &to,
+			// scope_kind is NOT NULL since 00024 (партнёрки v2) — these are
+			// merchant offers, matching what the CB-12 form records.
+			ScopeKind: db.PartnerScopeMerchant,
 		}); err != nil {
 			return fmt.Errorf("partner %q: %w", m, err)
 		}
