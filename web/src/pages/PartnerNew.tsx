@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, unwrap, uploadAttachment } from "../api/client";
 import { useBanks, useCategories, useClients, usePrograms } from "../hooks";
-import { Btn, Card, ErrMsg, Field, Input, Select, Spinner } from "../components/ui";
+import { BackButton, Btn, Card, ErrMsg, Field, Input, Select, Spinner } from "../components/ui";
 import { FALLBACK_EMOJI } from "../lib";
 
 // CB-12 «Партнёрское предложение» (redesign 2f) — a screen, not a form under
@@ -144,11 +144,7 @@ export default function PartnerNew() {
   return (
     <>
       <div className="flex items-center gap-2.5">
-        <Link to="/banks" className="flex h-[33px] w-[33px] flex-none items-center justify-center rounded-[11px] border border-brd bg-srf">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--t-tx2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14.5 5 8 12l6.5 7" />
-          </svg>
-        </Link>
+        <BackButton fallback="/banks" />
         <h1 className="min-w-0 flex-1 text-xl font-extrabold tracking-tight">Партнёрское предложение</h1>
       </div>
 

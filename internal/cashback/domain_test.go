@@ -676,7 +676,8 @@ func TestAssessAvailability(t *testing.T) {
 }
 
 // TestRankAvailable: actionable verdicts first, then the ranked ordering
-// (currency group, percent desc) within.
+// (currency group, percent desc) within. Blocked verdicts (slots_full,
+// locked) never reach ranking — services drop non-Pickable rows.
 func TestRankAvailable(t *testing.T) {
 	mk := func(v AvailabilityVerdict, pctStr string, cur CurrencyKind, bank string) AvailableEntry {
 		return AvailableEntry{
@@ -685,20 +686,34 @@ func TestRankAvailable(t *testing.T) {
 		}
 	}
 	got := RankAvailable([]AvailableEntry{
-		mk(AvailLocked, "10", CurrencyRub, "ВТБ"),
+		mk(AvailUnknown, "10", CurrencyRub, "Газпромбанк"),
 		mk(AvailFree, "5", CurrencyRub, "А"),
 		mk(AvailFree, "8", CurrencyRub, "Б"),
 		mk(AvailFree, "7", CurrencyPoints, "Яндекс Пэй"),
 		mk(AvailPaid, "9", CurrencyRub, "МКБ"),
-		mk(AvailSlotsFull, "12", CurrencyRub, "В"),
 	})
-	wantOrder := []string{"8", "5", "7", "9", "12", "10"} // free rub desc, free points, paid, slots_full, locked
+	wantOrder := []string{"8", "5", "7", "9", "10"} // free rub desc, free points, paid, unknown
 	if len(got) != len(wantOrder) {
 		t.Fatalf("RankAvailable() len = %d, want %d", len(got), len(wantOrder))
 	}
 	for i, w := range wantOrder {
 		if got[i].Entry.Percent.String() != w {
 			t.Errorf("RankAvailable()[%d].Percent = %s, want %s", i, got[i].Entry.Percent.String(), w)
+		}
+	}
+}
+
+// TestVerdictPickable pins the display rule (2026-08-07): a row whose slot
+// window is gone can never come back — no bank lets a pick be removed — so
+// slots_full and locked are not shown, everything else is.
+func TestVerdictPickable(t *testing.T) {
+	want := map[AvailabilityVerdict]bool{
+		AvailFree: true, AvailPaid: true, AvailUnknown: true,
+		AvailSlotsFull: false, AvailLocked: false,
+	}
+	for v, w := range want {
+		if v.Pickable() != w {
+			t.Errorf("%s.Pickable() = %v, want %v", v, v.Pickable(), w)
 		}
 	}
 }

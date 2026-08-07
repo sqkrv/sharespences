@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api, unwrap, attachmentURL, uploadAttachment, ApiError, type CanonicalCategory, type CategoryOffer, type HelperRow } from "../api/client";
 import { useBankCategories, useBanks, useCards, useCategories, useClients, useTierMap } from "../hooks";
-import { Badge, Btn, Card, CheckDot, ErrMsg, errorText, Field, GradientCard, Input, Pct, Select, Spinner } from "../components/ui";
+import { BackButton, Badge, Btn, Card, CheckDot, ErrMsg, errorText, Field, GradientCard, Input, Pct, Select, Spinner, useGoBack } from "../components/ui";
 import { CategoryPicker, type PickedCategory } from "../components/CategoryPicker";
 import { Lightbox } from "../components/Lightbox";
-import { currencyBadge, fmtRange, midPeriodAddNote } from "../lib";
+import { PartnerChips, PartnerSheet } from "../components/Partners";
+import { currencyBadge, fmtRange } from "../lib";
 
 function usePeriod(id: number) {
   return useQuery({
@@ -454,6 +455,14 @@ export default function Period() {
   // 2d: neighbor comparisons and collision details live behind a tap on the
   // row — the list stays scannable, the sticky bar still counts collisions.
   const [expandedID, setExpandedID] = useState<number | null>(null);
+  const [partnerID, setPartnerID] = useState<number | null>(null);
+  const goBack = useGoBack();
+  // Партнёрки live on the bank, not on the month menu — but this screen is
+  // where their bank is open, so they are visible and editable here too.
+  const partnerOffers = useQuery({
+    queryKey: ["partner-offers"],
+    queryFn: async () => unwrap(await api.GET("/api/v1/cashback/partner-offers")) ?? [],
+  });
 
   const helperByOffer = useMemo(() => {
     const m = new Map<number, HelperRow>();
@@ -539,15 +548,15 @@ export default function Period() {
   // The client's plastics — any of them pays with this period's selection.
   const clientCards = (cards.data ?? []).filter((c) => c.bank_client_id === p.bank_client_id);
   const cardChips = clientCards.map((c) => `··${String(c.last_4_digits).padStart(4, "0")}`).join(" ");
+  // This client's партнёрки, plus the bank-wide ones of the same bank.
+  const clientPartners = (partnerOffers.data ?? []).filter(
+    (o) => o.bank_client_id === p.bank_client_id || (o.bank_client_id == null && o.bank_id === p.bank_id),
+  );
 
   return (
     <>
       <div className="flex items-center gap-2.5">
-        <Link to="/" className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-brd bg-srf">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-tx2">
-            <path d="M14.5 5 8 12l6.5 7" />
-          </svg>
-        </Link>
+        <BackButton small />
         <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">{p.bank_name}</h1>
         {tierInfo && <Badge tone="indigo">{tierInfo.tier.name}</Badge>}
       </div>
@@ -564,14 +573,6 @@ export default function Period() {
               <p className="mt-2 text-[11px] font-semibold text-white/85">
                 {[client?.label, cardChips].filter(Boolean).join(" · ") || "любая карта"} · {currencyBadge(currency, tierInfo.program.points_label ?? undefined) === "₽" ? "рубли" : currencyBadge(currency, tierInfo.program.points_label ?? undefined)}
               </p>
-              {/* Whether a slot can still be filled in a live period — the
-                  same policy S3b «Можно выбрать» keys on, shown where the
-                  user is actually filling slots. */}
-              {midPeriodAddNote(tierInfo.program.mid_period_add, tierInfo.program.activation) && (
-                <p className="mt-1 text-[11px] font-semibold text-white/70">
-                  Категории: {midPeriodAddNote(tierInfo.program.mid_period_add, tierInfo.program.activation)}
-                </p>
-              )}
             </div>
             <div className="text-right">
               <p className="text-[9.5px] font-bold uppercase tracking-[.1em] text-white/70">Лимит</p>
@@ -772,7 +773,7 @@ export default function Period() {
           <input type="checkbox" checked={backfill} onChange={(e) => setBackfill(e.target.checked)} />
           задним числом
         </label>
-        <Btn className="!px-4 !py-1.5 text-xs" onClick={() => navigate("/")}>
+        <Btn className="!px-4 !py-1.5 text-xs" onClick={goBack}>
           Готово
         </Btn>
       </div>
@@ -780,6 +781,26 @@ export default function Period() {
       <p className="px-0.5 text-[10px] leading-snug font-medium text-tx4">
         Отметки фиксируют выбор, уже сделанный в приложении банка; «задним числом» — для заполнения истории.
       </p>
+
+      <div data-sid="CB-03.e">
+        <div className="flex items-baseline justify-between px-0.5">
+          <span className="text-[13px] font-bold">Партнёрки</span>
+          <button
+            type="button"
+            className="text-[10.5px] font-semibold text-tx4"
+            onClick={() => navigate(`/partners/new?client=${p.bank_client_id}`)}
+          >
+            + партнёрка
+          </button>
+        </div>
+        {clientPartners.length > 0 ? (
+          <PartnerChips offers={clientPartners} onOpen={setPartnerID} />
+        ) : (
+          <p className="mt-1.5 text-[10.5px] font-medium text-tx4">
+            У этого банка нет партнёрских предложений — они живут у банка, не у меню месяца.
+          </p>
+        )}
+      </div>
 
       <AddOfferForm periodID={id} bankID={p.bank_id} bankName={p.bank_name} bankColor={bankColor} />
 
@@ -794,6 +815,8 @@ export default function Period() {
           Удалить период
         </Btn>
       </div>
+
+      {partnerID != null && <PartnerSheet id={partnerID} onClose={() => setPartnerID(null)} />}
     </>
   );
 }

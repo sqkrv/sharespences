@@ -900,16 +900,20 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		if max == nil {
 			max = o.MaxCategories
 		}
+		verdict := AssessAvailability(AvailabilityCheck{
+			Kind:                 kind,
+			Policy:               MidPeriodAddPolicy(o.MidPeriodAdd),
+			HasRegularSelection:  regCount[o.OfferPeriodID] > 0,
+			MaxCategories:        max,
+			RegularSelectedCount: regCount[o.OfferPeriodID],
+		})
+		if !verdict.Pickable() {
+			continue
+		}
 		availByCat[*o.CanonicalCategoryID] = append(availByCat[*o.CanonicalCategoryID], AvailableEntry{
-			Entry:   entryOf(o),
-			OfferID: o.CategoryOfferID,
-			Verdict: AssessAvailability(AvailabilityCheck{
-				Kind:                 kind,
-				Policy:               MidPeriodAddPolicy(o.MidPeriodAdd),
-				HasRegularSelection:  regCount[o.OfferPeriodID] > 0,
-				MaxCategories:        max,
-				RegularSelectedCount: regCount[o.OfferPeriodID],
-			}),
+			Entry:      entryOf(o),
+			OfferID:    o.CategoryOfferID,
+			Verdict:    verdict,
 			Activation: ActivationKind(o.Activation),
 		})
 	}
@@ -1250,16 +1254,20 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 		if max == nil {
 			max = o.MaxCategories
 		}
+		verdict := AssessAvailability(AvailabilityCheck{
+			Kind:                 kind,
+			Policy:               MidPeriodAddPolicy(o.MidPeriodAdd),
+			HasRegularSelection:  regCount[o.OfferPeriodID] > 0,
+			MaxCategories:        max,
+			RegularSelectedCount: regCount[o.OfferPeriodID],
+		})
+		if !verdict.Pickable() {
+			continue
+		}
 		available = append(available, AvailableEntry{
-			Entry:   entryOf(o),
-			OfferID: o.CategoryOfferID,
-			Verdict: AssessAvailability(AvailabilityCheck{
-				Kind:                 kind,
-				Policy:               MidPeriodAddPolicy(o.MidPeriodAdd),
-				HasRegularSelection:  regCount[o.OfferPeriodID] > 0,
-				MaxCategories:        max,
-				RegularSelectedCount: regCount[o.OfferPeriodID],
-			}),
+			Entry:      entryOf(o),
+			OfferID:    o.CategoryOfferID,
+			Verdict:    verdict,
 			Activation: ActivationKind(o.Activation),
 		})
 	}

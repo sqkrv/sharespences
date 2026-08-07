@@ -52,6 +52,12 @@ export function MonthPicker({
   const maxYear = Math.max(next.getFullYear(), Number(selectedKey.slice(0, 4)));
 
   const roster = clients.data ?? [];
+  // A bank with two держателя shows its logo twice — the corner initial
+  // (Я/М) says whose client each one is; single-client banks stay clean
+  // (design v2, 2026-08-07).
+  const bankCount = new Map<number, number>();
+  for (const c of roster) bankCount.set(c.bank_id, (bankCount.get(c.bank_id) ?? 0) + 1);
+  const initialOf = (label?: string | null) => (label?.trim() || "Я")[0].toUpperCase();
 
   return (
     <>
@@ -124,10 +130,15 @@ export function MonthPicker({
                     )}
                   </span>
                   {roster.length > 0 && !isFuture && (
-                    <span className="flex gap-1">
+                    <span className="flex gap-1.5">
                       {roster.map((c, i) => (
-                        <span key={c.id} className={fills[i] ? "" : "opacity-25 saturate-[.3]"}>
+                        <span key={c.id} className={`relative ${fills[i] ? "" : "opacity-25 saturate-[.3]"}`}>
                           <BankBadge name={c.bank_name ?? ""} size={16} />
+                          {(bankCount.get(c.bank_id) ?? 0) > 1 && (
+                            <span className="absolute -right-1 -bottom-1 flex h-2.5 w-2.5 items-center justify-center rounded-[4px] bg-dash text-[6.5px] font-extrabold text-tx">
+                              {initialOf(c.label)}
+                            </span>
+                          )}
                         </span>
                       ))}
                     </span>
@@ -147,7 +158,7 @@ export function MonthPicker({
             })}
           </div>
           <p className="mt-2 px-0.5 text-[10px] leading-snug font-medium text-tx4">
-            Логотип — клиент банка: яркий — меню занесено, погасший — нет. Любой месяц до следующего можно открыть и заполнить.
+            Логотип — клиент банка, не банк: два держателя — банк дважды, с инициалом в углу. Яркий — меню занесено, погасший — нет. Любой месяц до следующего можно открыть и заполнить.
           </p>
         </Sheet>
       )}

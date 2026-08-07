@@ -6,17 +6,16 @@ import { useClients, usePeriods } from "../hooks";
 import { BankBadge, Btn, Card, Chip, ErrMsg, ListRow, Pct, Spinner } from "../components/ui";
 import { MonthPicker } from "../components/MonthPicker";
 import {
-  ACTIONABLE_VERDICTS,
   FALLBACK_EMOJI,
   capNote,
   fmtDate,
   initWithFriends,
-  midMonthISO,
   monthKey,
   monthNameOf,
   todayISO,
   verdictNote,
 } from "../lib";
+import { rememberMonth, viewedMonth } from "../month";
 
 type CategoryGroup = Schemas["OverviewCategoryDTO"];
 type LookupEntry = Schemas["LookupEntryDTO"];
@@ -106,30 +105,27 @@ function ExpandedCategory({ slug, date, friendsOn }: { slug: string; date: strin
           <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
         </div>
       ))}
-      {available.map((e) => {
-        const actionable = ACTIONABLE_VERDICTS.has(e.verdict);
-        return (
-          <div key={e.offer_id} className={`flex items-center gap-2 ${actionable ? "" : "opacity-65"}`}>
-            <BankBadge name={e.bank_name} size={18} />
-            <span className="min-w-0 flex-1 text-xs font-semibold text-tx2">
-              {e.bank_name}
-              {e.holder_label && ` · ${e.holder_label}`}
-              <span className="block text-[10px] font-medium text-tx4">{verdictNote(e)}</span>
-            </span>
-            <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
-            {actionable && (
-              <Btn
-                variant="soft"
-                className="!px-2.5 !py-1.5 text-xs whitespace-nowrap"
-                disabled={mark.isPending}
-                onClick={() => mark.mutate(e.offer_id)}
-              >
-                Отметить
-              </Btn>
-            )}
-          </div>
-        );
-      })}
+      {/* Every served «можно выбрать» row is pickable — the API drops the
+          dead ends (slots_full/locked), so no dimmed excuses here. */}
+      {available.map((e) => (
+        <div key={e.offer_id} className="flex items-center gap-2">
+          <BankBadge name={e.bank_name} size={18} />
+          <span className="min-w-0 flex-1 text-xs font-semibold text-tx2">
+            {e.bank_name}
+            {e.holder_label && ` · ${e.holder_label}`}
+            <span className="block text-[10px] font-medium text-tx4">{verdictNote(e)}</span>
+          </span>
+          <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
+          <Btn
+            variant="soft"
+            className="!px-2.5 !py-1.5 text-xs whitespace-nowrap"
+            disabled={mark.isPending}
+            onClick={() => mark.mutate(e.offer_id)}
+          >
+            Отметить
+          </Btn>
+        </div>
+      ))}
       {mark.isError && <ErrMsg error={mark.error} />}
       {currencies.has("points") && currencies.size > 1 && (
         <p className="text-[10px] leading-snug font-medium text-tx4">
@@ -147,8 +143,7 @@ function FeedRow({ g, date, friendsOn }: { g: CategoryGroup; date: string | null
   const w = winnerOf(g, friendsOn);
   if (!w) return null;
   const { entry: e, state } = w;
-  const unavailable = state === "available" && !ACTIONABLE_VERDICTS.has(g.available!.verdict);
-  const variant = state === "friend" ? "friend" : state === "available" ? (unavailable ? "dim" : "dashed") : "solid";
+  const variant = state === "friend" ? "friend" : state === "available" ? "dashed" : "solid";
   return (
     <ListRow
       emoji={g.emoji || FALLBACK_EMOJI}
@@ -274,8 +269,13 @@ function FirstRun() {
 
 export default function Overview() {
   const [catsSort, setCatsSortState] = useState<CatsSort>(storedCatsSort);
-  const now = new Date();
-  const [monthDate, setMonthDate] = useState(midMonthISO(now.getFullYear(), now.getMonth()));
+  // Shared with CB-09 (web/src/month.ts): the picked month survives the
+  // CB-01 ↔ CB-09 hop instead of snapping back to the current one.
+  const [monthDate, setMonthDateState] = useState(viewedMonth);
+  const setMonthDate = (iso: string) => {
+    rememberMonth(iso);
+    setMonthDateState(iso);
+  };
   const [showSingles, setShowSingles] = useState(false);
   const overview = useOverview(monthDate);
   const clientsQ = useClients();

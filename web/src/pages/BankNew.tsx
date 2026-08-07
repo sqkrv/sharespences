@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import { useBanks, usePrograms, useTierMap } from "../hooks";
-import { BankBadge, Btn, Card, ErrMsg, Field, Input, Spinner } from "../components/ui";
+import { BackButton, BankBadge, Btn, Card, ErrMsg, Field, Input, Spinner } from "../components/ui";
 import { monthKey, normalizeTitle, todayISO } from "../lib";
 
 // CB-10 «Новый банк» (mock 2g): the catalog is the single source — bank,
@@ -76,11 +76,7 @@ export default function BankNew() {
   return (
     <>
       <div className="flex items-center gap-2.5">
-        <Link to="/banks" className="flex h-[33px] w-[33px] flex-none items-center justify-center rounded-[11px] border border-brd bg-srf">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--t-tx2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14.5 5 8 12l6.5 7" />
-          </svg>
-        </Link>
+        <BackButton fallback="/banks" />
         <h1 className="min-w-0 flex-1 text-xl font-extrabold tracking-tight">Новый банк</h1>
       </div>
 

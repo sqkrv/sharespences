@@ -95,27 +95,6 @@ export function merchantMonogram(title: string): string {
   return title.trim()[0]?.toUpperCase() ?? "?";
 }
 
-// «Можно ли ещё добавить категорию в идущий период?» — the program policy
-// from migration 00008, which is what S3b verdicts key on. This replaced the
-// old selection_mode chip: atomic|incremental described how the picker
-// submits, not whether you may still pick, and on Яндекс Пэй the two say
-// opposite things (incremental, yet locked after the first confirm).
-// Returns "" when there is nothing worth saying.
-export function midPeriodAddNote(policy?: string, activation?: string): string {
-  const add =
-    policy === "allowed"
-      ? "можно добавить"
-      : policy === "locked_after_first"
-        ? "добавить нельзя"
-        : policy === "paid"
-          ? "платно"
-          : "";
-  // next_day only matters where a pick is still possible — «активируется
-  // завтра» is advice about a purchase you are about to make.
-  const late = activation === "next_day" && policy !== "locked_after_first" ? "со след. дня" : "";
-  return [add, late].filter(Boolean).join(", ");
-}
-
 // Static cap reference, e.g. «лимит 1500₽/кат, всего 3000₽» (Озон) or
 // «лимит 7000₽» (Альфа-Смарт). Caps are configured values, not remaining.
 // A per-offer cap (ВТБ «Кешбэк до N ₽» rows) wins over the tier cap.
@@ -153,9 +132,9 @@ export function fmtMonthYear(d = new Date()): string {
   return `${MONTHS_NOM[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-// «Выбор категорий на август откроется **25 июля**» — passive display of
-// the program's selection_opens_day (spec: dates shown, never pushed).
-// Returns the date part separately: the design renders it bold.
+// «Меню на август банки откроют **~25 июля**» — passive display of the
+// program's selection_opens_day (spec: dates shown, never pushed). Returns
+// the date part separately: the design renders it bold.
 export function opensStripParts(day: number, now = new Date()): { text: string; date: string } {
   let opens = new Date(now.getFullYear(), now.getMonth(), day);
   if (opens < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
@@ -163,9 +142,19 @@ export function opensStripParts(day: number, now = new Date()): { text: string; 
   }
   const target = new Date(opens.getFullYear(), opens.getMonth() + 1, 1);
   return {
-    text: `Выбор категорий на ${MONTHS_NOM[target.getMonth()]} откроется`,
-    date: `${day} ${MONTHS_GEN[opens.getMonth()]}`,
+    text: `Меню на ${MONTHS_NOM[target.getMonth()]} банки откроют`,
+    date: `~${day} ${MONTHS_GEN[opens.getMonth()]}`,
   };
+}
+
+// «III квартал» — a quarter-aligned period named on the bank card (2e): a
+// three-month menu shown under a month chip needs saying why it spans the
+// quarter (МКБ). Non-quarter ranges return "".
+export function quarterNote(start?: string, end?: string): string {
+  if (!start || !end || start.slice(0, 4) !== end.slice(0, 4)) return "";
+  const sm = Number(start.slice(5, 7));
+  if (sm % 3 !== 1 || Number(end.slice(5, 7)) !== sm + 2) return "";
+  return `${["I", "II", "III", "IV"][(sm - 1) / 3]} квартал`;
 }
 
 export const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
@@ -234,7 +223,9 @@ export function parseMonthHints(texts: string[]): number[] {
 export const FALLBACK_EMOJI = "🏷️";
 
 // S3b verdict copy — fact-based states, never guesses (spec S3b). Shared by
-// the feed's dashed rows and the lookup's «Можно выбрать» section.
+// the feed's dashed rows and the lookup's «Можно выбрать» section. Every
+// served row is pickable: the API drops slots_full/locked rows (no bank lets
+// a pick be removed mid-period, so those were dead ends, 2026-08-07).
 export function verdictNote(e: { verdict: string; kind?: string; activation?: string }): string {
   const parts: string[] = [];
   switch (e.verdict) {
@@ -244,20 +235,12 @@ export function verdictNote(e: { verdict: string; kind?: string; activation?: st
     case "paid":
       parts.push("смена платная у банка");
       break;
-    case "locked":
-      parts.push("выбор в банке уже зафиксирован");
-      break;
-    case "slots_full":
-      parts.push("слоты заняты — сначала сними другую");
-      break;
     default:
       parts.push("правила банка неизвестны — проверь в приложении");
   }
   if (e.activation === "next_day") parts.push("активируется завтра");
   return parts.join(" · ");
 }
-
-export const ACTIONABLE_VERDICTS = new Set(["free", "paid", "unknown"]);
 
 // «Карты друзей» in rankings (friends-sharing FR-S4) — persisted under the
 // policy-listed lookup-friends key (privacy.html §3.2). Default on: the

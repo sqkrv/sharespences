@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, api, attachmentURL, unwrap, uploadAttachment } from "../api/client";
 import { useBankCategories, useCategories, useClients, useTierMap } from "../hooks";
-import { Badge, Btn, Card, ErrMsg, errorText, Field, Input, Select, Spinner } from "../components/ui";
+import { BackButton, Badge, Btn, Card, ErrMsg, errorText, Field, Input, Select, Spinner } from "../components/ui";
 import { CategoryPicker, type PickedCategory } from "../components/CategoryPicker";
 import { Lightbox } from "../components/Lightbox";
 import {
@@ -90,7 +90,9 @@ function PeriodForm() {
       // The month picker's dots come from ["periods"] — refresh so the new
       // month is marked immediately, not after staleness kicks in.
       qc.invalidateQueries({ queryKey: ["periods"] });
-      navigate(`/periods/${p.id}`);
+      // replace: the spent form must not sit in history — «назад» from the
+      // created period returns to where the flow started, not to the form.
+      navigate(`/periods/${p.id}`, { replace: true });
     },
   });
 
@@ -129,11 +131,7 @@ function PeriodForm() {
   return (
     <>
       <div className="flex items-center gap-2.5">
-        <Link to="/" className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-brd bg-srf">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-tx2">
-            <path d="M14.5 5 8 12l6.5 7" />
-          </svg>
-        </Link>
+        <BackButton small />
         <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">Меню месяца</h1>
         {client && <Badge tone="indigo">{client.bank_name}</Badge>}
       </div>
@@ -242,11 +240,7 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
 
   const header = (
     <div className="flex items-center gap-2.5">
-      <Link to="/" className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-brd bg-srf">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-tx2">
-          <path d="M14.5 5 8 12l6.5 7" />
-        </svg>
-      </Link>
+      <BackButton small />
       <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">Распознавание</h1>
       {client && <Badge tone="indigo">{client.bank_name}</Badge>}
     </div>
@@ -326,7 +320,7 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
         clearJob(jobID);
         qc.invalidateQueries({ queryKey: ["overview"] });
         qc.invalidateQueries({ queryKey: ["periods"] });
-        navigate(`/periods/${periodID}`);
+        navigate(`/periods/${periodID}`, { replace: true });
       }}
     />
   );
@@ -482,11 +476,7 @@ function RecognizeReview({
     <>
       <div className="flex items-center gap-2.5">
         {/* Leaving keeps the draft — the shell chip brings you back. */}
-        <Link to="/" className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-brd bg-srf">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-tx2">
-            <path d="M14.5 5 8 12l6.5 7" />
-          </svg>
-        </Link>
+        <BackButton small />
         <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">Проверь распознанное</h1>
         {client && <Badge tone="indigo">{client.bank_name}</Badge>}
       </div>

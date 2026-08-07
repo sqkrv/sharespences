@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, unwrap, type LookupEntry } from "../api/client";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useCards, useCategories } from "../hooks";
-import { BankBadge, Btn, Card, ErrMsg, GradientCard, Pct, Spinner } from "../components/ui";
+import { BackButton, BankBadge, Btn, Card, ErrMsg, GradientCard, Pct, Spinner } from "../components/ui";
 import {
-  ACTIONABLE_VERDICTS,
   FALLBACK_EMOJI,
   FRIENDS_KEY,
   capNote,
@@ -167,11 +166,7 @@ export default function Pos() {
   return (
     <>
       <div className="flex items-center gap-2.5">
-        <Link to="/search" className="flex h-[33px] w-[33px] flex-none items-center justify-center rounded-[11px] border border-brd bg-srf">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--t-tx2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14.5 5 8 12l6.5 7" />
-          </svg>
-        </Link>
+        <BackButton fallback="/search" />
         <h1 className="min-w-0 flex-1 truncate text-xl font-extrabold tracking-tight">{title}</h1>
         <span className="flex-none rounded-lg bg-inset px-2 py-1 text-[10.5px] font-semibold text-tx3">точка продаж</span>
       </div>
@@ -284,33 +279,28 @@ export default function Pos() {
             {others.map((e, i) => (
               <BankRow key={i} e={e} />
             ))}
-            {available.map((e) => {
-              const actionable = ACTIONABLE_VERDICTS.has(e.verdict);
-              return (
-                <div
-                  key={e.offer_id}
-                  className={`flex items-center gap-2.5 rounded-2xl border px-3 py-2.5 ${
-                    actionable ? "border-dashed border-dash bg-srf/50" : "border-brd2 bg-transparent opacity-65"
-                  }`}
-                >
-                  <BankBadge name={e.bank_name} size={26} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-semibold">
-                      {e.bank_name}
-                      {e.raw_title && <span className="font-medium text-tx4"> · «{e.raw_title}»</span>}
-                      <KindBadge kind={e.kind} />
-                    </p>
-                    <p className="text-[10px] font-medium text-tx4">в меню, не выбрано · {verdictNote(e)}</p>
-                  </div>
-                  <Pct percent={e.percent} currency={e.currency_kind} className="text-[14px]" />
-                  {actionable && (
-                    <Btn variant="soft" className="!px-2.5 !py-1.5 text-xs whitespace-nowrap" disabled={mark.isPending} onClick={() => mark.mutate(e.offer_id)}>
-                      Отметить
-                    </Btn>
-                  )}
+            {/* Every served row here is pickable — the API drops the dead
+                ends (slots_full/locked) since 2026-08-07. */}
+            {available.map((e) => (
+              <div
+                key={e.offer_id}
+                className="flex items-center gap-2.5 rounded-2xl border border-dashed border-dash bg-srf/50 px-3 py-2.5"
+              >
+                <BankBadge name={e.bank_name} size={26} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold">
+                    {e.bank_name}
+                    {e.raw_title && <span className="font-medium text-tx4"> · «{e.raw_title}»</span>}
+                    <KindBadge kind={e.kind} />
+                  </p>
+                  <p className="text-[10px] font-medium text-tx4">в меню, не выбрано · {verdictNote(e)}</p>
                 </div>
-              );
-            })}
+                <Pct percent={e.percent} currency={e.currency_kind} className="text-[14px]" />
+                <Btn variant="soft" className="!px-2.5 !py-1.5 text-xs whitespace-nowrap" disabled={mark.isPending} onClick={() => mark.mutate(e.offer_id)}>
+                  Отметить
+                </Btn>
+              </div>
+            ))}
             {uncovered.map((c) => (
               <div key={c.bank_client_id} className="flex items-center gap-2.5 rounded-2xl border border-brd bg-srf/45 px-3 py-2.5 opacity-65">
                 <BankBadge name={c.bank_name} size={26} />

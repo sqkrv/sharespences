@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 
 // Components mirror the Claude Design «Кэшбеки - Модуль» idiom: srf cards
@@ -46,6 +47,38 @@ export function Btn({
       className={`rounded-xl px-3.5 py-2 text-sm font-semibold transition active:scale-[.98] disabled:cursor-not-allowed ${styles} ${props.className ?? ""}`}
     >
       {children}
+    </button>
+  );
+}
+
+// Real «назад»: browser history when there is in-app history to return to
+// (CB-03 opened from «Банки» goes back to «Банки», not to a hardcoded
+// parent), the screen's natural parent otherwise (deep link, refreshed tab).
+// React Router keeps its position in history.state.idx — 0 means this entry
+// started the session, so there is nothing of ours behind it.
+export function useGoBack(fallback = "/") {
+  const navigate = useNavigate();
+  return () => {
+    if ((window.history.state as { idx?: number } | null)?.idx) navigate(-1);
+    else navigate(fallback, { replace: true });
+  };
+}
+
+// The header back chevron every screen shares. small = the compact 32px
+// variant (period screens); default is the 33px header icon.
+export function BackButton({ fallback = "/", small = false }: { fallback?: string; small?: boolean }) {
+  const goBack = useGoBack(fallback);
+  const box = small ? "h-8 w-8 rounded-[10px]" : "h-[33px] w-[33px] rounded-[11px]";
+  return (
+    <button
+      type="button"
+      aria-label="Назад"
+      onClick={goBack}
+      className={`flex ${box} flex-none items-center justify-center border border-brd bg-srf`}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--t-tx2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14.5 5 8 12l6.5 7" />
+      </svg>
     </button>
   );
 }
@@ -369,10 +402,12 @@ export function Pct({
   );
 }
 
-// The mint check-in-circle used for selected menu rows.
+// The mint check-in-circle used for selected menu rows. Both variants need
+// an explicit display: a bare <span> is inline, ignores width, and its
+// border collapses into a strange clickable vertical bar.
 export function CheckDot({ checked }: { checked: boolean }) {
   if (!checked) {
-    return <span className="h-[21px] w-[21px] flex-none rounded-full border-[1.5px] border-dash" />;
+    return <span className="block h-[21px] w-[21px] flex-none rounded-full border-[1.5px] border-dash" />;
   }
   return (
     <span className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-full bg-mint/15">

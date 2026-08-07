@@ -1017,7 +1017,7 @@ export interface components {
             /** @description the барабан granted on top of that pick — mark the row «барабан» when this is set */
             stacked_super?: string;
             /** @enum {string} */
-            verdict: "free" | "paid" | "locked" | "slots_full" | "unknown";
+            verdict: "free" | "paid" | "unknown";
         };
         "Bank-client-createRequest": {
             /**

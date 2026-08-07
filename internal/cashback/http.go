@@ -272,11 +272,13 @@ func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 }
 
 // AvailableEntryDTO is one S3b «Можно выбрать» row: an offered-but-unselected
-// menu offer with a fact-based verdict (spec S3b, 2026-07-16).
+// menu offer with a fact-based verdict (spec S3b, 2026-07-16). Only pickable
+// rows are served — slots_full/locked are dead ends (no bank lets a pick be
+// removed mid-period) and are dropped server-side (2026-08-07).
 type AvailableEntryDTO struct {
 	LookupEntryDTO
 	OfferID    int64  `json:"offer_id" doc:"category_offer id — «Отметить выбранной» posts the ordinary selection for it"`
-	Verdict    string `json:"verdict" enum:"free,paid,locked,slots_full,unknown"`
+	Verdict    string `json:"verdict" enum:"free,paid,unknown"`
 	Activation string `json:"activation" enum:"immediate,next_day,unknown" doc:"next_day (МКБ): a fresh pick won't cover a purchase made right now"`
 }
 

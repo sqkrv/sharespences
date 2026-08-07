@@ -665,11 +665,11 @@ func TestCashbackE2E(t *testing.T) {
 	// Транспорт is selected but unmapped → invisible here, like in lookup
 	// (it reappears in single_bank once selected canonical-less rows exist —
 	// covered below). «Рестораны» (Альфа-Банк) was entered but never
-	// selected: since the redesign (2026-08-06) it surfaces as the feed's
-	// dashed «можно выбрать» row instead of vanishing — with the honest
-	// slots_full verdict, Альфа-Банк being 4/4 by this point.
-	if len(overview.Categories) != 5 {
-		t.Fatalf("overview categories = %d, want 5 (4 selected + 1 available-only)", len(overview.Categories))
+	// selected — and with Альфа-Банк 4/4 it can no longer be picked (no bank
+	// lets a pick be removed mid-period), so it is not served at all
+	// (2026-08-07; earlier redesign cut showed it dashed with slots_full).
+	if len(overview.Categories) != 4 {
+		t.Fatalf("overview categories = %d, want 4 selected (unpickable Рестораны dropped)", len(overview.Categories))
 	}
 	withBest, withAvail := 0, 0
 	type catRow = struct {
@@ -683,7 +683,7 @@ func TestCashbackE2E(t *testing.T) {
 			Verdict  string `json:"verdict"`
 		} `json:"available"`
 	}
-	var superRow, availRow *catRow
+	var superRow *catRow
 	for i := range overview.Categories {
 		g := &overview.Categories[i]
 		if g.Best != nil {
@@ -691,17 +691,13 @@ func TestCashbackE2E(t *testing.T) {
 		}
 		if g.Available != nil {
 			withAvail++
-			availRow = g
 		}
 		if g.Slug == "supermarkets" {
 			superRow = g
 		}
 	}
-	if withBest != 4 || withAvail != 1 {
-		t.Fatalf("overview categories: %d with best, %d with available — want 4 and 1", withBest, withAvail)
-	}
-	if availRow.Best != nil || availRow.Available.BankName != "Альфа-Банк" || availRow.Available.Verdict != "slots_full" {
-		t.Fatalf("available-only row = %+v, want Альфа-Банк slots_full and no best", availRow)
+	if withBest != 4 || withAvail != 0 {
+		t.Fatalf("overview categories: %d with best, %d with available — want 4 and 0", withBest, withAvail)
 	}
 	// Both offers are 5%, so the winner is decided by the name tie-break —
 	// and Latin «O» sorts before Cyrillic «А» (Russian collation agrees),
@@ -817,10 +813,11 @@ func TestCashbackE2E(t *testing.T) {
 	if overview.Base == nil || overview.Base.Best.BankName != "Альфа-Банк" || *overview.Base.Best.Percent != "1" {
 		t.Fatalf("overview base = %+v, want Альфа-Банк 1%%", overview.Base)
 	}
-	// 4 selected rows + the still-unselected Рестораны as the dashed
-	// available row; «За все покупки» itself must route to base, never here.
-	if len(overview.Categories) != 5 {
-		t.Fatalf("base row must not appear among categories, got %d, want 5", len(overview.Categories))
+	// 4 selected rows; the still-unselected Рестораны stays hidden (slots
+	// full again → unpickable); «За все покупки» must route to base, never
+	// here.
+	if len(overview.Categories) != 4 {
+		t.Fatalf("base row must not appear among categories, got %d, want 4", len(overview.Categories))
 	}
 	for _, g := range overview.Categories {
 		if g.Slug == "all-purchases" {

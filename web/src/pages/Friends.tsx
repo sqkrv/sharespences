@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, unwrap, type FriendCashback, type FriendOffer, type FriendPeriod, type FriendSharedClient } from "../api/client";
-import { BankBadge, Card, Empty, ErrMsg, Pct, Spinner } from "../components/ui";
+import { BackButton, BankBadge, Card, Empty, ErrMsg, Pct, Spinner } from "../components/ui";
 import { coversToday, currencyBadge, fmtRange } from "../lib";
 
 // CB-06 «Кешбек друзей» v2 (redesign 4a): each friend's picture in chips
@@ -150,11 +150,7 @@ export default function Friends() {
   return (
     <>
       <div className="flex items-center gap-2.5">
-        <Link to="/" className="flex h-[33px] w-[33px] flex-none items-center justify-center rounded-[11px] border border-brd bg-srf">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--t-tx2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14.5 5 8 12l6.5 7" />
-          </svg>
-        </Link>
+        <BackButton />
         <h1 className="min-w-0 flex-1 text-xl font-extrabold tracking-tight">Кешбек друзей</h1>
         <Link
           to="/friends/settings"

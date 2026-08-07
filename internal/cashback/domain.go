@@ -471,6 +471,15 @@ func AssessAvailability(c AvailabilityCheck) AvailabilityVerdict {
 	}
 }
 
+// Pickable reports whether the row can still become a selection. slots_full
+// and locked are dead ends: no bank lets a chosen category be unpicked
+// mid-period, so «free a slot first» is never an action the user can take —
+// blocked rows are filtered out instead of being shown with an excuse
+// (2026-08-07; supersedes the S3b «показ всегда при наличии» reading).
+func (v AvailabilityVerdict) Pickable() bool {
+	return v != AvailSlotsFull && v != AvailLocked
+}
+
 // AvailableEntry is one S3b row: the menu offer, its verdict and the
 // program's activation timing (next_day must be warned about).
 type AvailableEntry struct {
@@ -480,21 +489,16 @@ type AvailableEntry struct {
 	Activation ActivationKind
 }
 
-// verdictOrder: actionable first (free, paid, unknown are things the user can
-// still do), blocked after (slots_full before locked — freeing a slot is an
-// action, a one-shot lock is final).
+// verdictOrder: free first, then paid, then unknown. Blocked verdicts never
+// reach ranking — callers drop non-Pickable rows at construction.
 func verdictOrder(v AvailabilityVerdict) int {
 	switch v {
 	case AvailFree:
 		return 0
 	case AvailPaid:
 		return 1
-	case AvailUnknown:
+	default: // AvailUnknown
 		return 2
-	case AvailSlotsFull:
-		return 3
-	default: // AvailLocked
-		return 4
 	}
 }
 
