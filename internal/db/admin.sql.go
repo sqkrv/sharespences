@@ -139,8 +139,8 @@ func (q *Queries) AdminCreateMCCChange(ctx context.Context, arg AdminCreateMCCCh
 }
 
 const adminCreatePOS = `-- name: AdminCreatePOS :one
-insert into point_of_sale (name, merchant_title, mcc_code, type, address)
-values ($1, $2, $3, $4, $5)
+insert into point_of_sale (name, merchant_title, mcc_code, type, address, origin)
+values ($1, $2, $3, $4, $5, 'admin')
 returning id
 `
 
@@ -152,6 +152,8 @@ type AdminCreatePOSParams struct {
 	Address       *string
 }
 
+// origin is literal, not a parameter: a row created through the sidecar was
+// created by an operator, and nothing else may claim otherwise (00025).
 func (q *Queries) AdminCreatePOS(ctx context.Context, arg AdminCreatePOSParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, adminCreatePOS,
 		arg.Name,

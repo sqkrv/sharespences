@@ -50,8 +50,10 @@ select id,
        coalesce(type::text, '')::text as pos_type,
        address,
        confirmations,
+       user_confirmations,
        last_confirmed_at,
-       status
+       status,
+       origin::text as origin
 from point_of_sale
 where mcc_code is not null -- a merchant row without an MCC answers nothing here
   and (status = 'approved' or author_user_id = sqlc.arg(user_id)::uuid)
@@ -73,8 +75,8 @@ order by confirmations desc nulls last, name
 limit 3;
 
 -- name: CreateUserPointOfSale :one
-insert into point_of_sale (name, merchant_title, mcc_code, type, address, status, author_user_id)
-values ($1, $2, $3, $4, $5, 'pending', $6)
+insert into point_of_sale (name, merchant_title, mcc_code, type, address, status, author_user_id, origin)
+values ($1, $2, $3, $4, $5, 'pending', $6, 'user_manual')
 returning *;
 
 -- name: ListMCCChanges :many

@@ -535,6 +535,50 @@ func (ns NullPeriod) Value() (driver.Value, error) {
 	return string(ns.Period), nil
 }
 
+type PointOfSaleOrigin string
+
+const (
+	PointOfSaleOriginMccCodes        PointOfSaleOrigin = "mcc_codes"
+	PointOfSaleOriginUserManual      PointOfSaleOrigin = "user_manual"
+	PointOfSaleOriginUserTransaction PointOfSaleOrigin = "user_transaction"
+	PointOfSaleOriginAdmin           PointOfSaleOrigin = "admin"
+)
+
+func (e *PointOfSaleOrigin) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PointOfSaleOrigin(s)
+	case string:
+		*e = PointOfSaleOrigin(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PointOfSaleOrigin: %T", src)
+	}
+	return nil
+}
+
+type NullPointOfSaleOrigin struct {
+	PointOfSaleOrigin PointOfSaleOrigin
+	Valid             bool // Valid is true if PointOfSaleOrigin is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPointOfSaleOrigin) Scan(value interface{}) error {
+	if value == nil {
+		ns.PointOfSaleOrigin, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PointOfSaleOrigin.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPointOfSaleOrigin) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PointOfSaleOrigin), nil
+}
+
 type PointOfSaleStatus string
 
 const (
@@ -916,18 +960,23 @@ type PartnerOfferAttachment struct {
 }
 
 type PointOfSale struct {
-	ID              uuid.UUID
-	Name            string
-	MerchantTitle   *string
-	MccCode         *int16
-	Type            NullPointOfSaleType
-	Address         *string
+	ID            uuid.UUID
+	Name          string
+	MerchantTitle *string
+	MccCode       *int16
+	Type          NullPointOfSaleType
+	Address       *string
+	// mcc-codes.ru's own crowd counter, imported verbatim — never incremented by this app
 	Confirmations   *int64
 	CreatedAt       time.Time
 	LastConfirmedAt *time.Time
 	Location        interface{}
 	Status          PointOfSaleStatus
 	AuthorUserID    *uuid.UUID
+	// where this row came from; deliberately without a default, so every write path states it
+	Origin PointOfSaleOrigin
+	// confirmations from this app's users (manual entry, opted-in transaction imports)
+	UserConfirmations int64
 }
 
 type ProgramTier struct {

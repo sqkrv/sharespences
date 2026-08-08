@@ -1842,6 +1842,8 @@ export interface components {
             mcc: string;
             merchant_title?: string;
             name: string;
+            /** @enum {string} */
+            origin: "mcc_codes" | "user_manual" | "user_transaction" | "admin";
             /**
              * @description pending rows are the caller's own submissions awaiting moderation
              * @enum {string}
@@ -1849,6 +1851,8 @@ export interface components {
             status?: "approved" | "pending";
             /** @enum {string} */
             type?: "offline" | "online" | "app" | "other";
+            /** Format: int64 */
+            user_confirmations: number;
         };
         OfferPeriodDTO: {
             /**

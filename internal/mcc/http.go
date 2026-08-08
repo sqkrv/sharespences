@@ -53,10 +53,17 @@ type MerchantDTO struct {
 	MerchantTitle   *string    `json:"merchant_title,omitempty"`
 	MCC             string     `json:"mcc"` // zero-padded
 	Type            *string    `json:"type,omitempty" enum:"offline,online,app,other"`
-	Address         *string    `json:"address,omitempty"`
-	Confirmations   int64      `json:"confirmations"`
-	LastConfirmedAt *time.Time `json:"last_confirmed_at,omitempty"`
-	Status          string     `json:"status,omitempty" enum:"approved,pending" doc:"pending rows are the caller's own submissions awaiting moderation"`
+	Address *string `json:"address,omitempty"`
+	// Origin says where the row came from, which is what lets a client
+	// credit mcc-codes.ru for the rows that are actually theirs once the
+	// base is mixed (00027).
+	Origin string `json:"origin" enum:"mcc_codes,user_manual,user_transaction,admin"`
+	// Confirmations is mcc-codes.ru's own counter; UserConfirmations is
+	// this app's. Kept apart deliberately — they count different things.
+	Confirmations     int64      `json:"confirmations"`
+	UserConfirmations int64      `json:"user_confirmations"`
+	LastConfirmedAt   *time.Time `json:"last_confirmed_at,omitempty"`
+	Status            string     `json:"status,omitempty" enum:"approved,pending" doc:"pending rows are the caller's own submissions awaiting moderation"`
 }
 
 // SimilarPointDTO is one 5e duplicate-net hit: an existing точка the form
@@ -128,6 +135,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				ID: r.ID.String(), Name: r.Name, MerchantTitle: r.MerchantTitle,
 				Address: r.Address, LastConfirmedAt: r.LastConfirmedAt,
 				Status: string(r.Status),
+				Origin: r.Origin, UserConfirmations: r.UserConfirmations,
 			}
 			if r.MccCode != nil {
 				d.MCC = FormatCode(*r.MccCode)

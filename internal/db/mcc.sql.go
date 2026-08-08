@@ -13,9 +13,9 @@ import (
 )
 
 const createUserPointOfSale = `-- name: CreateUserPointOfSale :one
-insert into point_of_sale (name, merchant_title, mcc_code, type, address, status, author_user_id)
-values ($1, $2, $3, $4, $5, 'pending', $6)
-returning id, name, merchant_title, mcc_code, type, address, confirmations, created_at, last_confirmed_at, location, status, author_user_id
+insert into point_of_sale (name, merchant_title, mcc_code, type, address, status, author_user_id, origin)
+values ($1, $2, $3, $4, $5, 'pending', $6, 'user_manual')
+returning id, name, merchant_title, mcc_code, type, address, confirmations, created_at, last_confirmed_at, location, status, author_user_id, origin, user_confirmations
 `
 
 type CreateUserPointOfSaleParams struct {
@@ -50,6 +50,8 @@ func (q *Queries) CreateUserPointOfSale(ctx context.Context, arg CreateUserPoint
 		&i.Location,
 		&i.Status,
 		&i.AuthorUserID,
+		&i.Origin,
+		&i.UserConfirmations,
 	)
 	return i, err
 }
@@ -298,8 +300,10 @@ select id,
        coalesce(type::text, '')::text as pos_type,
        address,
        confirmations,
+       user_confirmations,
        last_confirmed_at,
-       status
+       status,
+       origin::text as origin
 from point_of_sale
 where mcc_code is not null -- a merchant row without an MCC answers nothing here
   and (status = 'approved' or author_user_id = $1::uuid)
@@ -316,15 +320,17 @@ type SearchMerchantsParams struct {
 }
 
 type SearchMerchantsRow struct {
-	ID              uuid.UUID
-	Name            string
-	MerchantTitle   *string
-	MccCode         *int16
-	PosType         string
-	Address         *string
-	Confirmations   *int64
-	LastConfirmedAt *time.Time
-	Status          PointOfSaleStatus
+	ID                uuid.UUID
+	Name              string
+	MerchantTitle     *string
+	MccCode           *int16
+	PosType           string
+	Address           *string
+	Confirmations     *int64
+	UserConfirmations int64
+	LastConfirmedAt   *time.Time
+	Status            PointOfSaleStatus
+	Origin            string
 }
 
 // Pending user submissions are visible to their author only (5e): the общий
@@ -346,8 +352,10 @@ func (q *Queries) SearchMerchants(ctx context.Context, arg SearchMerchantsParams
 			&i.PosType,
 			&i.Address,
 			&i.Confirmations,
+			&i.UserConfirmations,
 			&i.LastConfirmedAt,
 			&i.Status,
+			&i.Origin,
 		); err != nil {
 			return nil, err
 		}

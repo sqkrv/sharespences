@@ -181,8 +181,10 @@ where id = $1
   and status = 'pending';
 
 -- name: AdminCreatePOS :one
-insert into point_of_sale (name, merchant_title, mcc_code, type, address)
-values ($1, $2, $3, $4, $5)
+-- origin is literal, not a parameter: a row created through the sidecar was
+-- created by an operator, and nothing else may claim otherwise (00025).
+insert into point_of_sale (name, merchant_title, mcc_code, type, address, origin)
+values ($1, $2, $3, $4, $5, 'admin')
 returning id;
 
 -- name: AdminUpdatePOS :one
