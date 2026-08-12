@@ -17,6 +17,30 @@ function betterMark(neighbor?: string | null, own?: string | null): string {
   return parseFloat(neighbor) > parseFloat(own) ? " ↑" : "";
 }
 
+// The expansion's neighbor list, one row per client: a neighbor who SELECTED
+// the category arrives as a collision (cap note attached) AND as a plain
+// menu comparison — merged here, the mint dot carrying the «выбрано и у
+// них» fact. client_label is already «Банк · Держатель» composed
+// server-side — never prepend the bank again. Sorted by percent desc,
+// unknown last.
+type NeighborRow = { label: string; capNote?: string; percent?: string | null; selected: boolean };
+function neighborRows(hrow?: HelperRow): NeighborRow[] {
+  const rows: NeighborRow[] = (hrow?.collisions ?? []).map((c) => ({
+    label: c.client_label || c.bank_name,
+    capNote: c.cap_note,
+    percent: c.percent,
+    selected: true,
+  }));
+  const seen = new Set(rows.map((r) => r.label));
+  for (const cmp of hrow?.comparisons ?? []) {
+    const label = cmp.client_label || cmp.bank_name;
+    if (seen.has(label)) continue;
+    rows.push({ label, percent: cmp.percent, selected: false });
+  }
+  const pct = (p?: string | null) => (p != null ? parseFloat(p) : -1);
+  return rows.sort((a, b) => pct(b.percent) - pct(a.percent) || a.label.localeCompare(b.label, "ru"));
+}
+
 function usePeriod(id: number) {
   return useQuery({
     queryKey: ["period", id],
@@ -744,23 +768,19 @@ export default function Period() {
               {rowErrors[offer.id] && <p className="mt-1.5 ml-8 rounded-lg bg-warn/10 px-2 py-1 text-[10.5px] font-medium text-warn">{rowErrors[offer.id]}</p>}
               {/* Collision + neighbor comparison unfold on tap (2d
                   «развёрнуто тапом») — the gold dot above flags they exist. */}
-              {/* Neighbors as plain rows (2d v3) — the duplication itself is
-                  visible, no admonishing sentence; ↑ marks a better rate. */}
+              {/* Neighbors as plain rows (2d v3) — one per client, percent
+                  desc, no admonishing sentence; the mint dot = «выбрано и у
+                  них», ↑ marks a better rate. */}
               {expanded && (
                 <div className="mt-1.5 ml-8 space-y-1.5 border-t border-brd/60 pt-1.5">
-                  {(hrow?.collisions ?? []).map((c, i) => (
-                    <p key={`c${i}`} className="flex items-center gap-1.5 text-[10.5px] font-medium text-tx3">
-                      <span className="flex-1">
-                        {c.bank_name} · {c.client_label || "Я"}
-                        {c.cap_note && <span className="text-tx4"> — {c.cap_note}</span>}
+                  {neighborRows(hrow).map((n) => (
+                    <p key={n.label} className="flex items-center gap-1.5 text-[10.5px] font-medium text-tx3">
+                      {n.selected && <span className="h-1.5 w-1.5 flex-none rounded-full bg-mint" title="выбрано и у них" />}
+                      <span className="min-w-0 flex-1 truncate">
+                        {n.label}
+                        {n.capNote && <span className="text-tx4"> — {n.capNote}</span>}
                       </span>
-                      <span className="font-bold">{c.percent != null ? `${c.percent}%` : "—"}{betterMark(c.percent, offer.percent)}</span>
-                    </p>
-                  ))}
-                  {(hrow?.comparisons ?? []).map((cmp, i) => (
-                    <p key={`n${i}`} className="flex items-center gap-1.5 text-[10.5px] font-medium text-tx3">
-                      <span className="flex-1">{cmp.bank_name} · {cmp.client_label || "Я"}</span>
-                      <span className="font-bold">{cmp.percent != null ? `${cmp.percent}%` : "—"}{betterMark(cmp.percent, offer.percent)}</span>
+                      <span className="font-bold">{n.percent != null ? `${n.percent}%` : "—"}{betterMark(n.percent, offer.percent)}</span>
                     </p>
                   ))}
                   {notesCount === 0 && <p className="text-[10px] font-medium text-tx4">Совпадений с другими банками нет.</p>}
