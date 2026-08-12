@@ -218,6 +218,13 @@ export function parseMonthHints(texts: string[]): number[] {
   return [...out];
 }
 
+// «1 скрин / 2 скрина / 5 скринов» — the Russian numeral triad.
+export function plural(n: number, one: string, few: string, many: string): string {
+  const oneCase = n % 10 === 1 && n % 100 !== 11;
+  const fewCase = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
+  return oneCase ? one : fewCase ? few : many;
+}
+
 // Category icon fallback — a canonical category may carry no emoji yet
 // (custom rows, un-curated additions); the icon column still aligns.
 export const FALLBACK_EMOJI = "🏷️";

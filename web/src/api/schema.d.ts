@@ -684,10 +684,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List live invite links */
+        /** The live invite link (at most one) */
         get: operations["friends-invite-list"];
         put?: never;
-        /** Create a one-shot invite link */
+        /** Create the invite link (replaces the previous one) */
         post: operations["friends-invite-create"];
         delete?: never;
         options?: never;
@@ -704,7 +704,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Claim an invite link */
+        /** Claim an invite link — files a friend request to the inviter */
         post: operations["friends-invite-claim"];
         delete?: never;
         options?: never;
@@ -893,6 +893,40 @@ export interface paths {
         };
         /** Search the merchant base (points of sale) by name */
         get: operations["mcc-merchant-search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mcc/points-of-sale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a точка продаж (pending until moderated) */
+        post: operations["mcc-pos-create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mcc/points-of-sale/similar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Existing points that look like the one being created */
+        get: operations["mcc-pos-similar"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1520,6 +1554,17 @@ export interface components {
             noted_at: string;
             source: string;
         };
+        ClaimResultDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ClaimResultDTO.json
+             */
+            readonly $schema?: string;
+            inviter: components["schemas"]["FoundUserDTO"];
+            /** @enum {string} */
+            status: "request_sent" | "accepted" | "already_requested" | "already_friends";
+        };
         CodeDTO: {
             code: string;
             description?: string;
@@ -1651,21 +1696,6 @@ export interface components {
             readonly $schema?: string;
             token: string;
         };
-        "Friends-invite-createResponse": {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/Friends-invite-createResponse.json
-             */
-            readonly $schema?: string;
-            /** Format: date-time */
-            expires_at: string;
-            id: string;
-            /** @description показывается только здесь — хранится лишь хэш */
-            token: string;
-            /** @description путь ссылки-приглашения; хост добавляет клиент */
-            url: string;
-        };
         "Friends-request-createRequest": {
             /**
              * Format: uri
@@ -1721,11 +1751,20 @@ export interface components {
             selected: boolean;
         };
         InviteDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/InviteDTO.json
+             */
+            readonly $schema?: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             expires_at: string;
             id: string;
+            token?: string;
+            /** @description путь ссылки-приглашения; хост добавляет клиент */
+            url?: string;
         };
         LookupEntryDTO: {
             /** Format: int64 */
@@ -1759,6 +1798,23 @@ export interface components {
             /** @description the барабан granted on top of that pick — mark the row «барабан» when this is set */
             stacked_super?: string;
         };
+        "Mcc-pos-createRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Mcc-pos-createRequest.json
+             */
+            readonly $schema?: string;
+            /** @description офлайн — адрес, онлайн — сайт, приложение — название, другое — описание */
+            address?: string;
+            /** @description 4 цифры — из истории транзакций */
+            mcc: string;
+            /** @description как в выписке или SMS, латиницей */
+            merchant_title?: string;
+            name: string;
+            /** @enum {string} */
+            type: "offline" | "online" | "app" | "other";
+        };
         "Mcc-resolveResponse": {
             /**
              * Format: uri
@@ -1771,6 +1827,12 @@ export interface components {
             code: components["schemas"]["CodeDTO"];
         };
         MerchantDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MerchantDTO.json
+             */
+            readonly $schema?: string;
             address?: string;
             /** Format: int64 */
             confirmations: number;
@@ -1780,6 +1842,11 @@ export interface components {
             mcc: string;
             merchant_title?: string;
             name: string;
+            /**
+             * @description pending rows are the caller's own submissions awaiting moderation
+             * @enum {string}
+             */
+            status?: "approved" | "pending";
             /** @enum {string} */
             type?: "offline" | "online" | "app" | "other";
         };
@@ -1848,6 +1915,8 @@ export interface components {
             title_ru: string;
         };
         OverviewChipDTO: {
+            /** @description canonical category icon; absent on canonical-less rows */
+            emoji?: string;
             kind: string;
             /** Format: int64 */
             offer_id: number;
@@ -2078,6 +2147,8 @@ export interface components {
             /** Format: int64 */
             id: number;
             username: string;
+            /** @description the sender arrived through your invite link («пришла по твоей ссылке») */
+            via_invite?: boolean;
         };
         ResolveEntryDTO: {
             /** Format: int64 */
@@ -2097,6 +2168,11 @@ export interface components {
             /** Format: int64 */
             bank_client_id: number;
             friend_user_id: string;
+        };
+        SimilarPointDTO: {
+            id: string;
+            mcc: string;
+            name: string;
         };
         SlotCandidateDTO: {
             /** Format: int64 */
@@ -3731,7 +3807,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Friends-invite-createResponse"];
+                    "application/json": components["schemas"]["InviteDTO"];
                 };
             };
             /** @description Error */
@@ -3764,7 +3840,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FoundUserDTO"];
+                    "application/json": components["schemas"]["ClaimResultDTO"];
                 };
             };
             /** @description Error */
@@ -4158,6 +4234,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MerchantDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "mcc-pos-create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Mcc-pos-createRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "mcc-pos-similar": {
+        parameters: {
+            query: {
+                mcc: string;
+                name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimilarPointDTO"][] | null;
                 };
             };
             /** @description Error */

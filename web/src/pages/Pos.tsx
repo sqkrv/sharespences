@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ApiError, api, unwrap, type LookupEntry } from "../api/client";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useCards, useCategories } from "../hooks";
-import { BackButton, BankBadge, Btn, Card, ErrMsg, GradientCard, Pct, Spinner } from "../components/ui";
+import { BackButton, BankBadge, Card, Chip, ErrMsg, Pct, Spinner } from "../components/ui";
 import {
   FALLBACK_EMOJI,
   FRIENDS_KEY,
@@ -11,67 +11,44 @@ import {
   currencyWord,
   fmtPercent,
   initWithFriends,
-  verdictNote,
+  monthGenOf,
+  monthKey,
+  todayISO,
 } from "../lib";
 import { pushRecent } from "../recent";
 
-// CB-11 «Точка продаж» (redesign 2b): the former CB-04 result state as its
-// own screen, zero clicks after a search tap — the card to pay with on top,
-// the MCC chip, then «как считает каждый банк». Reached with ?mcc= (+
-// optional &merchant= for the title) or ?cat=<canonical slug>.
+// CB-11 «Точка продаж» (redesign 2b v3): the former CB-04 result state as
+// its own screen, zero clicks after a search tap — the verdict is the first
+// row of the list (6a: no plaque, only weight), then the MCC chip, then
+// «Остальные банки». A row tap opens that bank's menu — categories are
+// picked there, not here.
 //
 // Points never convert to rubles (invariant 5): the ranking groups рубли
 // first and the balance rows keep their own currency, stated in place.
 
-function KindBadge({ kind, stacked }: { kind?: string; stacked?: boolean }) {
-  if (!stacked && kind !== "super" && kind !== "special" && kind !== "partner") return null;
-  return (
-    <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] text-[9px] font-bold text-gold">
-      {kind === "special" ? "спец" : kind === "partner" ? "партнёрка" : "барабан"}
-    </span>
-  );
-}
-
-function stackNote(e: LookupEntry): string {
+// «7+7 барабан» — the stacked pair in a row's sub-line.
+function stackShort(e: LookupEntry): string {
   if (e.stacked_super == null) return "";
-  return `${fmtPercent(e.stacked_regular ?? undefined)} + ${fmtPercent(e.stacked_super)}`;
+  return `${e.stacked_regular ?? "—"}+${e.stacked_super} барабан`;
 }
 
-function specialNote(e: LookupEntry): string {
-  return [e.raw_title, "проверь условие в банке"].filter(Boolean).join(" · ");
+// The cap in the row vocabulary: «до 7000₽», not «лимит 7000₽».
+function capShort(e: LookupEntry): string {
+  return capNote(e).replace(/^лимит /, "до ");
 }
 
-// One bank's line in the breakdown: the bank, ITS OWN menu title for the
-// category (raw_title), the state, the rate.
-function BankRow({ e, note }: { e: LookupEntry; note?: string }) {
-  return (
-    <div className={`flex items-center gap-2.5 rounded-2xl border px-3 py-2.5 ${e.friend_name ? "border-acc/40 bg-srf" : e.kind === "special" ? "border-gold/30 bg-gold/5" : "border-brd bg-srf"}`}>
-      <BankBadge name={e.bank_name} size={26} />
-      <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-semibold">
-          {e.bank_name}
-          {e.raw_title && <span className="font-medium text-tx4"> · «{e.raw_title}»</span>}
-          <KindBadge kind={e.kind} stacked={e.stacked_super != null} />
-        </p>
-        <p className="truncate text-[10px] font-medium text-tx4">
-          {e.friend_name
-            ? `друг · ${e.friend_name} — попроси оплатить`
-            : e.kind === "partner"
-              ? [
-                  e.partner_scope === "merchant" ? `только в «${e.raw_title}»` : "партнёрская акция",
-                  e.needs_activation && "требует активации",
-                ]
-                  .filter(Boolean)
-                  .join(" · ")
-              : [e.holder_label && `держатель ${e.holder_label}`, note ?? "выбрано у тебя", e.kind === "special" ? specialNote(e) : stackNote(e) || capNote(e)]
-                  .filter(Boolean)
-                  .join(" · ")}
-        </p>
-      </div>
-      <Pct percent={e.percent} currency={e.currency_kind} className="text-[15px]" />
-    </div>
-  );
+// The state vocabulary of an «Остальные банки» row (2b v3).
+function stateOf(e: LookupEntry): { dot: string; word: string; tone: string } {
+  if (e.kind === "partner") return { dot: "bg-gold", word: "партнёрка", tone: "text-gold" };
+  if (e.kind === "super" || e.kind === "special") return { dot: "bg-gold", word: "выдано банком", tone: "text-gold" };
+  return { dot: "bg-mint", word: "выбрана", tone: "text-mint" };
 }
+
+const CHEVRON = (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--t-tx4)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="flex-none">
+    <path d="M9 5l7 7-7 7" />
+  </svg>
+);
 
 export default function Pos() {
   const [params] = useSearchParams();
@@ -79,9 +56,10 @@ export default function Pos() {
   const merchant = params.get("merchant");
   const catParam = params.get("cat");
   const [withFriends, setWithFriends] = useState(initWithFriends);
+  const [showBase, setShowBase] = useState(false);
   const categories = useCategories();
   const cards = useCards();
-  const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const resolve = useQuery({
     queryKey: ["mcc-resolve", mcc],
@@ -108,15 +86,6 @@ export default function Pos() {
     queryKey: ["overview"],
     queryFn: async () => unwrap(await api.GET("/api/v1/cashback/overview")),
     staleTime: 60_000,
-  });
-
-  const mark = useMutation({
-    mutationFn: async (offerID: number) =>
-      unwrap(await api.POST("/api/v1/cashback/selections", { body: { category_offer_id: offerID } })),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["lookup"] });
-      qc.invalidateQueries({ queryKey: ["overview"] });
-    },
   });
 
   // Партнёрки matched by the point's NAME (v2) — honest name-based matching,
@@ -151,9 +120,13 @@ export default function Pos() {
   const best = ranked[0];
   const others = ranked.slice(1);
   const available = lookup.data?.available ?? [];
+  // Base-paying clients fold into one line — their answer is «За все
+  // покупки», not this category (2b v3).
+  const baseClients = (lookup.data?.fallback ?? []).filter((e) => !e.friend_name);
   const coveredClients = new Set([
     ...ranked.filter((e) => !e.friend_name).map((e) => e.bank_client_id),
     ...available.map((e) => e.bank_client_id),
+    ...baseClients.map((e) => e.bank_client_id),
   ]);
   const uncovered = (overview.data?.clients ?? []).filter((c) => !coveredClients.has(c.bank_client_id));
   const currencies = new Set(ranked.map((e) => e.currency_kind));
@@ -162,6 +135,21 @@ export default function Pos() {
       .filter((c) => c.bank_client_id === e.bank_client_id)
       .map((c) => `··${String(c.last_4_digits).padStart(4, "0")}`)
       .join(" ");
+
+  // A row tap opens that bank's menu — the pick lives there (2b v3). A
+  // friend's menu isn't ours to open; their row goes to «Кешбек друзей»,
+  // партнёрки to their home on the bank card.
+  const openClient = (clientID?: number) => {
+    const c = (overview.data?.clients ?? []).find((x) => x.bank_client_id === clientID);
+    if (c == null) return;
+    if (c.period_id != null) navigate(`/periods/${c.period_id}`);
+    else navigate(`/periods/new?client=${c.bank_client_id}&month=${monthKey(todayISO())}`);
+  };
+  const openEntry = (e: LookupEntry) => {
+    if (e.friend_name) navigate("/friends");
+    else if (e.kind === "partner") navigate("/banks");
+    else openClient(e.bank_client_id);
+  };
 
   return (
     <>
@@ -182,41 +170,41 @@ export default function Pos() {
       {slug != null && lookup.isPending && <Spinner />}
       {lookup.isError && <ErrMsg error={lookup.error} />}
 
+      {/* The verdict is a row, not a plaque (6a): logo, cards + mechanic +
+          cap in one muted line, the rate at 40px. Tap opens the bank menu. */}
       {best && (
-        <GradientCard className="p-4" data-sid="CB-11.a" data-sid-inside="">
-          <p className="text-[9.5px] font-bold tracking-[.16em] text-white/75 uppercase">Платите этой картой</p>
-          <div className="mt-3 flex items-end justify-between">
-            <div className="min-w-0">
-              <p className="text-[22px] leading-none font-extrabold tracking-tight">{best.bank_name}</p>
-              {best.friend_name && (
-                <span className="mt-1.5 mr-1 inline-flex rounded-[8px] bg-white/20 px-2 py-0.5 text-[10px] font-bold">
-                  карта друга · {best.friend_name}
-                </span>
-              )}
-              {best.stacked_super != null && (
-                <span className="mt-1.5 inline-flex rounded-[8px] bg-white/20 px-2 py-0.5 text-[10px] font-bold">барабан · {stackNote(best)}</span>
-              )}
-              {best.kind === "super" && (
-                <span className="mt-1.5 inline-flex rounded-[8px] bg-white/20 px-2 py-0.5 text-[10px] font-bold">барабан · суммируется</span>
-              )}
-              {best.kind === "special" && (
-                <span className="mt-1.5 inline-flex rounded-[8px] bg-white/20 px-2 py-0.5 text-[10px] font-bold">спец · {specialNote(best)}</span>
-              )}
-              <p className="mt-1.5 text-[11px] font-semibold text-white/85">
-                {best.friend_name
-                  ? [best.holder_label, `попроси оплатить — @${best.friend_username}`].filter(Boolean).join(" · ")
-                  : [best.holder_label, cardChipsOf(best) || "любая карта"].filter(Boolean).join(" · ")}
-              </p>
-              {capNote(best) && (
-                <span className="mt-2.5 inline-flex rounded-[10px] bg-white/20 px-2.5 py-1 text-[10.5px] font-bold">{capNote(best)}</span>
-              )}
-            </div>
-            <div className="flex-none text-right">
-              <p className="text-[44px] leading-[.8] font-extrabold tracking-tighter">{fmtPercent(best.percent)}</p>
-              <p className="mt-1.5 text-[10.5px] font-semibold text-white/85">{currencyWord(best.currency_kind, best.points_label)}</p>
-            </div>
+        <button
+          type="button"
+          data-sid="CB-11.a"
+          onClick={() => openEntry(best)}
+          className="flex w-full items-center gap-3 border-b border-brd px-0.5 pb-3 text-left"
+        >
+          <BankBadge name={best.bank_name} size={38} />
+          <div className="min-w-0 flex-1">
+            <p className="text-[17px] leading-tight font-extrabold tracking-tight">
+              {best.bank_name}
+              {best.holder_label && <span className="font-bold text-tx3"> · {best.holder_label}</span>}
+              {best.friend_name && <span className="ml-1.5 align-[2px]"><Chip tone="friend">друг · {best.friend_name}</Chip></span>}
+            </p>
+            <p className="mt-0.5 truncate text-[11.5px] font-medium text-tx3">
+              {(best.friend_name
+                ? [`попроси оплатить — @${best.friend_username}`]
+                : [
+                    cardChipsOf(best) || "любая карта",
+                    stackShort(best) || (best.kind === "super" ? "барабан" : best.kind === "special" ? `спец · «${best.raw_title}»` : ""),
+                    capShort(best),
+                    best.currency_kind === "points" ? currencyWord(best.currency_kind, best.points_label) : "",
+                  ]
+              )
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
           </div>
-        </GradientCard>
+          <span className="flex-none text-right">
+            <Pct percent={best.percent} currency={best.currency_kind} className="text-[40px] leading-[.8] tracking-tighter" />
+          </span>
+          {CHEVRON}
+        </button>
       )}
 
       {slug != null && lookup.data?.message && !best && (
@@ -250,7 +238,7 @@ export default function Pos() {
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-bold">{resolve.data.code.name}</p>
             <p className="mt-0.5 text-[10.5px] font-medium text-tx4">
-              {canon ? `канон: ${canon.emoji || FALLBACK_EMOJI} ${canon.title_ru}` : "канонической категории нет"}
+              {canon ? `${canon.emoji || FALLBACK_EMOJI} ${canon.title_ru}` : "канонической категории нет"}
             </p>
           </div>
         </Card>
@@ -274,65 +262,117 @@ export default function Pos() {
             </button>
           )}
 
-          <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Как считает каждый банк</p>
+          <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Остальные банки</p>
           <div className="space-y-1.5" data-sid="CB-11.c">
-            {others.map((e, i) => (
-              <BankRow key={i} e={e} />
-            ))}
+            {others.map((e, i) => {
+              const st = stateOf(e);
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => openEntry(e)}
+                  className={`flex w-full items-center gap-2.5 rounded-2xl border px-3 py-2.5 text-left ${e.friend_name ? "border-acc/40 bg-srf" : "border-brd2 bg-srf"}`}
+                >
+                  <BankBadge name={e.bank_name} size={26} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13.5px] font-bold">
+                      {e.bank_name}
+                      {e.holder_label && <span className="font-semibold text-tx4"> · {e.holder_label}</span>}
+                    </p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] font-medium">
+                      <span className={`h-1.5 w-1.5 flex-none rounded-full ${st.dot}`} />
+                      <span className={`font-bold ${st.tone}`}>{st.word}</span>
+                      {e.raw_title && <span className="text-tx4">«{e.raw_title}»</span>}
+                      {e.friend_name && <Chip tone="friend">друг · {e.friend_name}</Chip>}
+                    </p>
+                  </div>
+                  <Pct percent={e.percent} currency={e.currency_kind} className="text-[15px]" />
+                  {CHEVRON}
+                </button>
+              );
+            })}
             {/* Every served row here is pickable — the API drops the dead
-                ends (slots_full/locked) since 2026-08-07. */}
+                ends. Picking happens in the bank's menu, a tap away. */}
             {available.map((e) => (
-              <div
+              <button
                 key={e.offer_id}
-                className="flex items-center gap-2.5 rounded-2xl border border-dashed border-dash bg-srf/50 px-3 py-2.5"
+                type="button"
+                onClick={() => openClient(e.bank_client_id)}
+                className="flex w-full items-center gap-2.5 rounded-2xl border border-dashed border-dash bg-srf/50 px-3 py-2.5 text-left"
               >
                 <BankBadge name={e.bank_name} size={26} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold">
+                  <p className="text-[13.5px] font-bold">
                     {e.bank_name}
-                    {e.raw_title && <span className="font-medium text-tx4"> · «{e.raw_title}»</span>}
-                    <KindBadge kind={e.kind} />
+                    {e.holder_label && <span className="font-semibold text-tx4"> · {e.holder_label}</span>}
                   </p>
-                  <p className="text-[10px] font-medium text-tx4">в меню, не выбрано · {verdictNote(e)}</p>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] font-medium">
+                    <span className="h-1.5 w-1.5 flex-none rounded-full border-[1.5px] border-tx4" />
+                    <span className="font-semibold text-tx3">свободный слот</span>
+                    <span className="text-tx4">«{e.raw_title}»</span>
+                  </p>
                 </div>
-                <Pct percent={e.percent} currency={e.currency_kind} className="text-[14px]" />
-                <Btn variant="soft" className="!px-2.5 !py-1.5 text-xs whitespace-nowrap" disabled={mark.isPending} onClick={() => mark.mutate(e.offer_id)}>
-                  Отметить
-                </Btn>
-              </div>
+                <Pct percent={e.percent} currency={e.currency_kind} className="text-[15px]" />
+                {CHEVRON}
+              </button>
             ))}
             {uncovered.map((c) => (
-              <div key={c.bank_client_id} className="flex items-center gap-2.5 rounded-2xl border border-brd bg-srf/45 px-3 py-2.5 opacity-65">
+              <button
+                key={c.bank_client_id}
+                type="button"
+                onClick={() => openClient(c.bank_client_id)}
+                className="flex w-full items-center gap-2.5 rounded-2xl border border-brd bg-srf/45 px-3 py-2.5 text-left opacity-65"
+              >
                 <BankBadge name={c.bank_name} size={26} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold text-tx3">
+                  <p className="text-[13.5px] font-bold text-tx3">
                     {c.bank_name}
-                    {c.holder_label && <span className="font-medium text-tx4"> · {c.holder_label}</span>}
+                    {c.holder_label && <span className="font-semibold text-tx4"> · {c.holder_label}</span>}
                   </p>
-                  <p className="text-[10px] font-medium text-tx4">{c.period_id == null ? "меню не занесено" : "нет в меню месяца"}</p>
+                  <p className="mt-0.5 text-[10.5px] font-medium text-tx4">
+                    {c.period_id == null ? "меню не занесено" : `нет в меню ${monthGenOf(todayISO())}`}
+                  </p>
                 </div>
                 <span className="text-[15px] font-extrabold text-tx4">—</span>
-              </div>
+                {CHEVRON}
+              </button>
             ))}
           </div>
-          <ErrMsg error={mark.error} />
 
-          {(lookup.data.fallback ?? []).length > 0 && (
-            <>
-              <p className="mx-0.5 text-[11px] font-semibold text-tx3">Остальное — «За все покупки»</p>
-              <div className="space-y-1.5">
-                {(lookup.data.fallback ?? []).map((e, i) => (
-                  <BankRow key={`f-${i}`} e={e} note="база" />
-                ))}
-              </div>
-            </>
+          {/* Base-paying banks fold into one line (2b v3): their answer is
+              «За все покупки», not this category. */}
+          {baseClients.length > 0 && (
+            <div className="rounded-xl border border-brd bg-srf/60 px-3 py-2.5" data-sid="CB-11.f">
+              <button type="button" onClick={() => setShowBase(!showBase)} className="flex w-full items-center gap-2 text-left">
+                <span className="min-w-0 flex-1 text-xs font-semibold text-tx4">
+                  Без своей категории · {baseClients.length} —{" "}
+                  {baseClients.map((e) => (e.holder_label ? `${e.bank_name} · ${e.holder_label}` : e.bank_name)).join(", ")} · платят
+                  базу
+                </span>
+                <span className="text-[9px] text-tx4">{showBase ? "▲" : "▼"}</span>
+              </button>
+              {showBase && (
+                <div className="mt-2 space-y-2 border-t border-brd/60 pt-2">
+                  {baseClients.map((e, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <BankBadge name={e.bank_name} size={18} />
+                      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-tx2">
+                        {e.bank_name}
+                        {e.holder_label && <span className="font-medium text-tx4"> · {e.holder_label}</span>}
+                        <span className="font-medium text-tx4"> · «{e.raw_title}»</span>
+                      </span>
+                      <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
-          {currencies.has("points") && currencies.size > 1 && (
-            <p className="mx-0.5 text-[10.5px] leading-snug font-medium text-tx4">
-              Баллы показываются отдельно и в рубли не пересчитываются — рублёвый победитель просто стоит выше.
-            </p>
-          )}
+          <p className="mx-0.5 text-[10.5px] leading-snug font-medium text-tx4">
+            Тап по строке открывает меню этого банка — там категория и выбирается.
+            {currencies.has("points") && currencies.size > 1 && " Баллы в рубли не пересчитываются — рублёвый победитель просто стоит выше."}
+          </p>
 
           {(lookup.data.partner ?? []).length > 0 && (
             <div className="border-t border-brd pt-2">

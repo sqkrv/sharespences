@@ -23,12 +23,17 @@ export const SCREENS: Screen[] = [
   { id: "CB-04", path: "/search", title: "Поиск", file: "web/src/pages/Search.tsx" },
   { id: "CB-09", path: "/banks", title: "Банки и карты", file: "web/src/pages/Banks.tsx" },
   { id: "CB-10", path: "/banks/new", title: "Новый банк", file: "web/src/pages/BankNew.tsx" },
+  // /pos/new before /pos: the router matches in order and so does this table.
+  { id: "CB-13", path: "/pos/new", title: "Новая точка", file: "web/src/pages/PosNew.tsx" },
   { id: "CB-11", path: "/pos", title: "Точка продаж", file: "web/src/pages/Pos.tsx" },
   // CB-05 (the partner-offer list screen) dissolved into the bank cards on
   // CB-09 + the CB-12 form (партнёрки v2, 2026-08-06); /partners redirects.
   { id: "CB-12", path: "/partners/new", title: "Партнёрское предложение", file: "web/src/pages/PartnerNew.tsx" },
   { id: "CB-06", path: "/friends", title: "Кешбек друзей", file: "web/src/pages/Friends.tsx" },
   { id: "CB-07", path: "/friends/settings", title: "Друзья и шэринг", file: "web/src/pages/FriendsSettings.tsx" },
+  // /join is the short form printed on invites (4e); /friends/join is the
+  // pre-00025 spelling old links still carry.
+  { id: "CB-08", path: "/join/:token", title: "Приглашение в друзья", file: "web/src/pages/FriendJoin.tsx" },
   { id: "CB-08", path: "/friends/join/:token", title: "Приглашение в друзья", file: "web/src/pages/FriendJoin.tsx" },
   { id: "HM-01", path: "/home", title: "Главная (заглушка)", file: "web/src/pages/Stub.tsx" },
   { id: "GR-01", path: "/groups", title: "Группы (заглушка)", file: "web/src/pages/Stub.tsx" },

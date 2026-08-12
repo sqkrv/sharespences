@@ -7,7 +7,15 @@ import { BackButton, Badge, Btn, Card, CheckDot, ErrMsg, errorText, Field, Gradi
 import { CategoryPicker, type PickedCategory } from "../components/CategoryPicker";
 import { Lightbox } from "../components/Lightbox";
 import { PartnerChips, PartnerSheet } from "../components/Partners";
-import { currencyBadge, fmtRange } from "../lib";
+import { Sheet } from "../components/Sheet";
+import { FALLBACK_EMOJI, coversToday, currencyBadge, fmtRange } from "../lib";
+
+// «↑» when a neighbor's rate beats this row's (2d v3) — the number alone
+// doesn't say which side wins.
+function betterMark(neighbor?: string | null, own?: string | null): string {
+  if (neighbor == null || own == null) return "";
+  return parseFloat(neighbor) > parseFloat(own) ? " ↑" : "";
+}
 
 function usePeriod(id: number) {
   return useQuery({
@@ -449,13 +457,15 @@ export default function Period() {
   const categories = useCategories();
   const banks = useBanks();
   const bankCats = useBankCategories(period.data?.bank_id);
-  const [backfill, setBackfill] = useState(false);
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [editingID, setEditingID] = useState<number | null>(null);
   // 2d: neighbor comparisons and collision details live behind a tap on the
   // row — the list stays scannable, the sticky bar still counts collisions.
   const [expandedID, setExpandedID] = useState<number | null>(null);
   const [partnerID, setPartnerID] = useState<number | null>(null);
+  // 2j: on a one-shot bank a toggle after fixation asks for confirmation
+  // first — the offer whose change is waiting for it.
+  const [confirmOffer, setConfirmOffer] = useState<CategoryOffer | null>(null);
   const goBack = useGoBack();
   // Партнёрки live on the bank, not on the month menu — but this screen is
   // where their bank is open, so they are visible and editable here too.
@@ -477,6 +487,11 @@ export default function Period() {
     qc.invalidateQueries({ queryKey: ["overview"] });
   };
 
+  // A selection dated today falls outside any period that doesn't cover
+  // today — backfill follows from the period, no switch to remember (the
+  // recognizer commit derives it the same way).
+  const backfill = period.data != null && !coversToday(period.data.period_start, period.data.period_end);
+
   const select = useMutation({
     mutationFn: async (offerID: number) =>
       unwrap(
@@ -489,12 +504,7 @@ export default function Period() {
       invalidate();
     },
     onError: (err, offerID) => {
-      const msg =
-        err instanceof ApiError && err.status === 409
-          ? err.message
-          : err instanceof ApiError && err.status === 422
-            ? `${err.message} — для ввода истории включите «задним числом»`
-            : String(err);
+      const msg = err instanceof ApiError ? err.message : String(err);
       setRowErrors((e) => ({ ...e, [offerID]: msg }));
     },
   });
@@ -545,6 +555,18 @@ export default function Period() {
   const client = (clients.data ?? []).find((c) => c.id === p.bank_client_id);
   const tierInfo = client?.program_tier_id != null ? tierMap.data?.get(client.program_tier_id) : undefined;
   const currency = tierInfo ? tierInfo.program.currency_kind : undefined;
+  // 2j: a one-shot bank fixes the selection at the first confirm — later
+  // edits are real only if the bank's app already shows them, so a toggle
+  // asks first. Re-pick banks never see the sheet.
+  const oneShotLocked = tierInfo?.program.mid_period_add === "locked_after_first" && h.slots_used > 0;
+  const runToggle = (offer: CategoryOffer) =>
+    offer.selection_id != null
+      ? unselect.mutate({ selectionID: offer.selection_id, offerID: offer.id })
+      : select.mutate(offer.id);
+  const requestToggle = (offer: CategoryOffer) => {
+    if (oneShotLocked && offer.kind === "regular") setConfirmOffer(offer);
+    else runToggle(offer);
+  };
   // The client's plastics — any of them pays with this period's selection.
   const clientCards = (cards.data ?? []).filter((c) => c.bank_client_id === p.bank_client_id);
   const cardChips = clientCards.map((c) => `··${String(c.last_4_digits).padStart(4, "0")}`).join(" ");
@@ -627,11 +649,7 @@ export default function Period() {
                     type="button"
                     disabled={select.isPending || unselect.isPending}
                     title={selected ? "Снять отметку" : "Отметить — банк начислил этот бонус"}
-                    onClick={() =>
-                      selected
-                        ? unselect.mutate({ selectionID: offer.selection_id!, offerID: offer.id })
-                        : select.mutate(offer.id)
-                    }
+                    onClick={() => requestToggle(offer)}
                     className={`flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md text-[11px] font-extrabold ${
                       selected ? "bg-gold/25 text-gold" : "border border-gold/40 text-gold/50"
                     }`}
@@ -644,7 +662,7 @@ export default function Period() {
                       {offer.raw_title} · {offer.kind === "super" ? "барабан" : "спец"}
                     </p>
                     <p className="text-[9.5px] font-medium text-tx4">
-                      не занимает слот · {offer.kind === "super" ? "ранжируется в подборе карты" : "сверх меню"}
+                      выдано банком · не занимает слот
                       {offer.cap_value && ` · до ${offer.cap_value} ${currency === "points" ? "баллов" : "₽"}`}
                     </p>
                     {unmapped && (
@@ -693,11 +711,7 @@ export default function Period() {
                         ? "Снять отметку"
                         : "Отметить — выбрано в банке"
                   }
-                  onClick={() =>
-                    selected
-                      ? unselect.mutate({ selectionID: offer.selection_id!, offerID: offer.id })
-                      : select.mutate(offer.id)
-                  }
+                  onClick={() => requestToggle(offer)}
                 >
                   <CheckDot checked={selected} />
                 </button>
@@ -730,18 +744,23 @@ export default function Period() {
               {rowErrors[offer.id] && <p className="mt-1.5 ml-8 rounded-lg bg-warn/10 px-2 py-1 text-[10.5px] font-medium text-warn">{rowErrors[offer.id]}</p>}
               {/* Collision + neighbor comparison unfold on tap (2d
                   «развёрнуто тапом») — the gold dot above flags they exist. */}
+              {/* Neighbors as plain rows (2d v3) — the duplication itself is
+                  visible, no admonishing sentence; ↑ marks a better rate. */}
               {expanded && (
                 <div className="mt-1.5 ml-8 space-y-1.5 border-t border-brd/60 pt-1.5">
                   {(hrow?.collisions ?? []).map((c, i) => (
-                    <p key={i} className="flex items-center gap-1.5 rounded-lg border border-gold/25 bg-gold/10 px-2 py-1 text-[10px] font-medium text-gold">
-                      <span className="h-[5px] w-[5px] flex-none rounded-full bg-gold" />
-                      {c.message}
+                    <p key={`c${i}`} className="flex items-center gap-1.5 text-[10.5px] font-medium text-tx3">
+                      <span className="flex-1">
+                        {c.bank_name} · {c.client_label || "Я"}
+                        {c.cap_note && <span className="text-tx4"> — {c.cap_note}</span>}
+                      </span>
+                      <span className="font-bold">{c.percent != null ? `${c.percent}%` : "—"}{betterMark(c.percent, offer.percent)}</span>
                     </p>
                   ))}
                   {(hrow?.comparisons ?? []).map((cmp, i) => (
-                    <p key={i} className="flex items-center gap-1.5 text-[10.5px] font-medium text-tx3">
+                    <p key={`n${i}`} className="flex items-center gap-1.5 text-[10.5px] font-medium text-tx3">
                       <span className="flex-1">{cmp.bank_name} · {cmp.client_label || "Я"}</span>
-                      <span className="font-bold">{cmp.percent != null ? `${cmp.percent}%` : "—"}</span>
+                      <span className="font-bold">{cmp.percent != null ? `${cmp.percent}%` : "—"}{betterMark(cmp.percent, offer.percent)}</span>
                     </p>
                   ))}
                   {notesCount === 0 && <p className="text-[10px] font-medium text-tx4">Совпадений с другими банками нет.</p>}
@@ -769,17 +788,14 @@ export default function Period() {
           </>
         )}
         <span className="flex-1" />
-        <label className="flex items-center gap-1 text-[10px] font-medium text-tx4">
-          <input type="checkbox" checked={backfill} onChange={(e) => setBackfill(e.target.checked)} />
-          задним числом
-        </label>
         <Btn className="!px-4 !py-1.5 text-xs" onClick={goBack}>
           Готово
         </Btn>
       </div>
 
       <p className="px-0.5 text-[10px] leading-snug font-medium text-tx4">
-        Отметки фиксируют выбор, уже сделанный в приложении банка; «задним числом» — для заполнения истории.
+        Отметки фиксируют выбор, уже сделанный в приложении банка.
+        {backfill && " Период не покрывает сегодня — отметки запишутся задним числом."}
       </p>
 
       <div data-sid="CB-03.e">
@@ -817,6 +833,36 @@ export default function Period() {
       </div>
 
       {partnerID != null && <PartnerSheet id={partnerID} onClose={() => setPartnerID(null)} />}
+
+      {/* 2j: the one-shot confirmation. Cancel changes nothing. */}
+      {confirmOffer && (
+        <Sheet onClose={() => setConfirmOffer(null)} sid="CB-03.f" title="Выбор в банке уже зафиксирован">
+          <div className="space-y-3 pb-1">
+            <p className="text-[12.5px] leading-snug font-medium text-tx2">
+              Этот банк не даёт менять выбор до конца периода. Здесь — зеркало банка: меняй, только если в приложении банка уже так.
+            </p>
+            <div className="flex items-center gap-2.5 rounded-xl border border-brd bg-srf2 px-3 py-2.5">
+              <span className="w-[21px] flex-none text-center text-base leading-none">{offerEmoji(confirmOffer) || FALLBACK_EMOJI}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{confirmOffer.raw_title}</span>
+              <Pct percent={confirmOffer.percent} currency={currency} className="text-[14px]" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Btn
+                onClick={() => {
+                  const offer = confirmOffer;
+                  setConfirmOffer(null);
+                  runToggle(offer);
+                }}
+              >
+                В банке уже так — записать
+              </Btn>
+              <Btn variant="ghost" onClick={() => setConfirmOffer(null)}>
+                Отмена
+              </Btn>
+            </div>
+          </div>
+        </Sheet>
+      )}
     </>
   );
 }

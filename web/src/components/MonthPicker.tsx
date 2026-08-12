@@ -128,6 +128,13 @@ export function MonthPicker({
                         <Chip tone="friend">сейчас</Chip>
                       </span>
                     )}
+                    {/* The empty next month says when it stops being empty —
+                        a chip by the name, not a line of its own (5c v3). */}
+                    {isNext && filledCount === 0 && opensDay != null && (
+                      <span className="ml-1.5 align-[2px] normal-case">
+                        <Chip>с ~{opensDay}.{pad2(now.getMonth() + 1)}</Chip>
+                      </span>
+                    )}
                   </span>
                   {roster.length > 0 && !isFuture && (
                     <span className="flex gap-1.5">
@@ -143,15 +150,10 @@ export function MonthPicker({
                       ))}
                     </span>
                   )}
-                  {isNext && filledCount === 0 && opensDay != null ? (
-                    <span className="text-[10.5px] font-semibold text-tx3">банки откроют ~{opensDay}.{pad2(now.getMonth() + 1)}</span>
-                  ) : (
-                    roster.length > 0 &&
-                    !isFuture && (
-                      <span className="text-[10.5px] font-semibold text-tx4">
-                        {filledCount} из {roster.length}
-                      </span>
-                    )
+                  {roster.length > 0 && !isFuture && !(isNext && filledCount === 0) && (
+                    <span className="text-[10.5px] font-semibold text-tx4">
+                      {filledCount} из {roster.length}
+                    </span>
                   )}
                 </button>
               );

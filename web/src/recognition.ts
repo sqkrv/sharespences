@@ -54,6 +54,9 @@ export type JobState = {
   rows?: ReviewRow[];
   slots?: number | null;
   meta?: JobMeta;
+  // 7a: some screenshots were skipped and the user chose to continue with
+  // what was read — the partial-result gate doesn't ask twice.
+  ackPartial?: boolean;
   createdID?: number;
   slotsDone?: boolean;
   offersDone?: Record<number, number>; // row key → created offer id

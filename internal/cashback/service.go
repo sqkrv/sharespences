@@ -678,6 +678,7 @@ type OverviewSelectedRow struct {
 	RawTitle string
 	Kind     OfferKind
 	Percent  *decimal.Decimal
+	Emoji    string // canonical category icon (2e v3); "" for canonical-less rows
 }
 
 // OverviewClientCard is one plastic of the client, shown as a chip
@@ -1115,6 +1116,9 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 				continue
 			}
 			row := OverviewSelectedRow{OfferID: o.CategoryOfferID, RawTitle: o.RawTitle, Kind: OfferKind(o.Kind), Percent: o.Percent}
+			if o.CanonicalCategoryID != nil {
+				row.Emoji = emojiOf(catByID[*o.CanonicalCategoryID])
+			}
 			// Only regular fills a slot and shows as a chosen (mint) chip;
 			// granted super/special go to the gold bonus chips (no slot).
 			if OfferKind(o.Kind) != OfferRegular {

@@ -252,7 +252,7 @@ function FirstRun() {
       {[
         ["🏦", "Добавь банки — слоты и лимиты подставятся из каталога"],
         ["📸", "Скинь скрины меню месяца — категории распознаются сами"],
-        ["💳", "На кассе лента скажет, какой картой платить"],
+        ["💳", "На кассе приложение подскажет, какой картой платить"],
       ].map(([icon, text]) => (
         <Card key={icon} className="flex items-center gap-3 px-3.5 py-3">
           <span className="text-base">{icon}</span>
@@ -397,7 +397,7 @@ export default function Overview() {
           {(feed.length > 0 || singles.length > 0) && (
             <div className="mx-0.5 flex items-baseline justify-between" data-sid="CB-01.b">
               <span className="text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">
-                {monthEmpty ? "Пока работает" : `${categories.length} категорий`}
+                {monthEmpty ? "Доступно сейчас" : `${categories.length} категорий`}
               </span>
               <span className="flex gap-2.5">
                 {(

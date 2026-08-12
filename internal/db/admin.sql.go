@@ -12,6 +12,21 @@ import (
 	"github.com/google/uuid"
 )
 
+const adminApprovePOS = `-- name: AdminApprovePOS :execrows
+update point_of_sale
+set status = 'approved'
+where id = $1
+  and status = 'pending'
+`
+
+func (q *Queries) AdminApprovePOS(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, adminApprovePOS, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const adminCounts = `-- name: AdminCounts :one
 
 select (select count(*) from bank)                                  as banks,
@@ -529,28 +544,33 @@ func (q *Queries) AdminListMCCChanges(ctx context.Context, arg AdminListMCCChang
 }
 
 const adminSearchPOS = `-- name: AdminSearchPOS :many
-select id,
-       name,
-       merchant_title,
-       mcc_code,
-       type,
-       address,
-       confirmations,
-       created_at,
-       last_confirmed_at,
+select p.id,
+       p.name,
+       p.merchant_title,
+       p.mcc_code,
+       p.type,
+       p.address,
+       p.confirmations,
+       p.created_at,
+       p.last_confirmed_at,
+       p.status,
+       u.username               as author,
        count(*) over ()::bigint as total
-from point_of_sale
-where $1::text = ''
-   or name ilike '%' || $1::text || '%'
-   or merchant_title ilike '%' || $1::text || '%'
-order by confirmations desc nulls last, name, id
-limit $3 offset $2
+from point_of_sale p
+         left join "user" u on u.id = p.author_user_id
+where (not $1::bool or p.status = 'pending')
+  and ($2::text = ''
+    or p.name ilike '%' || $2::text || '%'
+    or p.merchant_title ilike '%' || $2::text || '%')
+order by (p.status = 'pending') desc, p.confirmations desc nulls last, p.name, p.id
+limit $4 offset $3
 `
 
 type AdminSearchPOSParams struct {
-	Query   string
-	Skip    int32
-	MaxRows int32
+	PendingOnly bool
+	Query       string
+	Skip        int32
+	MaxRows     int32
 }
 
 type AdminSearchPOSRow struct {
@@ -563,11 +583,19 @@ type AdminSearchPOSRow struct {
 	Confirmations   *int64
 	CreatedAt       time.Time
 	LastConfirmedAt *time.Time
+	Status          PointOfSaleStatus
+	Author          *string
 	Total           int64
 }
 
+// pending_only narrows to the 5e moderation queue (user submissions).
 func (q *Queries) AdminSearchPOS(ctx context.Context, arg AdminSearchPOSParams) ([]AdminSearchPOSRow, error) {
-	rows, err := q.db.Query(ctx, adminSearchPOS, arg.Query, arg.Skip, arg.MaxRows)
+	rows, err := q.db.Query(ctx, adminSearchPOS,
+		arg.PendingOnly,
+		arg.Query,
+		arg.Skip,
+		arg.MaxRows,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -585,6 +613,8 @@ func (q *Queries) AdminSearchPOS(ctx context.Context, arg AdminSearchPOSParams) 
 			&i.Confirmations,
 			&i.CreatedAt,
 			&i.LastConfirmedAt,
+			&i.Status,
+			&i.Author,
 			&i.Total,
 		); err != nil {
 			return nil, err

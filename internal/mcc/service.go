@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/sqkrv/sharespences/internal/db"
@@ -52,14 +53,44 @@ func (s *Service) Resolve(ctx context.Context, code int16) (db.Mcc, []db.Resolve
 	return entry, rows, nil
 }
 
-// SearchMerchants finds points of sale (the imported mcc-codes.ru base) by
-// name or merchant-title substring, most-confirmed first.
-func (s *Service) SearchMerchants(ctx context.Context, query string, limit int32) ([]db.SearchMerchantsRow, error) {
+// SearchMerchants finds points of sale (the imported base + approved user
+// submissions; the caller's own pending ones too) by name or merchant-title
+// substring, most-confirmed first.
+func (s *Service) SearchMerchants(ctx context.Context, userID uuid.UUID, query string, limit int32) ([]db.SearchMerchantsRow, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, nil
 	}
-	return s.Q.SearchMerchants(ctx, db.SearchMerchantsParams{Query: query, MaxRows: limit})
+	return s.Q.SearchMerchants(ctx, db.SearchMerchantsParams{UserID: userID, Query: query, MaxRows: limit})
+}
+
+// SimilarPoints is the 5e duplicate net: same MCC, either name contains the
+// other — shown on the form so an existing точка is opened, not copied.
+func (s *Service) SimilarPoints(ctx context.Context, userID uuid.UUID, mccCode int16, name string) ([]db.FindSimilarPointsOfSaleRow, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, nil
+	}
+	return s.Q.FindSimilarPointsOfSale(ctx, db.FindSimilarPointsOfSaleParams{
+		MccCode: &mccCode, UserID: userID, Name: name,
+	})
+}
+
+// CreatePoint files a user-submitted точка продаж: pending until moderated,
+// visible to its author immediately. The MCC must exist in the dictionary —
+// the FK would refuse anyway, this check just answers in Russian.
+func (s *Service) CreatePoint(ctx context.Context, userID uuid.UUID, p db.CreateUserPointOfSaleParams) (db.PointOfSale, error) {
+	if p.MccCode == nil {
+		return db.PointOfSale{}, ErrNotFound
+	}
+	if _, err := s.Q.GetMCC(ctx, *p.MccCode); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return db.PointOfSale{}, ErrNotFound
+		}
+		return db.PointOfSale{}, err
+	}
+	p.AuthorUserID = &userID
+	return s.Q.CreateUserPointOfSale(ctx, p)
 }
 
 // Changes returns the newest journal rows (news-digest precursor).

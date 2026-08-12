@@ -205,7 +205,13 @@ export default function Search() {
                   {/* Three fixed roles, one per row: the human name, the
                       string a выписка shows, the address. */}
                   <div className="min-w-0 flex-1 space-y-[3px]">
-                    <p className="truncate text-[12.5px] leading-tight font-semibold text-tx2">{m.name}</p>
+                    <p className="truncate text-[12.5px] leading-tight font-semibold text-tx2">
+                      {m.name}
+                      {/* Only the author sees their pending точка (5e). */}
+                      {m.status === "pending" && (
+                        <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] text-[9px] font-bold text-gold">на модерации</span>
+                      )}
+                    </p>
                     {m.merchant_title && (
                       <p className="truncate font-mono text-[10px] leading-tight font-semibold tracking-wide text-tx3">{m.merchant_title}</p>
                     )}
@@ -285,9 +291,18 @@ export default function Search() {
 
           {(codes.isPending || merchants.isPending) && active && <Spinner />}
           {codes.isError && <ErrMsg error={codes.error} />}
+          {/* The zero-results tail leads to manual creation (5e) — the
+              каталог grows where it failed to answer. */}
           {nothingFound && (
-            <Card className="p-4 text-center">
+            <Card className="space-y-2.5 p-4 text-center" data-sid="CB-04.e">
               <p className="text-sm font-medium text-tx3">Ничего не найдено — попробуй иначе или введи MCC-код с чека.</p>
+              <button
+                type="button"
+                onClick={() => navigate(`/pos/new?query=${encodeURIComponent(q.trim())}`)}
+                className="w-full rounded-2xl border border-dashed border-dash py-2.5 text-sm font-semibold text-tx3"
+              >
+                + Добавить точку вручную
+              </button>
             </Card>
           )}
         </div>

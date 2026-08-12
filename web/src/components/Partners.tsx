@@ -66,10 +66,13 @@ export function PartnerChips({ offers, onOpen }: { offers: PartnerChipOffer[]; o
 }
 
 // The expanded партнёрка card (3c): scope, term, limit, activation — with
-// «Завершить» as an undoable event and edit/delete a screen away.
+// «Завершить» as an undoable event and edit/delete a screen away. Ending
+// asks first (7b): the offer leaves the feed, search and точка продаж the
+// moment it lands. «Редактировать» gets no sheet — editing loses nothing.
 export function PartnerSheet({ id, onClose }: { id: number; onClose: () => void }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [confirmEnd, setConfirmEnd] = useState(false);
   const offer = useQuery({
     queryKey: ["partner-offer", String(id)],
     queryFn: async () => unwrap(await api.GET("/api/v1/cashback/partner-offers/{id}", { params: { path: { id } } })),
@@ -109,6 +112,45 @@ export function PartnerSheet({ id, onClose }: { id: number; onClose: () => void 
     o?.scope_kind === "category"
       ? `категория · ${o.canonical_title_ru ?? "—"}`
       : `магазин · ${o?.merchant_title ?? ""}${o?.canonical_title_ru ? ` (канон: ${o.canonical_title_ru})` : ""}`;
+
+  if (confirmEnd && o) {
+    return (
+      <Sheet onClose={() => setConfirmEnd(false)} sid="CB-09.f" title="Завершить партнёрку?">
+        <div className="space-y-3 pb-1">
+          <p className="text-[12.5px] leading-snug font-medium text-tx2">
+            Предложение сразу уйдёт из ленты, поиска и точки продаж. Начисленный кешбек останется в истории.
+          </p>
+          <div className="flex items-center gap-2.5 rounded-xl border border-gold/25 bg-gold/5 px-3 py-2.5">
+            <span className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[9px] bg-gold/15 text-xs font-extrabold text-gold">★</span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold text-gold">{o.merchant_title}</p>
+              <p className="truncate text-[10px] font-medium text-tx4">
+                {[o.bank_name, o.holder_label ?? (o.bank_client_id == null ? "весь банк" : "Я"), daysLeft != null && `действовала бы ещё ${daysLeft} дн.`]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+            <Pct percent={o.percent} currency={o.currency_kind ?? "unknown"} className="text-[15px]" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Btn
+              disabled={end.isPending}
+              onClick={() => {
+                setConfirmEnd(false);
+                end.mutate();
+              }}
+            >
+              Завершить сейчас
+            </Btn>
+            <Btn variant="ghost" onClick={() => setConfirmEnd(false)}>
+              Отмена
+            </Btn>
+          </div>
+          <ErrMsg error={end.error} />
+        </div>
+      </Sheet>
+    );
+  }
 
   return (
     <Sheet onClose={onClose} sid="CB-09.e">
@@ -171,7 +213,7 @@ export function PartnerSheet({ id, onClose }: { id: number; onClose: () => void 
                 Вернуть
               </Btn>
             ) : (
-              <Btn variant="ghost" className="flex-1" disabled={end.isPending} onClick={() => end.mutate()}>
+              <Btn variant="ghost" className="flex-1" disabled={end.isPending} onClick={() => setConfirmEnd(true)}>
                 Завершить
               </Btn>
             )}

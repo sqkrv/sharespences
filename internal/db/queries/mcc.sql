@@ -41,6 +41,8 @@ where bcm.mcc_code = $1
 order by b.name, bc.title;
 
 -- name: SearchMerchants :many
+-- Pending user submissions are visible to their author only (5e): the общий
+-- каталог serves approved rows.
 select id,
        name,
        merchant_title,
@@ -48,13 +50,32 @@ select id,
        coalesce(type::text, '')::text as pos_type,
        address,
        confirmations,
-       last_confirmed_at
+       last_confirmed_at,
+       status
 from point_of_sale
 where mcc_code is not null -- a merchant row without an MCC answers nothing here
+  and (status = 'approved' or author_user_id = sqlc.arg(user_id)::uuid)
   and (name ilike '%' || sqlc.arg(query)::text || '%'
     or merchant_title ilike '%' || sqlc.arg(query)::text || '%')
 order by confirmations desc nulls last, last_confirmed_at desc nulls last, name
 limit sqlc.arg(max_rows);
+
+-- name: FindSimilarPointsOfSale :many
+-- The 5e duplicate net: same MCC and either name contains the other —
+-- «Хлебник» must catch a new «Пекарня Хлебник» before a copy is created.
+select id, name, merchant_title, mcc_code
+from point_of_sale
+where mcc_code = sqlc.arg(mcc_code)
+  and (status = 'approved' or author_user_id = sqlc.arg(user_id)::uuid)
+  and (name ilike '%' || sqlc.arg(name)::text || '%'
+    or sqlc.arg(name)::text ilike '%' || name || '%')
+order by confirmations desc nulls last, name
+limit 3;
+
+-- name: CreateUserPointOfSale :one
+insert into point_of_sale (name, merchant_title, mcc_code, type, address, status, author_user_id)
+values ($1, $2, $3, $4, $5, 'pending', $6)
+returning *;
 
 -- name: ListMCCChanges :many
 select mc.id,

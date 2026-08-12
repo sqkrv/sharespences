@@ -17,6 +17,7 @@ import PeriodNew from "./pages/PeriodNew";
 import Period from "./pages/Period";
 import Search from "./pages/Search";
 import Pos from "./pages/Pos";
+import PosNew from "./pages/PosNew";
 import PartnerNew from "./pages/PartnerNew";
 import Friends from "./pages/Friends";
 import FriendsSettings from "./pages/FriendsSettings";
@@ -84,6 +85,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/periods/new" element={<PeriodNew />} />
             <Route path="/periods/:id" element={<Period />} />
             <Route path="/search" element={<Search />} />
+            <Route path="/pos/new" element={<PosNew />} />
             <Route path="/pos" element={<Pos />} />
             {/* The old CB-04 address — cached PWA shells and bookmarks still
                 open it: a category deep link becomes the POS view, the rest
@@ -95,6 +97,9 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/partners/new" element={<PartnerNew />} />
             <Route path="/friends" element={<Friends />} />
             <Route path="/friends/settings" element={<FriendsSettings />} />
+            {/* /join is the short form printed on the invite (4e); the old
+                /friends/join links keep working. */}
+            <Route path="/join/:token" element={<FriendJoin />} />
             <Route path="/friends/join/:token" element={<FriendJoin />} />
             <Route path="/services" element={<Services />} />
             <Route path="/home" element={<Stub title="Главная" />} />

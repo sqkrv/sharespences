@@ -535,6 +535,48 @@ func (ns NullPeriod) Value() (driver.Value, error) {
 	return string(ns.Period), nil
 }
 
+type PointOfSaleStatus string
+
+const (
+	PointOfSaleStatusApproved PointOfSaleStatus = "approved"
+	PointOfSaleStatusPending  PointOfSaleStatus = "pending"
+)
+
+func (e *PointOfSaleStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PointOfSaleStatus(s)
+	case string:
+		*e = PointOfSaleStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PointOfSaleStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPointOfSaleStatus struct {
+	PointOfSaleStatus PointOfSaleStatus
+	Valid             bool // Valid is true if PointOfSaleStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPointOfSaleStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PointOfSaleStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PointOfSaleStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPointOfSaleStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PointOfSaleStatus), nil
+}
+
 type PointOfSaleType string
 
 const (
@@ -793,6 +835,7 @@ type FriendInvite struct {
 	ExpiresAt       time.Time
 	ClaimedAt       *time.Time
 	ClaimedByUserID *uuid.UUID
+	Token           *string
 }
 
 type FriendRequest struct {
@@ -802,6 +845,7 @@ type FriendRequest struct {
 	Status      FriendRequestStatus
 	CreatedAt   time.Time
 	RespondedAt *time.Time
+	ViaInvite   bool
 }
 
 type Friendship struct {
@@ -882,6 +926,8 @@ type PointOfSale struct {
 	CreatedAt       time.Time
 	LastConfirmedAt *time.Time
 	Location        interface{}
+	Status          PointOfSaleStatus
+	AuthorUserID    *uuid.UUID
 }
 
 type ProgramTier struct {

@@ -7,12 +7,13 @@ import { useClients, useInvalidateFriends } from "../hooks";
 import { BankBadge, Btn, Card, Empty, ErrMsg, Input, SegTabs, Spinner } from "../components/ui";
 import { USERNAME_MAX, normalizeUsername } from "../lib";
 
-// CB-07 «Друзья и шэринг» (docs/specs/friends-sharing.md FR-S1/S2/S3): the
-// graph management screen. Three cuts: друзья (per-friend grant toggles +
-// unfriend), заявки (exact-username search, inbox), приглашения (one-shot
-// links; the token is shown exactly once — the server stores only a hash).
+// CB-07 «Друзья и шэринг» (redesign 4e, 2026-08-12): two cuts instead of
+// three — друзья (per-friend grant toggles + unfriend) and «Заявки и
+// приглашения», one tab because they answer one question: «как сюда
+// попадают люди». The invite link lives there, visible at rest (multi-use
+// since 00025 — a claim only files a заявка, so the link re-shows safely).
 
-type Cut = "friends" | "requests" | "invites";
+type Cut = "friends" | "requests";
 
 function useFriends() {
   return useQuery({
@@ -200,6 +201,7 @@ function RequestsCut() {
         <p className="text-[13px] font-semibold">
           {r.display_name} <span className="font-medium text-tx4">@{r.username}</span>
         </p>
+        {r.via_invite && <p className="text-[10px] font-medium text-accl">пришла по твоей ссылке</p>}
       </div>
       {actions}
     </div>
@@ -220,7 +222,7 @@ function RequestsCut() {
           }}
         >
           <Input
-            placeholder="логин целиком"
+            placeholder="Точный логин друга"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoCapitalize="none"
@@ -318,110 +320,84 @@ function RequestsCut() {
           <ErrMsg error={respond.error} />
         </>
       )}
+
+      <InviteLinkBlock />
     </div>
   );
 }
 
-function InvitesCut() {
+// The invite-link block inside «Заявки и приглашения» (4e): the link is one,
+// alive and visible — its claimants land in the входящие right above it.
+function InviteLinkBlock() {
   const invalidate = useInvalidateFriends();
   const qc = useQueryClient();
-  // The plaintext token exists only in the create response — kept in memory
-  // for the copy button, never in storage.
-  const [fresh, setFresh] = useState<{ id: string; url: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const invites = useQuery({
     queryKey: ["friend-invites"],
     queryFn: async () => unwrap(await api.GET("/api/v1/friends/invites")) ?? [],
   });
+  const inv = (invites.data ?? [])[0];
+  const url = inv?.url ? window.location.origin + inv.url : null;
+  const daysLeft = inv ? Math.max(0, Math.ceil((new Date(inv.expires_at).getTime() - Date.now()) / 86_400_000)) : 0;
 
   const create = useMutation({
     mutationFn: async () => unwrap(await api.POST("/api/v1/friends/invites")),
-    onSuccess: (inv) => {
-      setFresh({ id: inv.id, url: window.location.origin + inv.url });
+    onSuccess: () => {
       setCopied(false);
-      qc.invalidateQueries({ queryKey: ["friend-invites"] });
-    },
-  });
-
-  const revoke = useMutation({
-    mutationFn: async (id: string) =>
-      unwrap(await api.DELETE("/api/v1/friends/invites/{id}", { params: { path: { id } } })),
-    onSuccess: (_, id) => {
-      if (fresh?.id === id) setFresh(null);
       qc.invalidateQueries({ queryKey: ["friend-invites"] });
       invalidate();
     },
   });
 
   return (
-    <div className="space-y-3" data-sid="CB-07.c">
-      <Card className="space-y-2.5 p-4">
-        <p className="text-[12px] font-medium text-tx3">
-          Одноразовая ссылка: отправь её в любом мессенджере — кто откроет, тот и станет другом. Действует 7
-          дней, живая всегда одна. Потерял ссылку? Просто создай новую — старая перестанет работать.
-        </p>
-        <Btn className="w-full" disabled={create.isPending} onClick={() => create.mutate()}>
-          {(invites.data ?? []).length > 0 ? "Создать новую ссылку" : "Создать ссылку"}
-        </Btn>
-        <ErrMsg error={create.error} />
-        {fresh && (
-          <div className="space-y-2 rounded-xl border border-acc/30 bg-acc/5 p-3">
-            <p className="text-[10.5px] font-semibold text-accl">
-              Ссылка показывается только сейчас — скопируй её.
-            </p>
-            <p className="break-all rounded-lg bg-inset px-2.5 py-2 font-mono text-[11px] text-tx2">{fresh.url}</p>
+    <Card className="space-y-2.5 p-4" data-sid="CB-07.c">
+      <p className="text-[11px] font-semibold tracking-wide text-tx3">ПРИГЛАШЕНИЕ ПО ССЫЛКЕ</p>
+      {invites.isPending && <Spinner />}
+      <ErrMsg error={invites.error} />
+      {url ? (
+        <>
+          <p className="break-all rounded-lg bg-inset px-2.5 py-2 font-mono text-[11px] text-tx2">{url}</p>
+          <div className="flex gap-2">
+            {"share" in navigator && (
+              <Btn
+                variant="soft"
+                className="flex-1"
+                onClick={() => navigator.share({ url }).catch(() => {})}
+              >
+                Поделиться
+              </Btn>
+            )}
             <Btn
               variant="soft"
-              className="w-full"
+              className="flex-1"
               onClick={async () => {
-                await navigator.clipboard.writeText(fresh.url);
+                await navigator.clipboard.writeText(url);
                 setCopied(true);
               }}
             >
-              {copied ? "Скопировано ✓" : "Скопировать"}
+              {copied ? "Скопировано ✓" : "Копировать"}
             </Btn>
           </div>
-        )}
-      </Card>
-
-      {invites.isPending && <Spinner />}
-      <ErrMsg error={invites.error} />
-      {invites.data &&
-        (invites.data.length > 0 ? (
-          <div className="space-y-1.5">
-            <p className="mx-0.5 text-[11px] font-semibold text-tx3">Живая ссылка</p>
-            {invites.data.map((inv) => (
-              <div key={inv.id} className="flex items-center gap-2.5 rounded-xl border border-brd bg-srf px-3 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[12px] font-semibold text-tx2">
-                    создана{" "}
-                    {new Date(inv.created_at).toLocaleString("ru-RU", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}{" "}
-                    · до {new Date(inv.expires_at).toLocaleDateString("ru-RU")}
-                  </p>
-                  <p className="text-[10px] font-medium text-tx4">потерял? создай новую — эта отзовётся сама</p>
-                </div>
-                <Btn
-                  variant="danger"
-                  className="!px-2.5 !py-1.5 text-xs"
-                  disabled={revoke.isPending}
-                  onClick={() => revoke.mutate(inv.id)}
-                >
-                  Отозвать
-                </Btn>
-              </div>
-            ))}
-            <ErrMsg error={revoke.error} />
-          </div>
-        ) : (
-          <Empty>Живой ссылки нет</Empty>
-        ))}
-    </div>
+          <p className="text-[10.5px] font-medium text-tx4">
+            Живёт ещё {daysLeft} дн. · перешедшие падают во входящие выше. Переход сам по себе другом не делает.
+          </p>
+        </>
+      ) : (
+        !invites.isPending && (
+          <p className="text-[12px] font-medium text-tx3">
+            {inv
+              ? "Ссылка есть, но показать её нельзя — она из времён одноразовых ссылок. Создай новую."
+              : "Для тех, кого ещё нет в приложении: одна живая ссылка, действует 7 дней."}
+          </p>
+        )
+      )}
+      <Btn variant={url ? "ghost" : "primary"} className="w-full" disabled={create.isPending} onClick={() => create.mutate()}>
+        Создать новую
+      </Btn>
+      {url && <p className="text-[10px] font-medium text-tx4">Старая перестанет работать сразу.</p>}
+      <ErrMsg error={create.error} />
+    </Card>
   );
 }
 
@@ -441,13 +417,11 @@ export default function FriendsSettings() {
         onChange={setCut}
         options={[
           { value: "friends", label: "Друзья" },
-          { value: "requests", label: "Заявки" },
-          { value: "invites", label: "Приглашения" },
+          { value: "requests", label: "Заявки и приглашения" },
         ]}
       />
       {cut === "friends" && <FriendsCut />}
       {cut === "requests" && <RequestsCut />}
-      {cut === "invites" && <InvitesCut />}
     </>
   );
 }

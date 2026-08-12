@@ -152,22 +152,33 @@ from mcc_change
 where id = $1;
 
 -- name: AdminSearchPOS :many
-select id,
-       name,
-       merchant_title,
-       mcc_code,
-       type,
-       address,
-       confirmations,
-       created_at,
-       last_confirmed_at,
+-- pending_only narrows to the 5e moderation queue (user submissions).
+select p.id,
+       p.name,
+       p.merchant_title,
+       p.mcc_code,
+       p.type,
+       p.address,
+       p.confirmations,
+       p.created_at,
+       p.last_confirmed_at,
+       p.status,
+       u.username               as author,
        count(*) over ()::bigint as total
-from point_of_sale
-where sqlc.arg(query)::text = ''
-   or name ilike '%' || sqlc.arg(query)::text || '%'
-   or merchant_title ilike '%' || sqlc.arg(query)::text || '%'
-order by confirmations desc nulls last, name, id
+from point_of_sale p
+         left join "user" u on u.id = p.author_user_id
+where (not sqlc.arg(pending_only)::bool or p.status = 'pending')
+  and (sqlc.arg(query)::text = ''
+    or p.name ilike '%' || sqlc.arg(query)::text || '%'
+    or p.merchant_title ilike '%' || sqlc.arg(query)::text || '%')
+order by (p.status = 'pending') desc, p.confirmations desc nulls last, p.name, p.id
 limit sqlc.arg(max_rows) offset sqlc.arg(skip);
+
+-- name: AdminApprovePOS :execrows
+update point_of_sale
+set status = 'approved'
+where id = $1
+  and status = 'pending';
 
 -- name: AdminCreatePOS :one
 insert into point_of_sale (name, merchant_title, mcc_code, type, address)

@@ -314,7 +314,7 @@ function ClientCard({
             <p className="mt-px text-[10.5px] font-medium text-tx4">{monthName} не заполнен</p>
           </div>
           <Btn variant="soft" onClick={() => navigate(`/periods/new?client=${c.bank_client_id}&month=${monthKey(monthDate)}`)}>
-            Заполнить
+            Заполнить {monthName}
           </Btn>
           <button type="button" className="px-1 text-tx4" title="Держатель / тариф" onClick={onToggleEdit}>
             ✎
@@ -373,13 +373,16 @@ function ClientCard({
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           {(c.selected ?? []).map((chip) => (
             <span key={chip.offer_id} className="rounded-lg bg-acc/15 px-2 py-1 text-[10.5px] font-semibold text-tx2">
+              {chip.emoji && `${chip.emoji} `}
               {chip.raw_title} <Pct percent={chip.percent} currency={c.currency_kind} className="text-[10.5px]" />
             </span>
           ))}
+          {/* Gold already says «granted» (2e v3) — no kind word on the chip. */}
           {(c.specials ?? []).map((chip) => (
             <span key={chip.offer_id} className="rounded-lg border border-gold/25 bg-gold/10 px-2 py-1 text-[10.5px] font-semibold text-gold">
+              {chip.emoji && `${chip.emoji} `}
               {chip.raw_title}
-              {chip.percent != null && ` ${chip.percent}%`} · {chip.kind === "super" ? "барабан" : "спец"}
+              {chip.percent != null && ` ${chip.percent}%`}
             </span>
           ))}
           {c.max_categories != null && c.slots_used < c.max_categories && (

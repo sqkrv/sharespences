@@ -43,8 +43,10 @@ where f.user_lo = sqlc.arg(user_id)
 order by u.display_name, u.username;
 
 -- name: CreateFriendRequest :one
-insert into friend_request (from_user_id, to_user_id)
-values ($1, $2)
+-- via_invite marks a заявка that arrived through the sender's invite link —
+-- the inbox labels it («пришла по твоей ссылке»).
+insert into friend_request (from_user_id, to_user_id, via_invite)
+values ($1, $2, $3)
 returning *;
 
 -- name: GetPendingRequestBetween :one
@@ -58,6 +60,7 @@ select fr.id,
        fr.from_user_id,
        fr.to_user_id,
        fr.created_at,
+       fr.via_invite,
        fu.username     as from_username,
        fu.display_name as from_display_name,
        tu.username     as to_username,
@@ -95,8 +98,10 @@ where created_by_user_id = $1
   and claimed_at is null;
 
 -- name: CreateFriendInvite :one
-insert into friend_invite (created_by_user_id, token_hash, expires_at)
-values ($1, $2, $3)
+-- The plaintext token lives at rest since 00025: a claim only files a
+-- friend request, so the link is re-showable without extra capability.
+insert into friend_invite (created_by_user_id, token_hash, token, expires_at)
+values ($1, $2, $3, $4)
 returning *;
 
 -- name: ListLiveInvitesForUser :many
@@ -117,18 +122,6 @@ where id = $1
 select *
 from friend_invite
 where token_hash = $1;
-
--- ClaimInvite is the atomic burn (invariant 5): the conditional update
--- either claims a live, unexpired invite or matches nothing — the service
--- distinguishes burned from expired via GetInviteByTokenHash afterwards.
--- name: ClaimInvite :one
-update friend_invite
-set claimed_at         = now(),
-    claimed_by_user_id = $2
-where token_hash = $1
-  and claimed_at is null
-  and expires_at > now()
-returning *;
 
 -- name: CreateShare :exec
 insert into friend_cashback_share (bank_client_id, friendship_id)

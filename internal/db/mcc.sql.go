@@ -12,6 +12,99 @@ import (
 	"github.com/google/uuid"
 )
 
+const createUserPointOfSale = `-- name: CreateUserPointOfSale :one
+insert into point_of_sale (name, merchant_title, mcc_code, type, address, status, author_user_id)
+values ($1, $2, $3, $4, $5, 'pending', $6)
+returning id, name, merchant_title, mcc_code, type, address, confirmations, created_at, last_confirmed_at, location, status, author_user_id
+`
+
+type CreateUserPointOfSaleParams struct {
+	Name          string
+	MerchantTitle *string
+	MccCode       *int16
+	Type          NullPointOfSaleType
+	Address       *string
+	AuthorUserID  *uuid.UUID
+}
+
+func (q *Queries) CreateUserPointOfSale(ctx context.Context, arg CreateUserPointOfSaleParams) (PointOfSale, error) {
+	row := q.db.QueryRow(ctx, createUserPointOfSale,
+		arg.Name,
+		arg.MerchantTitle,
+		arg.MccCode,
+		arg.Type,
+		arg.Address,
+		arg.AuthorUserID,
+	)
+	var i PointOfSale
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.MerchantTitle,
+		&i.MccCode,
+		&i.Type,
+		&i.Address,
+		&i.Confirmations,
+		&i.CreatedAt,
+		&i.LastConfirmedAt,
+		&i.Location,
+		&i.Status,
+		&i.AuthorUserID,
+	)
+	return i, err
+}
+
+const findSimilarPointsOfSale = `-- name: FindSimilarPointsOfSale :many
+select id, name, merchant_title, mcc_code
+from point_of_sale
+where mcc_code = $1
+  and (status = 'approved' or author_user_id = $2::uuid)
+  and (name ilike '%' || $3::text || '%'
+    or $3::text ilike '%' || name || '%')
+order by confirmations desc nulls last, name
+limit 3
+`
+
+type FindSimilarPointsOfSaleParams struct {
+	MccCode *int16
+	UserID  uuid.UUID
+	Name    string
+}
+
+type FindSimilarPointsOfSaleRow struct {
+	ID            uuid.UUID
+	Name          string
+	MerchantTitle *string
+	MccCode       *int16
+}
+
+// The 5e duplicate net: same MCC and either name contains the other —
+// «Хлебник» must catch a new «Пекарня Хлебник» before a copy is created.
+func (q *Queries) FindSimilarPointsOfSale(ctx context.Context, arg FindSimilarPointsOfSaleParams) ([]FindSimilarPointsOfSaleRow, error) {
+	rows, err := q.db.Query(ctx, findSimilarPointsOfSale, arg.MccCode, arg.UserID, arg.Name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FindSimilarPointsOfSaleRow
+	for rows.Next() {
+		var i FindSimilarPointsOfSaleRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MerchantTitle,
+			&i.MccCode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMCC = `-- name: GetMCC :one
 
 select code, name, description
@@ -205,16 +298,19 @@ select id,
        coalesce(type::text, '')::text as pos_type,
        address,
        confirmations,
-       last_confirmed_at
+       last_confirmed_at,
+       status
 from point_of_sale
 where mcc_code is not null -- a merchant row without an MCC answers nothing here
-  and (name ilike '%' || $1::text || '%'
-    or merchant_title ilike '%' || $1::text || '%')
+  and (status = 'approved' or author_user_id = $1::uuid)
+  and (name ilike '%' || $2::text || '%'
+    or merchant_title ilike '%' || $2::text || '%')
 order by confirmations desc nulls last, last_confirmed_at desc nulls last, name
-limit $2
+limit $3
 `
 
 type SearchMerchantsParams struct {
+	UserID  uuid.UUID
 	Query   string
 	MaxRows int32
 }
@@ -228,10 +324,13 @@ type SearchMerchantsRow struct {
 	Address         *string
 	Confirmations   *int64
 	LastConfirmedAt *time.Time
+	Status          PointOfSaleStatus
 }
 
+// Pending user submissions are visible to their author only (5e): the общий
+// каталог serves approved rows.
 func (q *Queries) SearchMerchants(ctx context.Context, arg SearchMerchantsParams) ([]SearchMerchantsRow, error) {
-	rows, err := q.db.Query(ctx, searchMerchants, arg.Query, arg.MaxRows)
+	rows, err := q.db.Query(ctx, searchMerchants, arg.UserID, arg.Query, arg.MaxRows)
 	if err != nil {
 		return nil, err
 	}
@@ -248,6 +347,7 @@ func (q *Queries) SearchMerchants(ctx context.Context, arg SearchMerchantsParams
 			&i.Address,
 			&i.Confirmations,
 			&i.LastConfirmedAt,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/sqkrv/sharespences/internal/auth"
 	"github.com/sqkrv/sharespences/internal/db"
 )
 
@@ -55,6 +56,15 @@ type MerchantDTO struct {
 	Address         *string    `json:"address,omitempty"`
 	Confirmations   int64      `json:"confirmations"`
 	LastConfirmedAt *time.Time `json:"last_confirmed_at,omitempty"`
+	Status          string     `json:"status,omitempty" enum:"approved,pending" doc:"pending rows are the caller's own submissions awaiting moderation"`
+}
+
+// SimilarPointDTO is one 5e duplicate-net hit: an existing точка the form
+// offers to open instead of creating a copy.
+type SimilarPointDTO struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	MCC  string `json:"mcc"`
 }
 
 type ChangeDTO struct {
@@ -108,7 +118,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		Query string `query:"query" required:"true" minLength:"2"`
 		Limit int32  `query:"limit" default:"20" minimum:"1" maximum:"50"`
 	}) (*struct{ Body []MerchantDTO }, error) {
-		rows, err := s.SearchMerchants(ctx, in.Query, in.Limit)
+		rows, err := s.SearchMerchants(ctx, auth.UserID(ctx), in.Query, in.Limit)
 		if err != nil {
 			return nil, err
 		}
@@ -117,6 +127,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			d := MerchantDTO{
 				ID: r.ID.String(), Name: r.Name, MerchantTitle: r.MerchantTitle,
 				Address: r.Address, LastConfirmedAt: r.LastConfirmedAt,
+				Status: string(r.Status),
 			}
 			if r.MccCode != nil {
 				d.MCC = FormatCode(*r.MccCode)
@@ -131,6 +142,65 @@ func RegisterHTTP(api huma.API, s *Service) {
 			out[i] = d
 		}
 		return &struct{ Body []MerchantDTO }{out}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "mcc-pos-similar", Method: http.MethodGet,
+		Path: "/api/v1/mcc/points-of-sale/similar", Summary: "Existing points that look like the one being created", Tags: []string{"mcc"},
+	}, func(ctx context.Context, in *struct {
+		Code string `query:"mcc" required:"true" pattern:"^[0-9]{3,4}$"`
+		Name string `query:"name" required:"true" minLength:"2"`
+	}) (*struct{ Body []SimilarPointDTO }, error) {
+		code, err := ParseCode(in.Code)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		rows, err := s.SimilarPoints(ctx, auth.UserID(ctx), code, in.Name)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]SimilarPointDTO, len(rows))
+		for i, r := range rows {
+			out[i] = SimilarPointDTO{ID: r.ID.String(), Name: r.Name}
+			if r.MccCode != nil {
+				out[i].MCC = FormatCode(*r.MccCode)
+			}
+		}
+		return &struct{ Body []SimilarPointDTO }{out}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "mcc-pos-create", Method: http.MethodPost,
+		Path: "/api/v1/mcc/points-of-sale", Summary: "Add a точка продаж (pending until moderated)", Tags: []string{"mcc"},
+		DefaultStatus: http.StatusCreated,
+	}, func(ctx context.Context, in *struct {
+		Body struct {
+			MCC           string  `json:"mcc" pattern:"^[0-9]{3,4}$" doc:"4 цифры — из истории транзакций"`
+			Name          string  `json:"name" minLength:"2" maxLength:"120"`
+			MerchantTitle *string `json:"merchant_title,omitempty" maxLength:"120" doc:"как в выписке или SMS, латиницей"`
+			Type          string  `json:"type" enum:"offline,online,app,other"`
+			Address       *string `json:"address,omitempty" maxLength:"250" doc:"офлайн — адрес, онлайн — сайт, приложение — название, другое — описание"`
+		}
+	}) (*struct{ Body MerchantDTO }, error) {
+		code, err := ParseCode(in.Body.MCC)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		p, err := s.CreatePoint(ctx, auth.UserID(ctx), db.CreateUserPointOfSaleParams{
+			Name:          in.Body.Name,
+			MerchantTitle: in.Body.MerchantTitle,
+			MccCode:       &code,
+			Type:          db.NullPointOfSaleType{PointOfSaleType: db.PointOfSaleType(in.Body.Type), Valid: true},
+			Address:       in.Body.Address,
+		})
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		d := MerchantDTO{ID: p.ID.String(), Name: p.Name, MerchantTitle: p.MerchantTitle, Status: string(p.Status)}
+		if p.MccCode != nil {
+			d.MCC = FormatCode(*p.MccCode)
+		}
+		return &struct{ Body MerchantDTO }{d}, nil
 	})
 
 	huma.Register(api, huma.Operation{

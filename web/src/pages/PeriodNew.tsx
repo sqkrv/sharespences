@@ -18,7 +18,7 @@ import {
   type ReviewRow,
 } from "../recognition";
 import ProgressRing from "../components/ProgressRing";
-import { isoDate, monthGenOf, monthNameOf, monthRange, parseMonthHints, quarterRange } from "../lib";
+import { isoDate, monthGenOf, monthNameOf, monthRange, parseMonthHints, plural, quarterRange } from "../lib";
 
 // CB-02 «Меню месяца» (redesign 2h): dates are gone from the UI — the month
 // is known from context (?month=, else today) and the program's period_type
@@ -309,6 +309,75 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
     );
   }
 
+  // 7a: the partial-result gate — some screenshots were skipped, say so in
+  // the same card before review. Nothing is written until review confirms;
+  // the draft survives reload. Re-recognizing with extra screens stays out
+  // (recognizer decision: no «дораспознать») — the re-shoot path starts
+  // over from the form.
+  const skippedIdx = (state.meta?.images ?? [])
+    .map((im, i) => (im.skipped ? i : -1))
+    .filter((i) => i >= 0);
+  if (skippedIdx.length > 0 && !state.ackPartial) {
+    const readCount = (state.rows ?? []).filter((r) => r.title.trim()).length;
+    const list = skippedIdx.map((i) => i + 1).join(" и ");
+    return (
+      <>
+        {header}
+        <Card className="space-y-3 p-4" data-sid="CB-02.d">
+          <div className="flex items-center gap-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-[16px] font-extrabold tracking-tight">Меню {monthGenOf(state.start)}</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-warn">распознавание · не всё получилось</p>
+            </div>
+            <span className="flex-none rounded-lg bg-inset px-2 py-1 text-[11px] font-bold text-tx3">
+              {state.attachmentIDs.length} {plural(state.attachmentIDs.length, "скрин", "скрина", "скринов")}
+            </span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto">
+            {state.attachmentIDs.map((aid, i) => (
+              <div key={aid} className="relative flex-none">
+                <img
+                  src={attachmentURL(aid)}
+                  alt={`скрин ${i + 1}`}
+                  className={`h-20 rounded-xl border object-cover ${skippedIdx.includes(i) ? "border-warn/40 opacity-50" : "border-brd"}`}
+                />
+                {skippedIdx.includes(i) && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-warn/40 bg-srf text-[10px] font-bold text-warn">
+                    ✕
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-[12px] leading-snug font-medium text-tx2">
+            {skippedIdx.length === 1 ? `Скрин ${list} не похож` : `Скрины ${list} не похожи`} на меню банка — возможно, это не
+            тот экран или текст размыт.{" "}
+            {readCount > 0
+              ? `Из остальных ${readCount === 1 ? "прочитана 1 категория" : `прочитано ${readCount} ${plural(readCount, "категория", "категории", "категорий")}`}, черновик сохранён.`
+              : "Прочитать не удалось ничего."}
+          </p>
+          {readCount > 0 ? (
+            <>
+              <Btn className="w-full" onClick={() => persist({ ...state, ackPartial: true })}>
+                Продолжить с {readCount} {plural(readCount, "категорией", "категориями", "категориями")}
+              </Btn>
+              <Btn variant="ghost" className="w-full" onClick={discard}>
+                Переснять заново
+              </Btn>
+            </>
+          ) : (
+            <Btn variant="soft" className="w-full" onClick={discard}>
+              К форме — переснять или заполнить вручную
+            </Btn>
+          )}
+          <p className="text-[10px] leading-snug font-medium text-tx4">
+            Ничего не записано, пока не пройдена проверка распознанного.
+          </p>
+        </Card>
+      </>
+    );
+  }
+
   return (
     <RecognizeReview
       jobID={jobID}
@@ -493,7 +562,7 @@ function RecognizeReview({
               </p>
             </div>
             <span className="flex-none rounded-lg bg-inset px-2 py-1 text-[11px] font-bold text-tx3">
-              {state.attachmentIDs.length} {state.attachmentIDs.length === 1 ? "скрин" : "скрина"}
+              {state.attachmentIDs.length} {plural(state.attachmentIDs.length, "скрин", "скрина", "скринов")}
             </span>
           </div>
           {/* Month check without date fields (3b): the verbatim screenshot

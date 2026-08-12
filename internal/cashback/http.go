@@ -538,6 +538,7 @@ type OverviewChipDTO struct {
 	RawTitle string  `json:"raw_title"`
 	Kind     string  `json:"kind"` // regular | super | special — «спец» vs «супер» chip label
 	Percent  *string `json:"percent,omitempty"`
+	Emoji    string  `json:"emoji,omitempty" doc:"canonical category icon; absent on canonical-less rows"`
 }
 
 // OverviewBaseDTO is the «Остальное» row: the best base rate across clients.
@@ -599,10 +600,13 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		out := make([]ProgramDTO, len(rows))
 		for i, r := range rows {
+			// MidPeriodAdd/Activation were forgotten here since 00008 — the
+			// SPA's one-shot detection (2j) reads them off this list.
 			out[i] = programDTO(db.CashbackProgram{
 				ID: r.ID, BankID: r.BankID, Name: r.Name, PeriodType: r.PeriodType,
 				SelectionMode: r.SelectionMode, CurrencyKind: r.CurrencyKind,
 				PointsLabel: r.PointsLabel, SelectionOpensDay: r.SelectionOpensDay, Notes: r.Notes,
+				MidPeriodAdd: r.MidPeriodAdd, Activation: r.Activation,
 			}, r.BankName)
 		}
 		return &struct{ Body []ProgramDTO }{out}, nil
@@ -1227,10 +1231,10 @@ func RegisterHTTP(api huma.API, s *Service) {
 			}
 			dto.Selected = make([]OverviewChipDTO, len(c.Selected))
 			for j, r := range c.Selected {
-				dto.Selected[j] = OverviewChipDTO{OfferID: r.OfferID, RawTitle: r.RawTitle, Kind: string(r.Kind), Percent: decToStr(r.Percent)}
+				dto.Selected[j] = OverviewChipDTO{OfferID: r.OfferID, RawTitle: r.RawTitle, Kind: string(r.Kind), Percent: decToStr(r.Percent), Emoji: r.Emoji}
 			}
 			for _, r := range c.Specials {
-				dto.Specials = append(dto.Specials, OverviewChipDTO{OfferID: r.OfferID, RawTitle: r.RawTitle, Kind: string(r.Kind), Percent: decToStr(r.Percent)})
+				dto.Specials = append(dto.Specials, OverviewChipDTO{OfferID: r.OfferID, RawTitle: r.RawTitle, Kind: string(r.Kind), Percent: decToStr(r.Percent), Emoji: r.Emoji})
 			}
 			out.Body.Clients[i] = dto
 		}

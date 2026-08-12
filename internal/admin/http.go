@@ -156,6 +156,8 @@ type POSDTO struct {
 	Confirmations   *int64    `json:"confirmations,omitempty"`
 	CreatedAt       string    `json:"created_at"`
 	LastConfirmedAt *string   `json:"last_confirmed_at,omitempty"`
+	Status          string    `json:"status" enum:"approved,pending"`
+	Author          *string   `json:"author,omitempty" doc:"username подавшего (5e); null у импорта и админских строк"`
 }
 
 type posBody struct {
@@ -620,14 +622,19 @@ func RegisterHTTP(api huma.API, s *Service) {
 	huma.Register(api, huma.Operation{
 		OperationID: "admin-pos-list", Method: http.MethodGet,
 		Path: "/api/pos", Summary: "Search points of sale", Tags: []string{"pos"},
-	}, func(ctx context.Context, in *pageParams) (*struct {
+	}, func(ctx context.Context, in *struct {
+		Query       string `query:"query" required:"false" doc:"подстрока названия или мерчанта"`
+		Limit       int32  `query:"limit" default:"50" minimum:"1" maximum:"500"`
+		Offset      int32  `query:"offset" default:"0" minimum:"0"`
+		PendingOnly bool   `query:"pending" required:"false" doc:"только очередь модерации (5e)"`
+	}) (*struct {
 		Body struct {
 			Total int64    `json:"total"`
 			Items []POSDTO `json:"items"`
 		}
 	}, error) {
 		rows, err := s.Q.AdminSearchPOS(ctx, db.AdminSearchPOSParams{
-			Query: in.Query, MaxRows: in.Limit, Skip: in.Offset,
+			Query: in.Query, MaxRows: in.Limit, Skip: in.Offset, PendingOnly: in.PendingOnly,
 		})
 		if err != nil {
 			return nil, err
@@ -645,6 +652,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				ID: p.ID, Name: p.Name, MerchantTitle: p.MerchantTitle,
 				MccCode: p.MccCode, Address: p.Address, Confirmations: p.Confirmations,
 				CreatedAt: p.CreatedAt.Format("2006-01-02"),
+				Status:    string(p.Status), Author: p.Author,
 			}
 			if p.Type.Valid {
 				t := string(p.Type.PointOfSaleType)
@@ -657,6 +665,23 @@ func RegisterHTTP(api huma.API, s *Service) {
 			out.Body.Items[i] = d
 		}
 		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "admin-pos-approve", Method: http.MethodPost,
+		Path: "/api/pos/{id}/approve", Summary: "Approve a pending point (5e moderation)", Tags: []string{"pos"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID uuid.UUID `path:"id"`
+	}) (*struct{}, error) {
+		n, err := s.Q.AdminApprovePOS(ctx, in.ID)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		if n == 0 {
+			return nil, huma.Error404NotFound("не найдено или уже одобрено")
+		}
+		return &struct{}{}, nil
 	})
 
 	huma.Register(api, huma.Operation{
