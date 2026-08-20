@@ -153,7 +153,7 @@ type AdminCreatePOSParams struct {
 }
 
 // origin is literal, not a parameter: a row created through the sidecar was
-// created by an operator, and nothing else may claim otherwise (00025).
+// created by an operator, and nothing else may claim otherwise (00027).
 func (q *Queries) AdminCreatePOS(ctx context.Context, arg AdminCreatePOSParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, adminCreatePOS,
 		arg.Name,
@@ -269,6 +269,27 @@ func (q *Queries) AdminGetBankCategoryWithBank(ctx context.Context, id int64) (A
 		&i.Title,
 		&i.IsCustom,
 	)
+	return i, err
+}
+
+const adminGetUserRole = `-- name: AdminGetUserRole :one
+
+select username, role
+from "user"
+where username = $1
+`
+
+type AdminGetUserRoleRow struct {
+	Username string
+	Role     UserRole
+}
+
+// Roles (AD-08, roles-moderation.md): exact-username promote/demote only —
+// deliberately NO user-listing query, so the sidecar never grows one.
+func (q *Queries) AdminGetUserRole(ctx context.Context, username string) (AdminGetUserRoleRow, error) {
+	row := q.db.QueryRow(ctx, adminGetUserRole, username)
+	var i AdminGetUserRoleRow
+	err := row.Scan(&i.Username, &i.Role)
 	return i, err
 }
 
@@ -627,6 +648,30 @@ func (q *Queries) AdminSearchPOS(ctx context.Context, arg AdminSearchPOSParams) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const adminSetUserRole = `-- name: AdminSetUserRole :one
+update "user"
+set role = $2
+where username = $1
+returning username, role
+`
+
+type AdminSetUserRoleParams struct {
+	Username string
+	Role     UserRole
+}
+
+type AdminSetUserRoleRow struct {
+	Username string
+	Role     UserRole
+}
+
+func (q *Queries) AdminSetUserRole(ctx context.Context, arg AdminSetUserRoleParams) (AdminSetUserRoleRow, error) {
+	row := q.db.QueryRow(ctx, adminSetUserRole, arg.Username, arg.Role)
+	var i AdminSetUserRoleRow
+	err := row.Scan(&i.Username, &i.Role)
+	return i, err
 }
 
 const adminUpdateCustomBankCategory = `-- name: AdminUpdateCustomBankCategory :one

@@ -287,7 +287,7 @@ func (q *Queries) GetPendingRequestBetween(ctx context.Context, arg GetPendingRe
 
 const getUserByUsername = `-- name: GetUserByUsername :one
 
-select id, username, display_name, email, created_at, telegram_id, password_hash
+select id, username, display_name, email, created_at, telegram_id, password_hash, role
 from "user"
 where username = $1
 `
@@ -312,6 +312,7 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.CreatedAt,
 		&i.TelegramID,
 		&i.PasswordHash,
+		&i.Role,
 	)
 	return i, err
 }

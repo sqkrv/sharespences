@@ -60,7 +60,7 @@ const findSimilarPointsOfSale = `-- name: FindSimilarPointsOfSale :many
 select id, name, merchant_title, mcc_code
 from point_of_sale
 where mcc_code = $1
-  and (status = 'approved' or author_user_id = $2::uuid)
+  and (status = 'approved' or (author_user_id = $2::uuid and status = 'pending'))
   and (name ilike '%' || $3::text || '%'
     or $3::text ilike '%' || name || '%')
 order by confirmations desc nulls last, name
@@ -187,6 +187,174 @@ func (q *Queries) ListMCCChanges(ctx context.Context, limit int32) ([]ListMCCCha
 	return items, nil
 }
 
+const moderationApprovePOS = `-- name: ModerationApprovePOS :execrows
+update point_of_sale
+set status = 'approved'
+where id = $1
+  and status = 'pending'
+`
+
+func (q *Queries) ModerationApprovePOS(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, moderationApprovePOS, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const moderationListPendingPOS = `-- name: ModerationListPendingPOS :many
+
+select id,
+       name,
+       merchant_title,
+       mcc_code,
+       coalesce(type::text, '')::text as pos_type,
+       address,
+       origin::text                   as origin,
+       created_at,
+       count(*) over ()::bigint       as total
+from point_of_sale
+where status = 'pending'
+order by created_at, id
+limit $2 offset $1
+`
+
+type ModerationListPendingPOSParams struct {
+	Skip    int32
+	MaxRows int32
+}
+
+type ModerationListPendingPOSRow struct {
+	ID            uuid.UUID
+	Name          string
+	MerchantTitle *string
+	MccCode       *int16
+	PosType       string
+	Address       *string
+	Origin        string
+	CreatedAt     time.Time
+	Total         int64
+}
+
+// Moderation (roles-moderation.md). The queue is ANONYMOUS by column
+// selection: author_user_id is deliberately never selected here — the
+// moderator-facing DTO cannot carry what the query never returns
+// (invariant 1). Writes are scoped to non-scrape rows: the 62k imported
+// rows are the operator's domain (sidecar), not the moderators'.
+func (q *Queries) ModerationListPendingPOS(ctx context.Context, arg ModerationListPendingPOSParams) ([]ModerationListPendingPOSRow, error) {
+	rows, err := q.db.Query(ctx, moderationListPendingPOS, arg.Skip, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ModerationListPendingPOSRow
+	for rows.Next() {
+		var i ModerationListPendingPOSRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MerchantTitle,
+			&i.MccCode,
+			&i.PosType,
+			&i.Address,
+			&i.Origin,
+			&i.CreatedAt,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const moderationListPublishedPOS = `-- name: ModerationListPublishedPOS :many
+select id,
+       name,
+       merchant_title,
+       mcc_code,
+       coalesce(type::text, '')::text as pos_type,
+       address,
+       origin::text                   as origin,
+       created_at,
+       count(*) over ()::bigint       as total
+from point_of_sale
+where status = 'approved'
+  and origin <> 'mcc_codes'
+order by created_at desc, id
+limit $2 offset $1
+`
+
+type ModerationListPublishedPOSParams struct {
+	Skip    int32
+	MaxRows int32
+}
+
+type ModerationListPublishedPOSRow struct {
+	ID            uuid.UUID
+	Name          string
+	MerchantTitle *string
+	MccCode       *int16
+	PosType       string
+	Address       *string
+	Origin        string
+	CreatedAt     time.Time
+	Total         int64
+}
+
+// The review stream: recently published non-scrape rows — what keeps the
+// instant-publish path (user_transaction) supervised after the fact.
+func (q *Queries) ModerationListPublishedPOS(ctx context.Context, arg ModerationListPublishedPOSParams) ([]ModerationListPublishedPOSRow, error) {
+	rows, err := q.db.Query(ctx, moderationListPublishedPOS, arg.Skip, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ModerationListPublishedPOSRow
+	for rows.Next() {
+		var i ModerationListPublishedPOSRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MerchantTitle,
+			&i.MccCode,
+			&i.PosType,
+			&i.Address,
+			&i.Origin,
+			&i.CreatedAt,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const moderationRejectPOS = `-- name: ModerationRejectPOS :execrows
+update point_of_sale
+set status = 'rejected'
+where id = $1
+  and status in ('pending', 'approved')
+  and origin <> 'mcc_codes'
+`
+
+// Reject doubles as the review stream's prune: a published non-scrape row
+// can be pulled back. Rejected rows are kept for audit.
+func (q *Queries) ModerationRejectPOS(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, moderationRejectPOS, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const resolveMCC = `-- name: ResolveMCC :many
 select b.id     as bank_id,
        b.name   as bank_name,
@@ -306,7 +474,7 @@ select id,
        origin::text as origin
 from point_of_sale
 where mcc_code is not null -- a merchant row without an MCC answers nothing here
-  and (status = 'approved' or author_user_id = $1::uuid)
+  and (status = 'approved' or (author_user_id = $1::uuid and status = 'pending'))
   and (name ilike '%' || $2::text || '%'
     or merchant_title ilike '%' || $2::text || '%')
 order by confirmations desc nulls last, last_confirmed_at desc nulls last, name
@@ -334,7 +502,8 @@ type SearchMerchantsRow struct {
 }
 
 // Pending user submissions are visible to their author only (5e): the общий
-// каталог serves approved rows.
+// каталог serves approved rows. Rejected rows are invisible to everyone,
+// the author included (roles-moderation invariant 3).
 func (q *Queries) SearchMerchants(ctx context.Context, arg SearchMerchantsParams) ([]SearchMerchantsRow, error) {
 	rows, err := q.db.Query(ctx, searchMerchants, arg.UserID, arg.Query, arg.MaxRows)
 	if err != nil {
