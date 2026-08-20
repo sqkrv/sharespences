@@ -7,6 +7,7 @@ import Catalog from "./pages/Catalog";
 import MCCPage from "./pages/MCC";
 import Journal from "./pages/Journal";
 import Pos from "./pages/Pos";
+import Roles from "./pages/Roles";
 
 const NAV = [
   { to: "/", label: "Дашборд" },
@@ -16,6 +17,7 @@ const NAV = [
   { to: "/mcc", label: "MCC" },
   { to: "/journal", label: "Журнал" },
   { to: "/pos", label: "Точки продаж" },
+  { to: "/roles", label: "Роли" },
 ];
 
 export default function App() {
@@ -54,6 +56,7 @@ export default function App() {
           <Route path="/mcc" element={<MCCPage />} />
           <Route path="/journal" element={<Journal />} />
           <Route path="/pos" element={<Pos />} />
+          <Route path="/roles" element={<Roles />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

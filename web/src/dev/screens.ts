@@ -3,8 +3,8 @@ import { matchPath } from "react-router-dom";
 // Screen IDs (docs/design/ui-preferences.md §Dev mode). A shared vocabulary:
 // «поправь CB-03» beats describing a screen in
 // prose. Prefix = module (CB кешбек, GR группы, HM главная, HS история,
-// SYS системные), so the numbers never collide the way the specs' old S<n>
-// labels did across cashback.md and group-expenses.md.
+// SYS системные, MD модерация), so the numbers never collide the way the
+// specs' old S<n> labels did across cashback.md and group-expenses.md.
 //
 // This array is the ONLY list of screen IDs — it is what renders the chip,
 // so it cannot rot silently. Sub-region IDs (CB-01.a…) are deliberately not
@@ -17,6 +17,7 @@ export const SCREENS: Screen[] = [
   { id: "SYS-01", path: "/login", title: "Вход", file: "web/src/pages/Login.tsx" },
   { id: "SYS-02", path: "/register", title: "Регистрация", file: "web/src/pages/Register.tsx" },
   { id: "SYS-03", path: "/services", title: "Сервисы", file: "web/src/pages/Services.tsx" },
+  { id: "MD-01", path: "/moderation", title: "Модерация", file: "web/src/pages/Moderation.tsx" },
   { id: "CB-01", path: "/", title: "Кешбек — лента", file: "web/src/pages/Overview.tsx" },
   { id: "CB-02", path: "/periods/new", title: "Меню месяца", file: "web/src/pages/PeriodNew.tsx" },
   { id: "CB-03", path: "/periods/:id", title: "Меню банка", file: "web/src/pages/Period.tsx" },
