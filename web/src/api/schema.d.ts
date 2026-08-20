@@ -952,6 +952,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/moderation/pos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Moderation queue / review stream (moderators) */
+        get: operations["moderation-pos-list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/moderation/pos/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish a pending submission (moderators) */
+        post: operations["moderation-pos-approve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/moderation/pos/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a submission or pull a published row (moderators) */
+        post: operations["moderation-pos-reject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/version": {
         parameters: {
             query?: never;
@@ -1854,6 +1905,29 @@ export interface components {
             /** Format: int64 */
             user_confirmations: number;
         };
+        ModerationPage: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ModerationPage.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ModerationRowDTO"][] | null;
+            /** Format: int64 */
+            total: number;
+        };
+        ModerationRowDTO: {
+            address?: string;
+            created_at: string;
+            id: string;
+            mcc?: string;
+            merchant_title?: string;
+            name: string;
+            /** @enum {string} */
+            origin: "mcc_codes" | "user_manual" | "user_transaction" | "admin";
+            /** @enum {string} */
+            type?: "offline" | "online" | "app" | "other";
+        };
         OfferPeriodDTO: {
             /**
              * Format: uri
@@ -2210,6 +2284,8 @@ export interface components {
             display_name: string;
             email: string;
             id: string;
+            /** @enum {string} */
+            role: "user" | "moderator" | "admin";
             username: string;
         };
         VersionDTO: {
@@ -4335,6 +4411,98 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Mcc-resolveResponse"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "moderation-pos-list": {
+        parameters: {
+            query?: {
+                /** @description pending — очередь на проверку; published — недавно опубликованные (не из скрейпа) */
+                state?: "pending" | "published";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModerationPage"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "moderation-pos-approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "moderation-pos-reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

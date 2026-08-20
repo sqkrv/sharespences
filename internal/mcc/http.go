@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/google/uuid"
 
 	"github.com/sqkrv/sharespences/internal/auth"
 	"github.com/sqkrv/sharespences/internal/db"
@@ -93,8 +94,24 @@ func httpErr(err error) error {
 		return huma.Error404NotFound(ErrNotFound.Error())
 	case errors.Is(err, ErrBadCode):
 		return huma.Error422UnprocessableEntity(ErrBadCode.Error())
+	case errors.Is(err, ErrNotModerator):
+		return huma.Error403Forbidden(ErrNotModerator.Error())
 	}
 	return err
+}
+
+// ModerationRowDTO is one row of the queue or review stream. DELIBERATELY
+// no author field of any kind: the query never selects author_user_id, so
+// this shape cannot leak the submitter (roles-moderation invariant 1).
+type ModerationRowDTO struct {
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	MerchantTitle *string `json:"merchant_title,omitempty"`
+	MCC           string  `json:"mcc,omitempty"` // zero-padded
+	Type          *string `json:"type,omitempty" enum:"offline,online,app,other"`
+	Address       *string `json:"address,omitempty"`
+	Origin        string  `json:"origin" enum:"mcc_codes,user_manual,user_transaction,admin"`
+	CreatedAt     string  `json:"created_at"`
 }
 
 // RegisterHTTP mounts the MCC module's API (session-guarded like the rest
@@ -256,6 +273,90 @@ func RegisterHTTP(api huma.API, s *Service) {
 			out.Body.Canonicals = append(out.Body.Canonicals, CanonicalRefDTO(c))
 		}
 		return out, nil
+	})
+
+	// --- moderation (roles-moderation.md): moderator+ only, same Russian
+	// 403 on every refusal ---
+
+	type moderationPage struct {
+		Total int64              `json:"total"`
+		Items []ModerationRowDTO `json:"items"`
+	}
+	rowDTO := func(id uuid.UUID, name string, merchantTitle *string, mccCode *int16,
+		posType string, address *string, origin string, createdAt time.Time) ModerationRowDTO {
+		d := ModerationRowDTO{
+			ID: id.String(), Name: name, MerchantTitle: merchantTitle,
+			Address: address, Origin: origin,
+			CreatedAt: createdAt.Format("2006-01-02 15:04"),
+		}
+		if mccCode != nil {
+			d.MCC = FormatCode(*mccCode)
+		}
+		if posType != "" {
+			t := posType
+			d.Type = &t
+		}
+		return d
+	}
+
+	huma.Register(api, huma.Operation{
+		OperationID: "moderation-pos-list", Method: http.MethodGet,
+		Path: "/api/v1/moderation/pos", Summary: "Moderation queue / review stream (moderators)", Tags: []string{"moderation"},
+	}, func(ctx context.Context, in *struct {
+		State  string `query:"state" enum:"pending,published" default:"pending" doc:"pending — очередь на проверку; published — недавно опубликованные (не из скрейпа)"`
+		Limit  int32  `query:"limit" default:"50" minimum:"1" maximum:"200"`
+		Offset int32  `query:"offset" default:"0" minimum:"0"`
+	}) (*struct{ Body moderationPage }, error) {
+		out := &struct{ Body moderationPage }{}
+		out.Body.Items = []ModerationRowDTO{}
+		if in.State == "published" {
+			rows, err := s.ModerationPublished(ctx, auth.UserID(ctx), in.Limit, in.Offset)
+			if err != nil {
+				return nil, httpErr(err)
+			}
+			for _, r := range rows {
+				out.Body.Total = r.Total
+				out.Body.Items = append(out.Body.Items,
+					rowDTO(r.ID, r.Name, r.MerchantTitle, r.MccCode, r.PosType, r.Address, r.Origin, r.CreatedAt))
+			}
+			return out, nil
+		}
+		rows, err := s.ModerationPending(ctx, auth.UserID(ctx), in.Limit, in.Offset)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		for _, r := range rows {
+			out.Body.Total = r.Total
+			out.Body.Items = append(out.Body.Items,
+				rowDTO(r.ID, r.Name, r.MerchantTitle, r.MccCode, r.PosType, r.Address, r.Origin, r.CreatedAt))
+		}
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "moderation-pos-approve", Method: http.MethodPost,
+		Path: "/api/v1/moderation/pos/{id}/approve", Summary: "Publish a pending submission (moderators)", Tags: []string{"moderation"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID uuid.UUID `path:"id"`
+	}) (*struct{}, error) {
+		if err := s.ModerationApprove(ctx, auth.UserID(ctx), in.ID); err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{}{}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "moderation-pos-reject", Method: http.MethodPost,
+		Path: "/api/v1/moderation/pos/{id}/reject", Summary: "Reject a submission or pull a published row (moderators)", Tags: []string{"moderation"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID uuid.UUID `path:"id"`
+	}) (*struct{}, error) {
+		if err := s.ModerationReject(ctx, auth.UserID(ctx), in.ID); err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{}{}, nil
 	})
 
 	huma.Register(api, huma.Operation{

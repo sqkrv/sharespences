@@ -740,6 +740,47 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		return &struct{}{}, nil
 	})
+
+	// --- roles (AD-08, roles-moderation.md): exact-username promote/demote,
+	// deliberately no user listing — appointment is operator work ---
+
+	huma.Register(api, huma.Operation{
+		OperationID: "admin-user-role-get", Method: http.MethodGet,
+		Path: "/api/users/{username}/role", Summary: "A user's role, by exact username", Tags: []string{"roles"},
+	}, func(ctx context.Context, in *struct {
+		Username string `path:"username"`
+	}) (*struct{ Body UserRoleDTO }, error) {
+		u, err := s.Q.AdminGetUserRole(ctx, in.Username)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{ Body UserRoleDTO }{UserRoleDTO{Username: u.Username, Role: string(u.Role)}}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "admin-user-role-set", Method: http.MethodPut,
+		Path: "/api/users/{username}/role", Summary: "Promote or demote, by exact username", Tags: []string{"roles"},
+	}, func(ctx context.Context, in *struct {
+		Username string `path:"username"`
+		Body     struct {
+			Role string `json:"role" enum:"user,moderator,admin"`
+		}
+	}) (*struct{ Body UserRoleDTO }, error) {
+		u, err := s.Q.AdminSetUserRole(ctx, db.AdminSetUserRoleParams{
+			Username: in.Username, Role: db.UserRole(in.Body.Role),
+		})
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{ Body UserRoleDTO }{UserRoleDTO{Username: u.Username, Role: string(u.Role)}}, nil
+	})
+}
+
+// UserRoleDTO answers the AD-08 screen; the username in, the role out —
+// never a list.
+type UserRoleDTO struct {
+	Username string `json:"username"`
+	Role     string `json:"role" enum:"user,moderator,admin"`
 }
 
 // --- dashboard DTO ---
