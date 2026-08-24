@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ApiError } from "../api/client";
+import { STATUS_URL } from "../lib";
 
 // Components mirror the Claude Design «Кэшбеки - Модуль» idiom: srf cards
 // with brd borders, the accent gradient for the primary action, mint for
@@ -315,9 +316,16 @@ export function GradientCard({ children, className = "", ...rest }: React.HTMLAt
 // surfaces as the browser's own «Failed to fetch»/«Load failed» TypeError —
 // and genuine JS bugs, which get a neutral line while the original goes to
 // the console for debugging (2026-07-28: errors follow the UI language).
+// A request that never reached the server fails as a TypeError («Failed to
+// fetch» / «Load failed»), which is also the one case where the answer is not
+// in the app: ErrMsg turns it into a link to the status page.
+export function isNetworkError(error: unknown): boolean {
+  return error instanceof TypeError;
+}
+
 export function errorText(error: unknown): string {
   if (error instanceof ApiError) return error.message;
-  if (error instanceof TypeError) return "Нет связи с сервером — проверь интернет";
+  if (isNetworkError(error)) return "Сервер не отвечает — проверь интернет.";
   if (error instanceof Error) {
     console.error(error);
     return "Что-то пошло не так — попробуй ещё раз";
@@ -328,7 +336,19 @@ export function errorText(error: unknown): string {
 
 export function ErrMsg({ error }: { error: unknown }) {
   if (!error) return null;
-  return <p className="mt-2 rounded-xl bg-warn/10 px-3 py-2 text-sm font-medium text-warn">{errorText(error)}</p>;
+  return (
+    <p className="mt-2 rounded-xl bg-warn/10 px-3 py-2 text-sm font-medium text-warn">
+      {errorText(error)}
+      {isNetworkError(error) && (
+        <>
+          {" "}
+          <a href={STATUS_URL} target="_blank" rel="noopener noreferrer" className="font-bold underline underline-offset-2">
+            Статус сервиса ↗
+          </a>
+        </>
+      )}
+    </p>
+  );
 }
 
 export function Spinner() {

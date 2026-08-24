@@ -204,3 +204,11 @@ export function monthNameOf(iso: string): string {
 // Category icon fallback — a canonical category may carry no emoji yet
 // (custom rows, un-curated additions); the icon column still aligns.
 export const FALLBACK_EMOJI = "🏷️";
+
+// Public status page (Uptime Kuma, deliberately on separate infrastructure —
+// it has to answer when sharespences.com does not). Linked from the offline
+// chip and from network-failure messages; never fetched, embedded or
+// preconnected, because privacy policy §2.4 states the app loads no
+// third-party resources — an outbound link the user chooses to follow is not
+// one, a request the page makes on its own would be.
+export const STATUS_URL = "https://status.sharespences.com";

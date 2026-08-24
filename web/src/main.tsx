@@ -1,10 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import { ApiError } from "./api/client";
 import { RequireAuth } from "./auth";
-import { OfflineChip, ReloadPrompt, usePrefetchOffline } from "./pwa";
+import { OfflineChip, recheckNetwork, ReloadPrompt, usePrefetchOffline } from "./pwa";
 import DevChip from "./dev/DevChip";
 import RecognitionChip from "./components/RecognitionChip";
 import NavBar from "./components/NavBar";
@@ -27,7 +27,14 @@ import "./index.css";
 // pauses queries and no fetch ever reaches the service worker — offline read
 // (docs/specs/pwa.md) depends on this. Mutations keep the 'online' default:
 // paused-not-lost is the right behavior for writes.
+// A request that dies before reaching the server is first-hand evidence the
+// probe has not caught up with yet (it re-runs on foreground return, or every
+// 15s once already offline). Re-probing on such a failure is what makes the
+// chip — and with it the link to the status page — appear at the moment the
+// user hits the outage, instead of on their next app switch.
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: (err) => recheckNetwork(err) }),
+  mutationCache: new MutationCache({ onError: (err) => recheckNetwork(err) }),
   defaultOptions: {
     queries: {
       networkMode: "offlineFirst",
