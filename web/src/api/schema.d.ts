@@ -1850,6 +1850,20 @@ export interface components {
             /** @enum {string} */
             type?: "offline" | "online" | "app" | "other";
         };
+        MerchantSearchDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MerchantSearchDTO.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["MerchantDTO"][] | null;
+            /**
+             * Format: int64
+             * @description matches in the whole base, not just this page
+             */
+            total: number;
+        };
         OfferPeriodDTO: {
             /**
              * Format: uri
@@ -4220,6 +4234,8 @@ export interface operations {
             query: {
                 query: string;
                 limit?: number;
+                /** @description rows to skip — the list pages as the user scrolls */
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -4233,7 +4249,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MerchantDTO"][] | null;
+                    "application/json": components["schemas"]["MerchantSearchDTO"];
                 };
             };
             /** @description Error */

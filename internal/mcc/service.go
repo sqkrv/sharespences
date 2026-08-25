@@ -56,12 +56,37 @@ func (s *Service) Resolve(ctx context.Context, code int16) (db.Mcc, []db.Resolve
 // SearchMerchants finds points of sale (the imported base + approved user
 // submissions; the caller's own pending ones too) by name or merchant-title
 // substring, most-confirmed first.
-func (s *Service) SearchMerchants(ctx context.Context, userID uuid.UUID, query string, limit int32) ([]db.SearchMerchantsRow, error) {
-	query = strings.TrimSpace(query)
-	if query == "" {
-		return nil, nil
+func (s *Service) SearchMerchants(ctx context.Context, userID uuid.UUID, query string, limit, offset int32) ([]db.SearchMerchantsRow, int64, error) {
+	patterns := SearchPatterns(query)
+	if len(patterns) == 0 {
+		return nil, 0, nil
 	}
-	return s.Q.SearchMerchants(ctx, db.SearchMerchantsParams{UserID: userID, Query: query, MaxRows: limit})
+	rows, err := s.Q.SearchMerchants(ctx, db.SearchMerchantsParams{
+		UserID: userID, Head: patterns[0], Patterns: patterns, MaxRows: limit, SkipRows: offset,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	// The window count is per row; an empty page carries no count, and past
+	// the last page that is the honest answer for «how many are left».
+	var total int64
+	if len(rows) > 0 {
+		total = rows[0].TotalRows
+	}
+	return rows, total, nil
+}
+
+// SearchPatterns turns a raw query into the ILIKE patterns the search matches
+// with: one per word, so word order stops mattering. LIKE wildcards typed by
+// the user are escaped — «100%» is a merchant name, not a pattern.
+func SearchPatterns(query string) []string {
+	fields := strings.Fields(query)
+	patterns := make([]string, 0, len(fields))
+	for _, w := range fields {
+		w = strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(w)
+		patterns = append(patterns, "%"+w+"%")
+	}
+	return patterns
 }
 
 // SimilarPoints is the 5e duplicate net: same MCC, either name contains the

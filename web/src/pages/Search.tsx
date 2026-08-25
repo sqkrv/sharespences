@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api, unwrap, type Schemas } from "../api/client";
 import { useCategories } from "../hooks";
@@ -60,6 +60,50 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
   return <p className="mx-0.5 pt-1 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">{children}</p>;
 }
 
+// One page of the merchant base. Small on purpose: the list is scrolled on a
+// phone, and a wrong query should cost one round trip, not fifty rows.
+const MERCHANT_PAGE = 20;
+
+// LoadMore is the bottom-of-list sentinel: it asks for the next page when it
+// scrolls into view, one page ahead of the last row (rootMargin) so the list
+// grows before the user reaches the end. It stays an observer rather than a
+// scroll listener — no throttling to tune, and it works inside whatever
+// scroll container the page ends up with. It is also a real button: the
+// observer never fires for a keyboard user who tabs to the end, nor in a
+// backgrounded tab, and a list that stops loading with no way to continue is
+// the bug this replaced.
+function LoadMore({ onVisible, busy }: { onVisible: () => void; busy: boolean }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  // `busy` is a dependency on purpose: an IntersectionObserver only reports
+  // *changes*, so a sentinel that stays in view after a page lands never
+  // fires again and the list stops one page in. Re-observing once the fetch
+  // settles re-delivers the current state, which continues the scroll for as
+  // long as the sentinel is still on screen.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || busy) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) onVisible();
+      },
+      { rootMargin: "300px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [onVisible, busy]);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onVisible}
+      disabled={busy}
+      className="w-full py-2 text-center text-[10.5px] font-medium text-tx4"
+    >
+      {busy ? "Загрузка…" : "Ещё"}
+    </button>
+  );
+}
+
 export default function Search() {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
@@ -87,11 +131,27 @@ export default function Search() {
     enabled: active && (tab === "all" || tab === "mcc"),
     queryFn: async () => unwrap(await api.GET("/api/v1/mcc/codes", { params: { query: { query: debouncedQ } } })) ?? [],
   });
-  const merchants = useQuery({
+  // Paged, because the base is 60k rows and a plain word matches hundreds:
+  // «яндекс» alone has 500+ points of sale, so a fixed 20-row answer hid rows
+  // the user knew existed (report 2026-08-24). The list loads the next page
+  // as it is scrolled; `total` is what makes «есть ещё» knowable at all.
+  const merchants = useInfiniteQuery({
     queryKey: ["mcc-merchants", debouncedQ],
     enabled: active && !isCode && (tab === "all" || tab === "shops"),
-    queryFn: async () => unwrap(await api.GET("/api/v1/mcc/merchants", { params: { query: { query: debouncedQ } } })) ?? [],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) =>
+      unwrap(
+        await api.GET("/api/v1/mcc/merchants", {
+          params: { query: { query: debouncedQ, limit: MERCHANT_PAGE, offset: pageParam } },
+        }),
+      ),
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((n, p) => n + (p?.items?.length ?? 0), 0);
+      return loaded < (last?.total ?? 0) ? loaded : undefined;
+    },
   });
+  const merchantRows = (merchants.data?.pages ?? []).flatMap((p) => p?.items ?? []);
+  const merchantTotal = merchants.data?.pages[0]?.total ?? 0;
 
   // Categories filter client-side over the canonical list; the winner line
   // comes from the cached feed (best → friend → available, same fallback
@@ -112,7 +172,7 @@ export default function Search() {
     active &&
     !codes.isPending &&
     !merchants.isPending &&
-    (!showShops || (merchants.data ?? []).length === 0) &&
+    (!showShops || merchantRows.length === 0) &&
     (!showCats || matchedCats.length === 0) &&
     (!showMcc || (codes.data ?? []).length === 0);
 
@@ -191,10 +251,17 @@ export default function Search() {
 
       {active && (
         <div className="space-y-1.5">
-          {showShops && !isCode && (merchants.data ?? []).length > 0 && (
+          {showShops && !isCode && merchantRows.length > 0 && (
             <div data-sid="CB-04.g" className="space-y-1.5">
-              <GroupLabel>Магазины</GroupLabel>
-              {(merchants.data ?? []).map((m) => (
+              <GroupLabel>
+                Магазины
+                {merchantTotal > merchantRows.length && (
+                  <span className="ml-1.5 font-medium text-tx4">
+                    {merchantRows.length} из {merchantTotal}
+                  </span>
+                )}
+              </GroupLabel>
+              {merchantRows.map((m) => (
                 <button
                   key={m.id}
                   type="button"
@@ -233,6 +300,11 @@ export default function Search() {
                   </div>
                 </button>
               ))}
+              {/* Load-more sentinel: crossing it pulls the next page, so the
+                  list ends where the matches end rather than at the page size. */}
+              {merchants.hasNextPage && (
+                <LoadMore onVisible={merchants.fetchNextPage} busy={merchants.isFetchingNextPage} />
+              )}
             </div>
           )}
 

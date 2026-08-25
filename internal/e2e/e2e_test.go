@@ -1271,26 +1271,60 @@ func TestCashbackE2E(t *testing.T) {
 		Type          *string `json:"type"`
 		Confirmations int64   `json:"confirmations"`
 	}
+	type merchantPageJSON struct {
+		Items []merchantJSON `json:"items"`
+		Total int64          `json:"total"`
+	}
 	// Case-insensitive Cyrillic substring, ranked by confirmations.
-	var merchants []merchantJSON
+	var merchants merchantPageJSON
 	owner.must("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
-	if len(merchants) != 2 {
-		t.Fatalf("merchants?query=кафе = %+v, want 2 rows", merchants)
+	if len(merchants.Items) != 2 || merchants.Total != 2 {
+		t.Fatalf("merchants?query=кафе = %+v, want 2 rows and total 2", merchants)
 	}
-	if merchants[0].Name != "Кафе Ночь" || merchants[0].Confirmations != 9 {
-		t.Fatalf("merchant ranking = %+v, want Кафе Ночь (9 confirmations) first", merchants)
+	if merchants.Items[0].Name != "Кафе Ночь" || merchants.Items[0].Confirmations != 9 {
+		t.Fatalf("merchant ranking = %+v, want Кафе Ночь (9 confirmations) first", merchants.Items)
 	}
-	if merchants[1].Name != `Кафе "Уют"` {
-		t.Fatalf("quoted-title row = %+v, want Кафе \"Уют\"", merchants[1])
+	if merchants.Items[1].Name != `Кафе "Уют"` {
+		t.Fatalf("quoted-title row = %+v, want Кафе \"Уют\"", merchants.Items[1])
+	}
+	// Words match in any order and across the two searched fields: «ночь
+	// кафе» is the same question as «кафе ночь», and «кафе noch» spans name +
+	// merchant_title (report 2026-08-24 — a row findable only by typing its
+	// words in the stored order is a row the user cannot find).
+	for _, q := range []string{"ночь кафе", "кафе noch", "  НОЧЬ   кафе  "} {
+		owner.must("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape(q), nil, &merchants, http.StatusOK)
+		if len(merchants.Items) != 1 || merchants.Items[0].Name != "Кафе Ночь" {
+			t.Fatalf("merchants?query=%q = %+v, want only Кафе Ночь", q, merchants.Items)
+		}
+	}
+	// Paging: the page carries the total of the whole match set, so the list
+	// knows there is more to load; offset walks past the first row without
+	// repeating it.
+	owner.must("GET", "/api/v1/mcc/merchants?limit=1&query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 1 || merchants.Total != 2 || merchants.Items[0].Name != "Кафе Ночь" {
+		t.Fatalf("first page = %+v, want 1 of 2 rows starting at Кафе Ночь", merchants)
+	}
+	owner.must("GET", "/api/v1/mcc/merchants?limit=1&offset=1&query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 1 || merchants.Total != 2 || merchants.Items[0].Name != `Кафе "Уют"` {
+		t.Fatalf("second page = %+v, want the second row and the same total", merchants)
+	}
+	owner.must("GET", "/api/v1/mcc/merchants?offset=99&query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 0 {
+		t.Fatalf("past the last page = %+v, want no rows", merchants.Items)
+	}
+	// A LIKE wildcard typed by the user is a literal, not a pattern.
+	owner.must("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape("ка%е"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 0 {
+		t.Fatalf("merchants?query=ка%%е = %+v, want no rows (%% is literal)", merchants.Items)
 	}
 	// Sub-4-digit MCC comes back zero-padded; empty type maps to null.
 	owner.must("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape("ветклиника"), nil, &merchants, http.StatusOK)
-	if len(merchants) != 1 || merchants[0].MCC != "0742" {
+	if len(merchants.Items) != 1 || merchants.Items[0].MCC != "0742" {
 		t.Fatalf("merchants?query=ветклиника = %+v, want one 0742 row", merchants)
 	}
 	// merchant_title (Latin) is searched too.
 	owner.must("GET", "/api/v1/mcc/merchants?query=testovy", nil, &merchants, http.StatusOK)
-	if len(merchants) != 1 || merchants[0].Name != "Тестовый Магазин" {
+	if len(merchants.Items) != 1 || merchants.Items[0].Name != "Тестовый Магазин" {
 		t.Fatalf("merchants?query=testovy = %+v, want Тестовый Магазин", merchants)
 	}
 	// minLength guard.

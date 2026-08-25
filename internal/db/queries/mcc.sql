@@ -43,6 +43,15 @@ order by b.name, bc.title;
 -- name: SearchMerchants :many
 -- Pending user submissions are visible to their author only (5e): the общий
 -- каталог serves approved rows.
+-- Every word of the query must appear somewhere in the row, in any order:
+-- «доставка яндекс» and «яндекс доставка» are the same question. The words
+-- arrive already wrapped in %…% (the service builds them).
+--
+-- total_rows rides along as a window count over the whole match set: the
+-- caller pages with offset, and «яндекс» matches 500+ rows — without the
+-- count the list would silently end at the page size, which is exactly the
+-- bug this replaced (a row found by «яндекс доставка» was missing from
+-- «яндекс», buried past row 20 by the confirmations order).
 select id,
        name,
        merchant_title,
@@ -51,14 +60,25 @@ select id,
        address,
        confirmations,
        last_confirmed_at,
-       status
+       status,
+       count(*) over ()::bigint as total_rows
 from point_of_sale
 where mcc_code is not null -- a merchant row without an MCC answers nothing here
   and (status = 'approved' or author_user_id = sqlc.arg(user_id)::uuid)
-  and (name ilike '%' || sqlc.arg(query)::text || '%'
-    or merchant_title ilike '%' || sqlc.arg(query)::text || '%')
-order by confirmations desc nulls last, last_confirmed_at desc nulls last, name
-limit sqlc.arg(max_rows);
+  -- The first word, per column and without coalesce, is the clause the two
+  -- gin_trgm_ops indexes can serve: a BitmapOr over name/merchant_title
+  -- instead of a 62k-row scan (11 ms vs 115 ms on the live base). It is
+  -- implied by the ALL below, so it changes no result — only the plan.
+  and (name ilike sqlc.arg(head)::text or merchant_title ilike sqlc.arg(head)::text)
+  -- Every word, against the two fields joined. Matching the concatenation is
+  -- the same as matching either column, because the words come from a
+  -- whitespace split: a spaceless pattern cannot straddle the joining space.
+  and name || ' ' || coalesce(merchant_title, '') ilike all (sqlc.arg(patterns)::text[])
+-- id last: offset paging needs a total order, or a row can repeat or vanish
+-- between pages when confirmations tie (they tie constantly — most rows sit
+-- at 0).
+order by confirmations desc nulls last, last_confirmed_at desc nulls last, name, id
+limit sqlc.arg(max_rows) offset sqlc.arg(skip_rows);
 
 -- name: FindSimilarPointsOfSale :many
 -- The 5e duplicate net: same MCC and either name contains the other —

@@ -67,6 +67,14 @@ type SimilarPointDTO struct {
 	MCC  string `json:"mcc"`
 }
 
+// MerchantSearchDTO wraps the page in an object so the count travels with
+// it: a broad query matches hundreds of rows, and a bare array cannot say
+// whether the list ended or the page did.
+type MerchantSearchDTO struct {
+	Items []MerchantDTO `json:"items"`
+	Total int64         `json:"total" doc:"matches in the whole base, not just this page"`
+}
+
 type ChangeDTO struct {
 	ID             int64     `json:"id"`
 	BankID         int32     `json:"bank_id"`
@@ -115,10 +123,11 @@ func RegisterHTTP(api huma.API, s *Service) {
 		OperationID: "mcc-merchant-search", Method: http.MethodGet,
 		Path: "/api/v1/mcc/merchants", Summary: "Search the merchant base (points of sale) by name", Tags: []string{"mcc"},
 	}, func(ctx context.Context, in *struct {
-		Query string `query:"query" required:"true" minLength:"2"`
-		Limit int32  `query:"limit" default:"20" minimum:"1" maximum:"50"`
-	}) (*struct{ Body []MerchantDTO }, error) {
-		rows, err := s.SearchMerchants(ctx, auth.UserID(ctx), in.Query, in.Limit)
+		Query  string `query:"query" required:"true" minLength:"2"`
+		Limit  int32  `query:"limit" default:"20" minimum:"1" maximum:"50"`
+		Offset int32  `query:"offset" default:"0" minimum:"0" doc:"rows to skip — the list pages as the user scrolls"`
+	}) (*struct{ Body MerchantSearchDTO }, error) {
+		rows, total, err := s.SearchMerchants(ctx, auth.UserID(ctx), in.Query, in.Limit, in.Offset)
 		if err != nil {
 			return nil, err
 		}
@@ -141,7 +150,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			}
 			out[i] = d
 		}
-		return &struct{ Body []MerchantDTO }{out}, nil
+		return &struct{ Body MerchantSearchDTO }{MerchantSearchDTO{Items: out, Total: total}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
