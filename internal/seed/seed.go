@@ -9,9 +9,9 @@
 // relying on them for real decisions.
 //
 // Idempotent: safe to run repeatedly (natural-key upserts). Knowledge-
-// derived reference facts (program policy, emoji, brand colors, seeded
-// bank_category rows) are refreshed on existing rows; user-created custom
-// bank_category rows are never touched — a custom row with the same
+// derived reference facts (program policy, program tiers, emoji, brand colors,
+// seeded bank_category rows) are refreshed on existing rows; user-created
+// custom bank_category rows are never touched — a custom row with the same
 // (bank, title) always wins over the seed.
 package seed
 
@@ -23,6 +23,12 @@ import (
 )
 
 const asOf = "as of 2025-05 (wiki table); re-verify in the bank app"
+
+// Альфа-Банк's cap ladder is read off the bank's own MCCD appendix (2026-08),
+// which states it verbatim: cards outside the Alfa Only / Максимум packages get
+// 5000, or 7000 with an Альфа-Смарт subscription; cards inside them get 30 000.
+// That supersedes the 2025-05 wiki table, which had Alfa Only at 15 000.
+const alfaAsOf = "as of 2026-08 (MCCD appendix, банковский документ)"
 
 // Т-Банк's programme terms are newer than the wiki table and come from a different
 // kind of source: the caps are stated terms, the slot count is an
@@ -66,9 +72,15 @@ var programs = []program{
 		midPeriodAdd: "allowed", activation: "immediate", // 2026-07-16: add while a slot is free
 		notes: asOf,
 		tiers: []tier{
-			{name: "Стандартный", capValue: "5000", capScope: "total", maxCategories: 3, notes: asOf},
-			{name: "Альфа-Смарт", paid: true, capValue: "7000", capScope: "total", maxCategories: 4, notes: asOf},
-			{name: "Alfa Only", paid: true, capValue: "15000", capScope: "total", maxCategories: 5, notes: asOf},
+			{name: "Стандартный", capValue: "5000", capScope: "total", maxCategories: 3, notes: alfaAsOf},
+			// Альфа-Смарт has had S and M levels since 2026-01 and only M carries
+			// the cashback privileges; the MCCD appendix says «подписка
+			// Альфа-Смарт» without distinguishing them, so the tier stays single
+			// until a document or an app screen names the split.
+			{name: "Альфа-Смарт", paid: true, capValue: "7000", capScope: "total", maxCategories: 4, notes: alfaAsOf},
+			// Same cap covers the Максимум package; А-Клуб (30 000 / 200 000) is
+			// a further level and is not modelled yet.
+			{name: "Alfa Only", paid: true, capValue: "30000", capScope: "total", maxCategories: 5, notes: alfaAsOf},
 		},
 	},
 	{
@@ -865,6 +877,30 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 				p.bank, p.name, t.name, t.paid, t.capValue, t.capScope,
 				t.capPerCategory, t.maxCategories, t.notes); err != nil {
 				return fmt.Errorf("seed tier %s/%s: %w", p.bank, t.name, err)
+			}
+			// Caps and slot counts are knowledge-derived reference facts, same
+			// as the program policy above — refresh them on existing rows.
+			// Without this the insert guard pins a database to whatever the
+			// tiers were on first seed, so a corrected cap never lands: Alfa
+			// Only shipped 15 000 ₽ against a documented 30 000 ₽ because the
+			// constant was the only thing anyone changed.
+			if _, err := pool.Exec(ctx, `
+				update program_tier pt
+				set is_paid_subscription = $4,
+				    cap_value            = nullif($5, '')::numeric,
+				    cap_scope            = $6::cashback_cap_scope,
+				    cap_per_category     = nullif($7, '')::numeric,
+				    max_categories       = nullif($8, 0),
+				    notes                = nullif($9, '')
+				from cashback_program cp
+				         join bank b on b.id = cp.bank_id
+				where pt.program_id = cp.id
+				  and b.name = $1
+				  and cp.name = $2
+				  and pt.name = $3`,
+				p.bank, p.name, t.name, t.paid, t.capValue, t.capScope,
+				t.capPerCategory, t.maxCategories, t.notes); err != nil {
+				return fmt.Errorf("refresh tier %s/%s: %w", p.bank, t.name, err)
 			}
 		}
 	}
