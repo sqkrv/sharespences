@@ -1019,10 +1019,14 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 func seedBank(ctx context.Context, pool *pgxpool.Pool, name string) error {
+	// bank.name is unique since 00030, so this is both race-free and the
+	// database's own guarantee rather than this query's. The previous
+	// `where not exists` form let two concurrent seed runs both pass the check
+	// and both insert.
 	_, err := pool.Exec(ctx, `
 		insert into bank (name)
-		select $1
-		where not exists (select 1 from bank where name = $1)`, name)
+		values ($1)
+		on conflict (name) do nothing`, name)
 	if err != nil {
 		return fmt.Errorf("seed bank %s: %w", name, err)
 	}
