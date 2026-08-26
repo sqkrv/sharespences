@@ -326,7 +326,8 @@ func TestCashbackE2E(t *testing.T) {
 		"username": "other", "display_name": "Other", "email": "other@example.com", "password": "correct horse",
 	}, nil, http.StatusCreated)
 
-	// --- E2E step 1: seeded programs/tiers (Альфа-Смарт: 4 slots 7000₽;
+	// --- E2E step 1: seeded programs/tiers (Альфа-Смарт M: 4 slots 7000₽ —
+	// the S level buys other привилегии and leaves cashback on base terms;
 	// Озон Стандартный: 4 slots, 1500/cat + 3000 total) ---
 	var programs []programJSON
 	owner.must("GET", "/api/v1/cashback/programs", nil, &programs, http.StatusOK)
@@ -356,10 +357,10 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("tier %q not found in program %d", name, programID)
 		return tierJSON{}
 	}
-	alfaSmart := findTier(alfa.ID, "Альфа-Смарт")
+	alfaSmart := findTier(alfa.ID, "Альфа-Смарт M")
 	ozonStd := findTier(ozon.ID, "Стандартный")
 	if alfaSmart.CapValue == nil || *alfaSmart.CapValue != "7000" || alfaSmart.MaxCategories == nil || *alfaSmart.MaxCategories != 4 {
-		t.Fatalf("Альфа-Смарт seed wrong: %+v", alfaSmart)
+		t.Fatalf("Альфа-Смарт M seed wrong: %+v", alfaSmart)
 	}
 
 	// Bank clients (person × bank) own держатель + tier; cards hang off them.

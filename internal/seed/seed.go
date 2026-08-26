@@ -73,11 +73,17 @@ var programs = []program{
 		notes: asOf,
 		tiers: []tier{
 			{name: "Стандартный", capValue: "5000", capScope: "total", maxCategories: 3, notes: alfaAsOf},
-			// Альфа-Смарт has had S and M levels since 2026-01 and only M carries
-			// the cashback privileges; the MCCD appendix says «подписка
-			// Альфа-Смарт» without distinguishing them, so the tier stays single
-			// until a document or an app screen names the split.
-			{name: "Альфа-Смарт", paid: true, capValue: "7000", capScope: "total", maxCategories: 4, notes: alfaAsOf},
+			// Альфа-Смарт is two products (bank's subscription page, 2026-08): a
+			// set of 9 привилегий at 199 ₽/мес and one of 15 at 399 ₽ личный /
+			// 499 ₽ семейный. Only the 15-privilege set carries the cashback
+			// privileges — the 4th slot, the extra барабан spin, and the
+			// 5000 → 7000 cap — so S is seeded at base-equivalent terms.
+			// Migration 00029 renames the pre-split row to M, which preserves
+			// the terms every existing subscriber already has.
+			{name: "Альфа-Смарт S", paid: true, capValue: "5000", capScope: "total", maxCategories: 3,
+				notes: alfaAsOf + "; набор из 9 привилегий (199 ₽/мес) — кэшбэк на базовых условиях"},
+			{name: "Альфа-Смарт M", paid: true, capValue: "7000", capScope: "total", maxCategories: 4,
+				notes: alfaAsOf + "; набор из 15 привилегий (399 ₽ личный / 499 ₽ семейный)"},
 			// Same cap covers the Максимум package; А-Клуб (30 000 / 200 000) is
 			// a further level and is not modelled yet.
 			{name: "Alfa Only", paid: true, capValue: "30000", capScope: "total", maxCategories: 5, notes: alfaAsOf},

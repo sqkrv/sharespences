@@ -414,12 +414,12 @@ func TestFriendsE2E(t *testing.T) {
 	anna.must("GET", fmt.Sprintf("/api/v1/cashback/programs/%d/tiers", alfaProgram.ID), nil, &tiers, http.StatusOK)
 	var smart tierJSON
 	for _, tr := range tiers {
-		if tr.Name == "Альфа-Смарт" {
+		if tr.Name == "Альфа-Смарт M" {
 			smart = tr
 		}
 	}
 	if smart.ID == 0 {
-		t.Fatal("no seeded Альфа-Смарт tier")
+		t.Fatal("no seeded Альфа-Смарт M tier")
 	}
 
 	var annaOwn, annaMama clientJSON

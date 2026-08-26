@@ -106,7 +106,82 @@ func TestTierRefreshCorrectsExistingRows(t *testing.T) {
 		where b.name = 'Альфа-Банк'`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 3 {
-		t.Errorf("Альфа-Банк tier count = %d, want 3", n)
+	if n != 4 {
+		t.Errorf("Альфа-Банк tier count = %d, want 4", n)
+	}
+}
+
+// The fresh-database shape of the split: both tiers present with their own
+// caps and slot counts, and the pre-split name gone. The upgrade path — an
+// existing «Альфа-Смарт» row with clients on it — is 00029's job and is covered
+// in internal/migrations/alfa_smart_levels_test.go.
+func TestAlfaSmartTiersSeedAsSAndM(t *testing.T) {
+	ctx := context.Background()
+	pg, err := postgres.Run(ctx, "postgis/postgis:18-3.6",
+		postgres.WithDatabase("sharespences"),
+		postgres.WithUsername("sharespences"),
+		postgres.WithPassword("sharespences"),
+		postgres.BasicWaitStrategies(),
+	)
+	if err != nil {
+		t.Skipf("no Docker: %v", err)
+	}
+	defer func() { _ = testcontainers.TerminateContainer(pg) }()
+
+	dsn, err := pg.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	if err := migrations.Up(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := Run(ctx, pool); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	var sCap, mCap string
+	var sSlots, mSlots int
+	if err := pool.QueryRow(ctx, `
+		select pt.cap_value::text, pt.max_categories
+		from program_tier pt
+		         join cashback_program cp on cp.id = pt.program_id
+		         join bank b on b.id = cp.bank_id
+		where b.name = 'Альфа-Банк' and pt.name = 'Альфа-Смарт S'`).Scan(&sCap, &sSlots); err != nil {
+		t.Fatalf("Альфа-Смарт S missing: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		select pt.cap_value::text, pt.max_categories
+		from program_tier pt
+		         join cashback_program cp on cp.id = pt.program_id
+		         join bank b on b.id = cp.bank_id
+		where b.name = 'Альфа-Банк' and pt.name = 'Альфа-Смарт M'`).Scan(&mCap, &mSlots); err != nil {
+		t.Fatalf("Альфа-Смарт M missing: %v", err)
+	}
+	if sCap != "5000" || sSlots != 3 {
+		t.Errorf("S = %s ₽ / %d slots, want 5000 / 3", sCap, sSlots)
+	}
+	if mCap != "7000" || mSlots != 4 {
+		t.Errorf("M = %s ₽ / %d slots, want 7000 / 4", mCap, mSlots)
+	}
+
+	// The un-split name must be gone, or a client could still be attached to a
+	// tier the seed no longer maintains.
+	var stale int
+	if err := pool.QueryRow(ctx, `
+		select count(*)
+		from program_tier pt
+		         join cashback_program cp on cp.id = pt.program_id
+		         join bank b on b.id = cp.bank_id
+		where b.name = 'Альфа-Банк' and pt.name = 'Альфа-Смарт'`).Scan(&stale); err != nil {
+		t.Fatal(err)
+	}
+	if stale != 0 {
+		t.Errorf("pre-split «Альфа-Смарт» tier still present (%d rows)", stale)
 	}
 }
