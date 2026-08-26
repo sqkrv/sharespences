@@ -124,6 +124,57 @@ func (q *Queries) GetMCC(ctx context.Context, code int16) (Mcc, error) {
 	return i, err
 }
 
+const getPointOfSale = `-- name: GetPointOfSale :one
+select id,
+       name,
+       merchant_title,
+       mcc_code,
+       coalesce(type::text, '')::text as pos_type,
+       address,
+       confirmations,
+       last_confirmed_at,
+       status
+from point_of_sale
+where id = $1
+  and (status = 'approved' or author_user_id = $2::uuid)
+`
+
+type GetPointOfSaleParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+type GetPointOfSaleRow struct {
+	ID              uuid.UUID
+	Name            string
+	MerchantTitle   *string
+	MccCode         *int16
+	PosType         string
+	Address         *string
+	Confirmations   *int64
+	LastConfirmedAt *time.Time
+	Status          PointOfSaleStatus
+}
+
+// The «О точке» card (8b): one row by id — approved, or the caller's own
+// pending submission (the same visibility rule the search applies).
+func (q *Queries) GetPointOfSale(ctx context.Context, arg GetPointOfSaleParams) (GetPointOfSaleRow, error) {
+	row := q.db.QueryRow(ctx, getPointOfSale, arg.ID, arg.UserID)
+	var i GetPointOfSaleRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.MerchantTitle,
+		&i.MccCode,
+		&i.PosType,
+		&i.Address,
+		&i.Confirmations,
+		&i.LastConfirmedAt,
+		&i.Status,
+	)
+	return i, err
+}
+
 const listMCCChanges = `-- name: ListMCCChanges :many
 select mc.id,
        mc.bank_id,

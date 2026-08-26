@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/google/uuid"
 
 	"github.com/sqkrv/sharespences/internal/auth"
 	"github.com/sqkrv/sharespences/internal/db"
@@ -117,6 +118,37 @@ func RegisterHTTP(api huma.API, s *Service) {
 			out[i] = codeDTO(r)
 		}
 		return &struct{ Body []CodeDTO }{out}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "mcc-point-get", Method: http.MethodGet,
+		Path: "/api/v1/mcc/points-of-sale/{id}", Summary: "One point of sale — the «О точке» card", Tags: []string{"mcc"},
+	}, func(ctx context.Context, in *struct {
+		ID uuid.UUID `path:"id"`
+	}) (*struct{ Body MerchantDTO }, error) {
+		r, err := s.Point(ctx, auth.UserID(ctx), in.ID)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return nil, huma.Error404NotFound("точка не найдена")
+			}
+			return nil, err
+		}
+		d := MerchantDTO{
+			ID: r.ID.String(), Name: r.Name, MerchantTitle: r.MerchantTitle,
+			Address: r.Address, LastConfirmedAt: r.LastConfirmedAt,
+			Status: string(r.Status),
+		}
+		if r.MccCode != nil {
+			d.MCC = FormatCode(*r.MccCode)
+		}
+		if r.PosType != "" {
+			t := r.PosType
+			d.Type = &t
+		}
+		if r.Confirmations != nil {
+			d.Confirmations = *r.Confirmations
+		}
+		return &struct{ Body MerchantDTO }{d}, nil
 	})
 
 	huma.Register(api, huma.Operation{

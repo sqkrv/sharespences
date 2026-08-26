@@ -89,6 +89,16 @@ func SearchPatterns(query string) []string {
 	return patterns
 }
 
+// Point serves the «О точке» card (8b): one row by id, under the search's
+// visibility rule — approved, or the caller's own pending submission.
+func (s *Service) Point(ctx context.Context, userID uuid.UUID, id uuid.UUID) (db.GetPointOfSaleRow, error) {
+	row, err := s.Q.GetPointOfSale(ctx, db.GetPointOfSaleParams{ID: id, UserID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return db.GetPointOfSaleRow{}, ErrNotFound
+	}
+	return row, err
+}
+
 // SimilarPoints is the 5e duplicate net: same MCC, either name contains the
 // other — shown on the form so an existing точка is opened, not copied.
 func (s *Service) SimilarPoints(ctx context.Context, userID uuid.UUID, mccCode int16, name string) ([]db.FindSimilarPointsOfSaleRow, error) {

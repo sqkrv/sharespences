@@ -7,11 +7,14 @@ import { BackButton, BankBadge, Card, Chip, ErrMsg, Pct, Spinner } from "../comp
 import {
   FALLBACK_EMOJI,
   FRIENDS_KEY,
+  POS_TYPE_RU,
   capNote,
   currencyWord,
+  fmtDate,
   fmtPercent,
   initWithFriends,
   monthKey,
+  plural,
   todayISO,
 } from "../lib";
 import { pushRecent } from "../recent";
@@ -54,6 +57,7 @@ export default function Pos() {
   const mcc = params.get("mcc");
   const merchant = params.get("merchant");
   const catParam = params.get("cat");
+  const posID = params.get("pos");
   const [withFriends, setWithFriends] = useState(initWithFriends);
   const [showBase, setShowBase] = useState(false);
   const categories = useCategories();
@@ -67,6 +71,15 @@ export default function Pos() {
     queryFn: async () => unwrap(await api.GET("/api/v1/mcc/resolve", { params: { query: { code: mcc! } } })),
   });
   const unknownCode = resolve.isError && resolve.error instanceof ApiError && resolve.error.status === 404;
+
+  // «О точке» (8b): everything the base knows about the point. Quietly
+  // absent when the screen was reached without a concrete точка.
+  const point = useQuery({
+    queryKey: ["mcc-point", posID],
+    enabled: posID != null,
+    retry: false,
+    queryFn: async () => unwrap(await api.GET("/api/v1/mcc/points-of-sale/{id}", { params: { path: { id: posID! } } })),
+  });
 
   // Banks file the same MCC under different categories — sometimes several
   // in one bank. When the code maps to more than one canonical, the MCC chip
@@ -260,6 +273,41 @@ export default function Pos() {
         </Card>
       )}
 
+      {/* «О точке» — the base's own facts about this точка (8b): the
+          statement string, address + type, the record's freshness. */}
+      {point.data && (
+        <Card className="space-y-1.5 p-3.5" data-sid="CB-11.g">
+          <p className="text-[10px] font-extrabold tracking-[.14em] text-tx3 uppercase">О точке</p>
+          {(
+            [
+              ["в выписке", point.data.merchant_title && <span className="font-mono tracking-wide">{point.data.merchant_title}</span>],
+              [
+                "адрес",
+                [point.data.address, point.data.type && POS_TYPE_RU[point.data.type]].filter(Boolean).join(" · ") || null,
+              ],
+              [
+                "запись",
+                [
+                  `${point.data.confirmations} ${plural(Number(point.data.confirmations), "подтверждение", "подтверждения", "подтверждений")}`,
+                  point.data.last_confirmed_at && `актуально на ${fmtDate(point.data.last_confirmed_at.slice(0, 10))}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+              ],
+            ] as const
+          ).map(
+            ([label, value]) =>
+              value != null &&
+              value !== "" && (
+                <div key={label} className="flex items-baseline gap-2">
+                  <dt className="w-[78px] flex-none text-[10px] font-medium tracking-[.06em] text-tx4 uppercase">{label}</dt>
+                  <dd className="min-w-0 flex-1 text-[12px] font-semibold text-tx2">{value}</dd>
+                </div>
+              ),
+          )}
+        </Card>
+      )}
+
       {slug != null && !!lookup.data && (
         <>
           {hasFriendCards && (
@@ -340,9 +388,8 @@ export default function Pos() {
             <div className="rounded-xl border border-brd bg-srf/60 px-3 py-2.5" data-sid="CB-11.f">
               <button type="button" onClick={() => setShowBase(!showBase)} className="flex w-full items-center gap-2 text-left">
                 <span className="min-w-0 flex-1 text-xs font-semibold text-tx4">
-                  Без своей категории · {baseClients.length} —{" "}
-                  {baseClients.map((e) => (e.holder_label ? `${e.bank_name} · ${e.holder_label}` : e.bank_name)).join(", ")} · платят
-                  базу
+                  Платят базу · {baseClients.length} —{" "}
+                  {baseClients.map((e) => (e.holder_label ? `${e.bank_name} · ${e.holder_label}` : e.bank_name)).join(", ")}
                 </span>
                 <span className="text-[9px] text-tx4">{showBase ? "▲" : "▼"}</span>
               </button>

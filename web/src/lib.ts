@@ -225,6 +225,15 @@ export function plural(n: number, one: string, few: string, many: string): strin
   return oneCase ? one : fewCase ? few : many;
 }
 
+// Human labels of point_of_sale.type — shared by the search rows and the
+// «О точке» card.
+export const POS_TYPE_RU: Record<string, string> = {
+  offline: "офлайн",
+  online: "онлайн",
+  app: "приложение",
+  other: "другое",
+};
+
 // Category icon fallback — a canonical category may carry no emoji yet
 // (custom rows, un-curated additions); the icon column still aligns.
 export const FALLBACK_EMOJI = "🏷️";
@@ -243,12 +252,12 @@ export function verdictNote(e: { verdict: string; kind?: string; activation?: st
       if (e.kind === "super") parts.push("барабан — не занимает слот");
       break;
     case "paid":
-      parts.push("смена платная у банка");
+      parts.push("платно");
       break;
     default:
-      parts.push("правила банка неизвестны — проверь в приложении");
+      parts.push("правила неизвестны");
   }
-  if (e.activation === "next_day") parts.push("активируется завтра");
+  if (e.activation === "next_day") parts.push("активация завтра");
   return parts.join(" · ");
 }
 

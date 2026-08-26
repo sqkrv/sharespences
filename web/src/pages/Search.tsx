@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api, unwrap, type Schemas } from "../api/client";
 import { useCategories } from "../hooks";
 import { BankBadge, Card, ErrMsg, Pct, SegTabs, Spinner } from "../components/ui";
-import { FALLBACK_EMOJI, normalizeTitle } from "../lib";
+import { FALLBACK_EMOJI, POS_TYPE_RU, normalizeTitle } from "../lib";
 import { recentEntries, type RecentEntry } from "../recent";
 
 // CB-04 v2 «Поиск» (redesign 2c/2i): one field, tabs filter the entered
@@ -12,13 +12,6 @@ import { recentEntries, type RecentEntry } from "../recent";
 // to the «Точка продаж» screen (CB-11). Works from the very first launch:
 // MCC and the merchant base are bank-independent, so rows simply render
 // without percentages until banks exist.
-
-const POS_TYPE_RU: Record<string, string> = {
-  offline: "офлайн-точка",
-  online: "онлайн",
-  app: "приложение",
-  other: "другое",
-};
 
 const POS_TYPE_PATH: Record<string, React.ReactNode> = {
   offline: (
@@ -269,7 +262,7 @@ export default function Search() {
                 <button
                   key={m.id}
                   type="button"
-                  onClick={() => navigate(`/pos?mcc=${m.mcc}&merchant=${encodeURIComponent(m.name)}`)}
+                  onClick={() => navigate(`/pos?mcc=${m.mcc}&merchant=${encodeURIComponent(m.name)}&pos=${m.id}`)}
                   className="flex w-full items-start gap-2.5 rounded-2xl border border-brd bg-srf px-3 py-2.5 text-left hover:bg-srf2"
                 >
                   <PosTypeIcon type={m.type} />

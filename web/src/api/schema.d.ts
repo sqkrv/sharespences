@@ -935,6 +935,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mcc/points-of-sale/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One point of sale — the «О точке» card */
+        get: operations["mcc-point-get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mcc/resolve": {
         parameters: {
             query?: never;
@@ -1121,6 +1138,11 @@ export interface components {
             /** Format: int32 */
             id: number;
             name: string;
+        };
+        BankStackDTO: {
+            bank_name: string;
+            /** @description present only via a friend's card */
+            friend?: boolean;
         };
         CanonicalCategoryDTO: {
             emoji?: string;
@@ -1896,6 +1918,8 @@ export interface components {
             selected_count: number;
         };
         OverviewBaseDTO: {
+            /** @description banks with a selected base row, rank order */
+            bank_stack?: components["schemas"]["BankStackDTO"][] | null;
             best: components["schemas"]["LookupEntryDTO"];
             /** @description all-purchases icon — keeps the list's icon column aligned */
             emoji?: string;
@@ -1912,6 +1936,8 @@ export interface components {
         OverviewCategoryDTO: {
             /** @description best «можно выбрать» row while nothing is selected for the category — the feed's dashed state */
             available?: components["schemas"]["AvailableEntryDTO"];
+            /** @description every bank where the category exists this month, rank order — the row's overlap logos */
+            bank_stack?: components["schemas"]["BankStackDTO"][] | null;
             /** @description the viewer's own best card; absent when only a friend covers the category */
             best?: components["schemas"]["LookupEntryDTO"];
             /** Format: int64 */
@@ -4315,6 +4341,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SimilarPointDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "mcc-point-get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDTO"];
                 };
             };
             /** @description Error */

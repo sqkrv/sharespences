@@ -653,6 +653,43 @@ func (s *Service) HelperContext(ctx context.Context, userID uuid.UUID, offerPeri
 // its best active card. «Best» = first by the domain ranking (rubles group
 // before points, percent desc within a group) — deliberately NOT a numeric
 // cross-currency comparison (invariant 5); rubles win by list position only.
+// BankStackEntry is one logo in a feed row's overlap stack (9a): a bank
+// where the category exists this month, in rank order. Friend marks let the
+// client drop friends' banks when the toggle hides them.
+type BankStackEntry struct {
+	BankName string
+	Friend   bool
+}
+
+// bankStackOf builds the stack: selected entries first (rank order), then
+// still-available menu rows; one entry per bank. A bank seen as a friend's
+// AND the viewer's own keeps its rank position but counts as own — the
+// friends toggle must not hide the viewer's own presence.
+func bankStackOf(ranked []LookupEntry, avail []AvailableEntry) []BankStackEntry {
+	idx := make(map[string]int, len(ranked)+len(avail))
+	var out []BankStackEntry
+	add := func(bank string, friend bool) {
+		if bank == "" {
+			return
+		}
+		if i, ok := idx[bank]; ok {
+			if !friend {
+				out[i].Friend = false
+			}
+			return
+		}
+		idx[bank] = len(out)
+		out = append(out, BankStackEntry{BankName: bank, Friend: friend})
+	}
+	for _, e := range ranked {
+		add(e.BankName, e.FriendName != "")
+	}
+	for _, e := range avail {
+		add(e.Entry.BankName, false)
+	}
+	return out
+}
+
 type OverviewCategoryGroup struct {
 	CategoryID int64
 	Slug       string
@@ -670,6 +707,9 @@ type OverviewCategoryGroup struct {
 	// selected the fuller available list stays a lookup concern.
 	Available   *AvailableEntry
 	OthersCount int // other OWN cards beyond Best; friends never counted
+	// BankStack: every bank where the category exists this month, rank
+	// order — the feed row's overlap logos (9a).
+	BankStack []BankStackEntry
 }
 
 // OverviewSelectedRow is a selected menu row shown as a chip on a card.
@@ -742,6 +782,7 @@ type OverviewBase struct {
 	Emoji       string // all-purchases icon — keeps the list's icon column aligned
 	Best        LookupEntry
 	OthersCount int
+	BankStack   []BankStackEntry // banks with a selected base row, rank order (9a)
 }
 
 // emojiOf unwraps a canonical category's optional UI icon (seeded from the
@@ -936,6 +977,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			Emoji:      emojiOf(cat),
 			Best:       own,
 			FriendBest: friendBest,
+			BankStack:  bankStackOf(ranked.Ranked, availByCat[catID]),
 		}
 		if own == nil {
 			// No own selection — the dashed state stays reachable even when
@@ -977,6 +1019,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			TitleRu:    cat.TitleRu,
 			Emoji:      emojiOf(cat),
 			Available:  &ranked[0],
+			BankStack:  bankStackOf(nil, ranked),
 		})
 	}
 	// Sort: rub before points; then percent desc; then title. The key is the
@@ -1044,7 +1087,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 	// «Остальное»: best selected «За все покупки» across clients.
 	fb := RankActiveSelections(onDate, fallbackEntries(offers, allPurposesID, nil, entryOf))
 	if len(fb.Ranked) > 0 {
-		base := OverviewBase{Best: fb.Ranked[0], OthersCount: len(fb.Ranked) - 1}
+		base := OverviewBase{Best: fb.Ranked[0], OthersCount: len(fb.Ranked) - 1, BankStack: bankStackOf(fb.Ranked, nil)}
 		if allPurposesID != nil {
 			base.Emoji = emojiOf(catByID[*allPurposesID])
 		}

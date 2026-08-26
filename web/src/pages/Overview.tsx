@@ -49,12 +49,30 @@ function winnerOf(g: CategoryGroup, friendsOn: boolean): { entry: LookupEntry; s
 
 // Gold mechanic chip for a winner row: the stacked барабан shows its parts
 // («7 + 7 барабан» — the sum is only trustworthy if it shows them), a bare
-// super is «барабан», a special is «спец · проверь условие».
+// super is «барабан», a special carries its own title («спец · Остатки»).
 function mechanicChip(e: LookupEntry) {
   if (e.stacked_super != null) return <Chip tone="gold">{e.stacked_regular} + {e.stacked_super} барабан</Chip>;
   if (e.kind === "super") return <Chip tone="gold">барабан</Chip>;
-  if (e.kind === "special") return <Chip tone="gold">спец</Chip>;
+  if (e.kind === "special") return <Chip tone="gold">спец{e.raw_title ? ` · ${e.raw_title}` : ""}</Chip>;
   return null;
+}
+
+// The row's overlap logo stack (9a): every bank where the category exists
+// this month, the displayed winner in front — nearest the percent, last in
+// DOM. Behind it the others in rank order, nearer = higher. The 2px ring in
+// the surface color is what makes the overlap read as a stack.
+function BankStack({ banks, winner }: { banks: string[]; winner: string }) {
+  const rest = banks.filter((b) => b !== winner);
+  const shown = [...rest.slice(0, 3).reverse(), winner];
+  return (
+    <span className="flex flex-none">
+      {shown.map((b, i) => (
+        <span key={b} className="flex flex-none" style={{ marginLeft: i ? -7 : 0, borderRadius: 7, boxShadow: "0 0 0 2px var(--t-srf)" }}>
+          <BankBadge name={b} size={18} />
+        </span>
+      ))}
+    </span>
+  );
 }
 
 // The 3a expansion: the category's full ranking (rubles, then points — never
@@ -142,8 +160,10 @@ function ExpandedCategory({
   );
 }
 
-// One feed row (строка как в 1a): category-first, bank second line, percent
-// right; expands in place — the tap that used to be a screen hop (CB-04).
+// One feed row — the final anatomy (9a, 8d-2): single line, no bank name.
+// Status chips ride the title's tail; the right side is the overlap logo
+// stack with the percent, and the держатель/друг caption sits under them.
+// Full bank names live a tap away, in the expansion.
 function FeedRow({
   g,
   date,
@@ -160,6 +180,8 @@ function FeedRow({
   if (!w) return null;
   const { entry: e, state } = w;
   const variant = state === "friend" ? "friend" : state === "available" ? "dashed" : "solid";
+  const stackBanks = (g.bank_stack ?? []).filter((b) => friendsOn || !b.friend).map((b) => b.bank_name);
+  const availChip = state === "available" ? verdictNote(g.available!) || "свободен слот" : "";
   return (
     <ListRow
       emoji={g.emoji || FALLBACK_EMOJI}
@@ -169,26 +191,19 @@ function FeedRow({
         <>
           {g.title_ru}
           {mechanicChip(e) && <span className="ml-1.5 align-[1px]">{mechanicChip(e)}</span>}
-        </>
-      }
-      sub={
-        <>
-          <BankBadge name={e.bank_name} size={16} />
-          <span>{e.bank_name}</span>
-          {e.holder_label && <span className="text-tx4">· {e.holder_label}</span>}
-          {state === "friend" && <Chip tone="friend">друг · {e.friend_name}</Chip>}
-          {state !== "available" && e.currency_kind === "points" && <Chip tone="points">{e.points_label || "баллы"}</Chip>}
-          {state === "available" && verdictNote(g.available!) && <span className="text-tx4">{verdictNote(g.available!)}</span>}
-          {state !== "available" && g.others_count > 0 && <span className="text-tx4">+{g.others_count}</span>}
+          {availChip && <span className="ml-1.5 align-[1px]"><Chip tone="friend">{availChip}</Chip></span>}
         </>
       }
       right={
-        <span className="w-11 flex-none text-right">
-          <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
-          {e.stacked_super != null && (
-            <span className="block text-[9px] font-semibold text-tx4">
-              {e.stacked_regular}+{e.stacked_super}
-            </span>
+        <span className="flex flex-none flex-col items-end gap-0.5">
+          <span className="flex items-center gap-2">
+            <BankStack banks={stackBanks} winner={e.bank_name} />
+            <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
+          </span>
+          {state === "friend" ? (
+            <span className="text-[10px] font-bold text-accl">друг · {e.friend_name}</span>
+          ) : (
+            e.holder_label && <span className="text-[10px] font-semibold text-tx4">{e.holder_label}</span>
           )}
         </span>
       }
@@ -198,8 +213,9 @@ function FeedRow({
   );
 }
 
-// A партнёрка feed row (v2): merchant-named, gold, alive even when the
-// month's menus are empty. Tap goes to its home on the bank card.
+// A партнёрка feed row (v2, 9a): the gold frame and the ★ already say what
+// it is — no word, only the term chip («по 31.08»), none without a date.
+// The bank is its logo by the percent. Tap goes to its bank-card home.
 function PartnerFeedRow({ p }: { p: PartnerFeed }) {
   const navigate = useNavigate();
   return (
@@ -207,18 +223,16 @@ function PartnerFeedRow({ p }: { p: PartnerFeed }) {
       lead={<span className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md bg-gold/15 text-[11px] font-extrabold text-gold">★</span>}
       variant="gold"
       onClick={() => navigate("/banks")}
-      title={p.raw_title}
-      sub={
+      title={
         <>
-          <BankBadge name={p.bank_name} size={16} />
-          <span>{p.bank_name}</span>
-          <Chip tone="gold">партнёрка{p.valid_to ? ` · по ${fmtDate(p.valid_to)}` : ""}</Chip>
-          {p.needs_activation && <span className="font-semibold text-warn">требует активации</span>}
-          {p.currency_kind === "points" && <Chip tone="points">{p.points_label || "баллы"}</Chip>}
+          {p.raw_title}
+          {p.valid_to && <span className="ml-1.5 align-[1px]"><Chip tone="gold">по {fmtDate(p.valid_to)}</Chip></span>}
+          {p.needs_activation && <span className="ml-1.5 align-[1px]"><Chip tone="gold">требует активации</Chip></span>}
         </>
       }
       right={
-        <span className="w-11 flex-none text-right">
+        <span className="flex flex-none items-center gap-2">
+          <BankBadge name={p.bank_name} size={18} />
           <Pct percent={p.percent} currency={p.currency_kind} className="text-base" />
         </span>
       }
@@ -226,12 +240,50 @@ function PartnerFeedRow({ p }: { p: PartnerFeed }) {
   );
 }
 
-// Interleave category and партнёрка rows without breaking invariant 5: the
-// percent sort merges by (currency group, percent desc) — both lists arrive
-// from the API already in that order — and the alphabet sort is by name.
-type FeedItem = { key: string; title: string; entry: LookupEntry; cat?: CategoryGroup; partner?: PartnerFeed };
+// «За все покупки» is an ordinary feed row since 9a — alphabetized among
+// the rest, not a dim tail. Tap answers as the точка продаж does.
+function BaseFeedRow({ b }: { b: Schemas["OverviewBaseDTO"] }) {
+  const navigate = useNavigate();
+  const e = b.best;
+  return (
+    <ListRow
+      emoji={b.emoji || FALLBACK_EMOJI}
+      variant="solid"
+      onClick={() => navigate("/pos?cat=all-purchases")}
+      title="За все покупки"
+      right={
+        <span className="flex flex-none flex-col items-end gap-0.5">
+          <span className="flex items-center gap-2">
+            <BankStack banks={(b.bank_stack ?? []).map((s) => s.bank_name)} winner={e.bank_name} />
+            <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
+          </span>
+          {e.holder_label && <span className="text-[10px] font-semibold text-tx4">{e.holder_label}</span>}
+        </span>
+      }
+    />
+  );
+}
 
-function mergeFeed(categories: CategoryGroup[], partners: PartnerFeed[], sort: CatsSort, friendsOn: boolean): FeedItem[] {
+// Interleave category, партнёрка and base rows without breaking invariant
+// 5: the percent sort merges by (currency group, percent desc) — the lists
+// arrive from the API already in that order — and the alphabet sort is by
+// name. «За все покупки» rides the same list since 9a.
+type FeedItem = {
+  key: string;
+  title: string;
+  entry: LookupEntry;
+  cat?: CategoryGroup;
+  partner?: PartnerFeed;
+  base?: Schemas["OverviewBaseDTO"];
+};
+
+function mergeFeed(
+  categories: CategoryGroup[],
+  partners: PartnerFeed[],
+  base: Schemas["OverviewBaseDTO"] | undefined,
+  sort: CatsSort,
+  friendsOn: boolean,
+): FeedItem[] {
   const items: FeedItem[] = [];
   for (const g of categories) {
     const w = winnerOf(g, friendsOn);
@@ -240,6 +292,7 @@ function mergeFeed(categories: CategoryGroup[], partners: PartnerFeed[], sort: C
   for (const p of partners) {
     items.push({ key: `p${p.partner_id}`, title: p.raw_title, entry: p, partner: p });
   }
+  if (base) items.push({ key: "base", title: "За все покупки", entry: base.best, base });
   if (sort === "alpha") return items.sort((a, b) => a.title.localeCompare(b.title, "ru"));
   const group = (k?: string) => (k === "rub" ? 0 : k === "points" ? 1 : 2);
   return items.sort((a, b) => {
@@ -323,7 +376,7 @@ export default function Overview() {
   const unfilled = roster.filter((c) => !filledClientIDs.has(c.id));
   const monthEmpty = roster.length > 0 && filledClientIDs.size === 0;
 
-  const feed = mergeFeed(categories, data.partners ?? [], catsSort, friendsOn);
+  const feed = mergeFeed(categories, data.partners ?? [], data.base ?? undefined, catsSort, friendsOn);
 
   // A ranking row leads to its bank's menu for the viewed month (feedback
   // 2026-08-25, same rule as CB-11): marking a selection lives there. A
@@ -392,6 +445,8 @@ export default function Overview() {
               {feed.map((it) =>
                 it.cat ? (
                   <FeedRow key={it.key} g={it.cat} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} openEntry={openEntry} />
+                ) : it.base ? (
+                  <BaseFeedRow key={it.key} b={it.base} />
                 ) : (
                   <PartnerFeedRow key={it.key} p={it.partner!} />
                 ),
@@ -466,6 +521,8 @@ export default function Overview() {
             {feed.map((it) =>
               it.cat ? (
                 <FeedRow key={it.key} g={it.cat} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} openEntry={openEntry} />
+              ) : it.base ? (
+                <BaseFeedRow key={it.key} b={it.base} />
               ) : (
                 <PartnerFeedRow key={it.key} p={it.partner!} />
               ),
@@ -497,27 +554,6 @@ export default function Overview() {
               </div>
             )}
 
-            {data.base && (
-              <ListRow
-                emoji={data.base.emoji || FALLBACK_EMOJI}
-                variant="dim"
-                onClick={() => navigate("/pos?cat=all-purchases")}
-                title={<span className="text-tx3">Остальное — за все покупки</span>}
-                sub={
-                  <>
-                    <BankBadge name={data.base.best.bank_name} size={16} />
-                    <span>{data.base.best.bank_name}</span>
-                    {data.base.best.holder_label && <span className="text-tx4">· {data.base.best.holder_label}</span>}
-                    {data.base.others_count > 0 && <span className="text-tx4">+{data.base.others_count}</span>}
-                  </>
-                }
-                right={
-                  <span className="w-11 flex-none text-right text-base font-extrabold text-tx4">
-                    {data.base.best.percent != null ? `${data.base.best.percent}%` : "—"}
-                  </span>
-                }
-              />
-            )}
           </div>
 
           {isCurrentMonth && data.selection_opens_day != null && (

@@ -761,6 +761,9 @@ export default function Period() {
                 </button>
                 {notesCount > 0 && !expanded && <span className="h-1.5 w-1.5 flex-none rounded-full bg-gold" title="есть предупреждения — тап по строке" />}
                 <Pct percent={offer.percent} currency={currency} className="text-[14px]" />
+                {/* The chevron says the row unfolds (2d v4) — a tappable
+                    row with no affordance read as inert. */}
+                <span className="flex-none text-[9px] text-tx4">{expanded ? "▲" : "▼"}</span>
                 <button type="button" className="px-1 text-tx4" onClick={() => setEditingID(editingID === offer.id ? null : offer.id)} title="Редактировать">
                   ✎
                 </button>

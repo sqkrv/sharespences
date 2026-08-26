@@ -511,6 +511,7 @@ type OverviewCategoryDTO struct {
 	FriendBest  *LookupEntryDTO    `json:"friend_best,omitempty" doc:"a friend's card that wins the ranking or fills a hole"`
 	Available   *AvailableEntryDTO `json:"available,omitempty" doc:"best «можно выбрать» row while nothing is selected for the category — the feed's dashed state"`
 	OthersCount int                `json:"others_count" doc:"other own cards beyond best; friends are not counted"`
+	BankStack   []BankStackDTO     `json:"bank_stack,omitempty" doc:"every bank where the category exists this month, rank order — the row's overlap logos"`
 }
 
 // PartnerFeedDTO is one партнёрка feed row (v2): its rankable entry plus
@@ -546,6 +547,26 @@ type OverviewBaseDTO struct {
 	Emoji       string         `json:"emoji,omitempty" doc:"all-purchases icon — keeps the list's icon column aligned"`
 	Best        LookupEntryDTO `json:"best"`
 	OthersCount int            `json:"others_count"`
+	BankStack   []BankStackDTO `json:"bank_stack,omitempty" doc:"banks with a selected base row, rank order"`
+}
+
+// BankStackDTO is one logo of a feed row's overlap stack (9a): a bank where
+// the category exists this month. The client fronts the displayed winner
+// and may drop friend-only banks when the toggle hides friends.
+type BankStackDTO struct {
+	BankName string `json:"bank_name"`
+	Friend   bool   `json:"friend,omitempty" doc:"present only via a friend's card"`
+}
+
+func bankStackDTO(entries []BankStackEntry) []BankStackDTO {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]BankStackDTO, len(entries))
+	for i, e := range entries {
+		out[i] = BankStackDTO(e)
+	}
+	return out
 }
 
 // OverviewCardChipDTO is one plastic of the client — any of them pays with
@@ -1180,7 +1201,10 @@ func RegisterHTTP(api huma.API, s *Service) {
 		out.Body.Date = onDate.Format("2006-01-02")
 		out.Body.SelectionOpensDay = res.SelectionOpensDay
 		if res.Base != nil {
-			out.Body.Base = &OverviewBaseDTO{Emoji: res.Base.Emoji, Best: lookupEntryDTO(res.Base.Best), OthersCount: res.Base.OthersCount}
+			out.Body.Base = &OverviewBaseDTO{
+				Emoji: res.Base.Emoji, Best: lookupEntryDTO(res.Base.Best), OthersCount: res.Base.OthersCount,
+				BankStack: bankStackDTO(res.Base.BankStack),
+			}
 		}
 		out.Body.Categories = make([]OverviewCategoryDTO, len(res.Categories))
 		for i, g := range res.Categories {
@@ -1189,6 +1213,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Best: lookupEntryDTOPtr(g.Best), FriendBest: lookupEntryDTOPtr(g.FriendBest),
 				Available:   availableEntryDTOPtr(g.Available),
 				OthersCount: g.OthersCount,
+				BankStack:   bankStackDTO(g.BankStack),
 			}
 		}
 		for _, e := range res.SingleBank {

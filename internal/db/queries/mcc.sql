@@ -80,6 +80,22 @@ where mcc_code is not null -- a merchant row without an MCC answers nothing here
 order by confirmations desc nulls last, last_confirmed_at desc nulls last, name, id
 limit sqlc.arg(max_rows) offset sqlc.arg(skip_rows);
 
+-- name: GetPointOfSale :one
+-- The «О точке» card (8b): one row by id — approved, or the caller's own
+-- pending submission (the same visibility rule the search applies).
+select id,
+       name,
+       merchant_title,
+       mcc_code,
+       coalesce(type::text, '')::text as pos_type,
+       address,
+       confirmations,
+       last_confirmed_at,
+       status
+from point_of_sale
+where id = $1
+  and (status = 'approved' or author_user_id = sqlc.arg(user_id)::uuid);
+
 -- name: FindSimilarPointsOfSale :many
 -- The 5e duplicate net: same MCC and either name contains the other —
 -- «Хлебник» must catch a new «Пекарня Хлебник» before a copy is created.
