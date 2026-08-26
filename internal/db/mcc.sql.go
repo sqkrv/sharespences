@@ -59,8 +59,12 @@ select id, name, merchant_title, mcc_code
 from point_of_sale
 where mcc_code = $1
   and (status = 'approved' or author_user_id = $2::uuid)
-  and (name ilike '%' || $3::text || '%'
-    or $3::text ilike '%' || name || '%')
+  -- Point-of-sale type filter: empty means «any». The same merchant is often
+  -- a different MCC at the till than in its app, so «где я плачу» is a real
+  -- question the base can answer.
+  and ($3::text = '' or coalesce(type::text, '') = $3::text)
+  and (name ilike '%' || $4::text || '%'
+    or $4::text ilike '%' || name || '%')
 order by confirmations desc nulls last, name
 limit 3
 `
@@ -68,6 +72,7 @@ limit 3
 type FindSimilarPointsOfSaleParams struct {
 	MccCode *int16
 	UserID  uuid.UUID
+	PosType string
 	Name    string
 }
 
@@ -81,7 +86,12 @@ type FindSimilarPointsOfSaleRow struct {
 // The 5e duplicate net: same MCC and either name contains the other —
 // «Хлебник» must catch a new «Пекарня Хлебник» before a copy is created.
 func (q *Queries) FindSimilarPointsOfSale(ctx context.Context, arg FindSimilarPointsOfSaleParams) ([]FindSimilarPointsOfSaleRow, error) {
-	rows, err := q.db.Query(ctx, findSimilarPointsOfSale, arg.MccCode, arg.UserID, arg.Name)
+	rows, err := q.db.Query(ctx, findSimilarPointsOfSale,
+		arg.MccCode,
+		arg.UserID,
+		arg.PosType,
+		arg.Name,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -137,11 +147,16 @@ select id,
 from point_of_sale
 where id = $1
   and (status = 'approved' or author_user_id = $2::uuid)
+  -- Point-of-sale type filter: empty means «any». The same merchant is often
+  -- a different MCC at the till than in its app, so «где я плачу» is a real
+  -- question the base can answer.
+  and ($3::text = '' or coalesce(type::text, '') = $3::text)
 `
 
 type GetPointOfSaleParams struct {
-	ID     uuid.UUID
-	UserID uuid.UUID
+	ID      uuid.UUID
+	UserID  uuid.UUID
+	PosType string
 }
 
 type GetPointOfSaleRow struct {
@@ -159,7 +174,7 @@ type GetPointOfSaleRow struct {
 // The «О точке» card (8b): one row by id — approved, or the caller's own
 // pending submission (the same visibility rule the search applies).
 func (q *Queries) GetPointOfSale(ctx context.Context, arg GetPointOfSaleParams) (GetPointOfSaleRow, error) {
-	row := q.db.QueryRow(ctx, getPointOfSale, arg.ID, arg.UserID)
+	row := q.db.QueryRow(ctx, getPointOfSale, arg.ID, arg.UserID, arg.PosType)
 	var i GetPointOfSaleRow
 	err := row.Scan(
 		&i.ID,
@@ -355,21 +370,26 @@ select id,
 from point_of_sale
 where mcc_code is not null -- a merchant row without an MCC answers nothing here
   and (status = 'approved' or author_user_id = $1::uuid)
+  -- Point-of-sale type filter: empty means «any». The same merchant is often
+  -- a different MCC at the till than in its app, so «где я плачу» is a real
+  -- question the base can answer.
+  and ($2::text = '' or coalesce(type::text, '') = $2::text)
   -- The first word, per column and without coalesce, is the clause the two
   -- gin_trgm_ops indexes can serve: a BitmapOr over name/merchant_title
   -- instead of a 62k-row scan (11 ms vs 115 ms on the live base). It is
   -- implied by the ALL below, so it changes no result — only the plan.
-  and (name ilike $2::text or merchant_title ilike $2::text)
+  and (name ilike $3::text or merchant_title ilike $3::text)
   -- Every word, against the two fields joined. Matching the concatenation is
   -- the same as matching either column, because the words come from a
   -- whitespace split: a spaceless pattern cannot straddle the joining space.
-  and name || ' ' || coalesce(merchant_title, '') ilike all ($3::text[])
+  and name || ' ' || coalesce(merchant_title, '') ilike all ($4::text[])
 order by confirmations desc nulls last, last_confirmed_at desc nulls last, name, id
-limit $5 offset $4
+limit $6 offset $5
 `
 
 type SearchMerchantsParams struct {
 	UserID   uuid.UUID
+	PosType  string
 	Head     string
 	Patterns []string
 	SkipRows int32
@@ -406,6 +426,7 @@ type SearchMerchantsRow struct {
 func (q *Queries) SearchMerchants(ctx context.Context, arg SearchMerchantsParams) ([]SearchMerchantsRow, error) {
 	rows, err := q.db.Query(ctx, searchMerchants,
 		arg.UserID,
+		arg.PosType,
 		arg.Head,
 		arg.Patterns,
 		arg.SkipRows,

@@ -65,6 +65,10 @@ select id,
 from point_of_sale
 where mcc_code is not null -- a merchant row without an MCC answers nothing here
   and (status = 'approved' or author_user_id = sqlc.arg(user_id)::uuid)
+  -- Point-of-sale type filter: empty means «any». The same merchant is often
+  -- a different MCC at the till than in its app, so «где я плачу» is a real
+  -- question the base can answer.
+  and (sqlc.arg(pos_type)::text = '' or coalesce(type::text, '') = sqlc.arg(pos_type)::text)
   -- The first word, per column and without coalesce, is the clause the two
   -- gin_trgm_ops indexes can serve: a BitmapOr over name/merchant_title
   -- instead of a 62k-row scan (11 ms vs 115 ms on the live base). It is
@@ -94,7 +98,11 @@ select id,
        status
 from point_of_sale
 where id = $1
-  and (status = 'approved' or author_user_id = sqlc.arg(user_id)::uuid);
+  and (status = 'approved' or author_user_id = sqlc.arg(user_id)::uuid)
+  -- Point-of-sale type filter: empty means «any». The same merchant is often
+  -- a different MCC at the till than in its app, so «где я плачу» is a real
+  -- question the base can answer.
+  and (sqlc.arg(pos_type)::text = '' or coalesce(type::text, '') = sqlc.arg(pos_type)::text);
 
 -- name: FindSimilarPointsOfSale :many
 -- The 5e duplicate net: same MCC and either name contains the other —
@@ -103,6 +111,10 @@ select id, name, merchant_title, mcc_code
 from point_of_sale
 where mcc_code = sqlc.arg(mcc_code)
   and (status = 'approved' or author_user_id = sqlc.arg(user_id)::uuid)
+  -- Point-of-sale type filter: empty means «any». The same merchant is often
+  -- a different MCC at the till than in its app, so «где я плачу» is a real
+  -- question the base can answer.
+  and (sqlc.arg(pos_type)::text = '' or coalesce(type::text, '') = sqlc.arg(pos_type)::text)
   and (name ilike '%' || sqlc.arg(name)::text || '%'
     or sqlc.arg(name)::text ilike '%' || name || '%')
 order by confirmations desc nulls last, name

@@ -1312,6 +1312,24 @@ func TestCashbackE2E(t *testing.T) {
 	if len(merchants.Items) != 0 {
 		t.Fatalf("past the last page = %+v, want no rows", merchants.Items)
 	}
+	// Type filter: the fixture has one app row (Кафе Ночь), one online
+	// (Ветклиника Кот) and two offline; an empty type still means «any».
+	owner.must("GET", "/api/v1/mcc/merchants?type=app&query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 1 || merchants.Items[0].Name != "Кафе Ночь" || merchants.Total != 1 {
+		t.Fatalf("type=app = %+v, want only Кафе Ночь and a total of 1 (the count follows the filter)", merchants)
+	}
+	owner.must("GET", "/api/v1/mcc/merchants?type=offline&query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 0 {
+		t.Fatalf("type=offline&кафе = %+v, want no rows (the quoted café has no type)", merchants.Items)
+	}
+	owner.must("GET", "/api/v1/mcc/merchants?type=&query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 2 {
+		t.Fatalf("empty type = %+v, want both café rows", merchants.Items)
+	}
+	if got := owner.do("GET", "/api/v1/mcc/merchants?type=shop&query="+url.QueryEscape("кафе"), nil, nil); got != http.StatusUnprocessableEntity {
+		t.Fatalf("unknown type: %d, want 422", got)
+	}
+
 	// A LIKE wildcard typed by the user is a literal, not a pattern.
 	owner.must("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape("ка%е"), nil, &merchants, http.StatusOK)
 	if len(merchants.Items) != 0 {

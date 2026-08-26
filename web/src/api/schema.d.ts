@@ -4259,6 +4259,8 @@ export interface operations {
         parameters: {
             query: {
                 query: string;
+                /** @description point-of-sale type; empty means any */
+                type?: "" | "offline" | "online" | "app" | "other";
                 limit?: number;
                 /** @description rows to skip — the list pages as the user scrolls */
                 offset?: number;

@@ -49,6 +49,17 @@ function PosTypeIcon({ type }: { type?: string | null }) {
 
 type Tab = "all" | "shops" | "cats" | "mcc";
 
+// Point-of-sale type filter for the «Магазины» tab. "" is «все» — the same
+// merchant is often a different MCC at the till than in its app, so which
+// counter you are standing at is a question the base can answer.
+type PosType = "" | "offline" | "online" | "app";
+const POS_TYPES: [PosType, string][] = [
+  ["", "все"],
+  ["offline", "офлайн"],
+  ["online", "онлайн"],
+  ["app", "приложение"],
+];
+
 function GroupLabel({ children }: { children: React.ReactNode }) {
   return <p className="mx-0.5 pt-1 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">{children}</p>;
 }
@@ -118,6 +129,12 @@ export default function Search() {
 
   const isCode = /^\d{3,4}$/.test(debouncedQ);
   const active = debouncedQ.length >= 2;
+  // Point-of-sale type filter, shown only on the «Магазины» tab. Component
+  // state on purpose, not localStorage: privacy policy §3.2 lists the storage
+  // keys the app uses, so a persisted filter would be a policy edit — and a
+  // filter the user cannot see (they are on another tab) is worse than one
+  // that resets.
+  const [posType, setPosType] = useState<PosType>("");
 
   const codes = useQuery({
     queryKey: ["mcc-search", debouncedQ],
@@ -129,13 +146,13 @@ export default function Search() {
   // the user knew existed (report 2026-08-24). The list loads the next page
   // as it is scrolled; `total` is what makes «есть ещё» knowable at all.
   const merchants = useInfiniteQuery({
-    queryKey: ["mcc-merchants", debouncedQ],
+    queryKey: ["mcc-merchants", debouncedQ, posType],
     enabled: active && !isCode && (tab === "all" || tab === "shops"),
     initialPageParam: 0,
     queryFn: async ({ pageParam }) =>
       unwrap(
         await api.GET("/api/v1/mcc/merchants", {
-          params: { query: { query: debouncedQ, limit: MERCHANT_PAGE, offset: pageParam } },
+          params: { query: { query: debouncedQ, ...(posType ? { type: posType } : {}), limit: MERCHANT_PAGE, offset: pageParam } },
         }),
       ),
     getNextPageParam: (last, pages) => {
@@ -161,6 +178,7 @@ export default function Search() {
   const showShops = tab === "all" || tab === "shops";
   const showCats = tab === "all" || tab === "cats";
   const showMcc = tab === "all" || tab === "mcc";
+  const filteredOut = tab === "shops" && posType !== "" && merchantRows.length === 0 && !merchants.isPending;
   const nothingFound =
     active &&
     !codes.isPending &&
@@ -248,6 +266,26 @@ export default function Search() {
 
       {active && (
         <div className="space-y-1.5">
+          {/* Filters belong to the dedicated tab: on «Всё» the shops are one
+              group among several, and a filter there would silently narrow a
+              list the user is not looking at. */}
+          {tab === "shops" && !isCode && active && (
+            <div data-sid="CB-04.i" className="flex gap-1.5 overflow-x-auto pb-0.5">
+              {POS_TYPES.map(([value, label]) => (
+                <button
+                  key={value || "all"}
+                  type="button"
+                  onClick={() => setPosType(value)}
+                  className={`flex-none rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                    posType === value ? "border-acc bg-acc/15 text-accl" : "border-brd bg-srf text-tx3"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {showShops && !isCode && merchantRows.length > 0 && (
             <div data-sid="CB-04.g" className="space-y-1.5">
               <GroupLabel>
@@ -362,7 +400,25 @@ export default function Search() {
           {codes.isError && <ErrMsg error={codes.error} />}
           {/* The zero-results tail leads to manual creation (5e) — the
               каталог grows where it failed to answer. */}
-          {nothingFound && (
+          {/* An empty list because of the filter is not an empty base: offering
+              «добавить точку» there would push the user to create a duplicate
+              of a row that exists under another type. */}
+          {filteredOut && (
+            <Card className="space-y-2.5 p-4 text-center" data-sid="CB-04.j">
+              <p className="text-sm font-medium text-tx3">
+                Ничего не найдено с этим фильтром — точка может быть другого типа.
+              </p>
+              <button
+                type="button"
+                onClick={() => setPosType("")}
+                className="w-full rounded-2xl border border-dashed border-dash py-2.5 text-sm font-semibold text-tx3"
+              >
+                Показать все типы
+              </button>
+            </Card>
+          )}
+
+          {nothingFound && !filteredOut && (
             <Card className="space-y-2.5 p-4 text-center" data-sid="CB-04.e">
               <p className="text-sm font-medium text-tx3">Ничего не найдено — попробуй иначе или введи MCC-код с чека.</p>
               <button

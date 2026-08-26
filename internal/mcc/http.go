@@ -156,10 +156,11 @@ func RegisterHTTP(api huma.API, s *Service) {
 		Path: "/api/v1/mcc/merchants", Summary: "Search the merchant base (points of sale) by name", Tags: []string{"mcc"},
 	}, func(ctx context.Context, in *struct {
 		Query  string `query:"query" required:"true" minLength:"2"`
+		Type   string `query:"type" enum:",offline,online,app,other" doc:"point-of-sale type; empty means any"`
 		Limit  int32  `query:"limit" default:"20" minimum:"1" maximum:"50"`
 		Offset int32  `query:"offset" default:"0" minimum:"0" doc:"rows to skip — the list pages as the user scrolls"`
 	}) (*struct{ Body MerchantSearchDTO }, error) {
-		rows, total, err := s.SearchMerchants(ctx, auth.UserID(ctx), in.Query, in.Limit, in.Offset)
+		rows, total, err := s.SearchMerchants(ctx, auth.UserID(ctx), in.Query, in.Type, in.Limit, in.Offset)
 		if err != nil {
 			return nil, err
 		}

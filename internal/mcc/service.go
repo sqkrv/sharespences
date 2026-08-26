@@ -56,13 +56,13 @@ func (s *Service) Resolve(ctx context.Context, code int16) (db.Mcc, []db.Resolve
 // SearchMerchants finds points of sale (the imported base + approved user
 // submissions; the caller's own pending ones too) by name or merchant-title
 // substring, most-confirmed first.
-func (s *Service) SearchMerchants(ctx context.Context, userID uuid.UUID, query string, limit, offset int32) ([]db.SearchMerchantsRow, int64, error) {
+func (s *Service) SearchMerchants(ctx context.Context, userID uuid.UUID, query, posType string, limit, offset int32) ([]db.SearchMerchantsRow, int64, error) {
 	patterns := SearchPatterns(query)
 	if len(patterns) == 0 {
 		return nil, 0, nil
 	}
 	rows, err := s.Q.SearchMerchants(ctx, db.SearchMerchantsParams{
-		UserID: userID, Head: patterns[0], Patterns: patterns, MaxRows: limit, SkipRows: offset,
+		UserID: userID, Head: patterns[0], Patterns: patterns, PosType: posType, MaxRows: limit, SkipRows: offset,
 	})
 	if err != nil {
 		return nil, 0, err
