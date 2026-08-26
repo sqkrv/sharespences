@@ -11,7 +11,6 @@ import {
   currencyWord,
   fmtPercent,
   initWithFriends,
-  monthGenOf,
   monthKey,
   todayISO,
 } from "../lib";
@@ -69,9 +68,19 @@ export default function Pos() {
   });
   const unknownCode = resolve.isError && resolve.error instanceof ApiError && resolve.error.status === 404;
 
-  const slug = catParam ?? (resolve.data?.canonicals ?? [])[0]?.slug ?? null;
+  // Banks file the same MCC under different categories — sometimes several
+  // in one bank. When the code maps to more than one canonical, the MCC chip
+  // switches between them and the whole breakdown follows (decision
+  // 2026-08-25). The concrete end state stays recorded: judge each bank by
+  // ITS OWN category for the code, once per-bank MCC memberships cover the
+  // wallet (today only Альфа/ВТБ/Озон are ingested).
+  const [canonIdx, setCanonIdx] = useState(0);
+  useEffect(() => setCanonIdx(0), [mcc]);
+  const canonList = resolve.data?.canonicals ?? [];
+  const slug = catParam ?? canonList[Math.min(canonIdx, Math.max(0, canonList.length - 1))]?.slug ?? null;
   const canon = (categories.data ?? []).find((c) => c.slug === slug);
   const title = merchant ?? canon?.title_ru ?? (mcc ? `MCC ${mcc}` : "Точка продаж");
+  const canSwitchCanon = catParam == null && canonList.length > 1;
 
   const lookup = useQuery({
     queryKey: ["lookup", slug],
@@ -79,9 +88,10 @@ export default function Pos() {
     queryFn: async () => unwrap(await api.GET("/api/v1/cashback/lookup", { params: { query: { category: slug! } } })),
   });
 
-  // Everything a bank client answers with is above; clients with no line at
-  // all get an honest grey row — «меню не занесено» ≠ «нет в меню» (mock
-  // defect 7: unknown is not absence).
+  // client id → this month's period, for row navigation. Clients with no
+  // answer for the category are simply not shown (feedback 2026-08-25 —
+  // supersedes the earlier grey «меню не занесено» rows): the screen's
+  // question is «which card pays here», not an inventory.
   const overview = useQuery({
     queryKey: ["overview"],
     queryFn: async () => unwrap(await api.GET("/api/v1/cashback/overview")),
@@ -123,13 +133,6 @@ export default function Pos() {
   // Base-paying clients fold into one line — their answer is «За все
   // покупки», not this category (2b v3).
   const baseClients = (lookup.data?.fallback ?? []).filter((e) => !e.friend_name);
-  const coveredClients = new Set([
-    ...ranked.filter((e) => !e.friend_name).map((e) => e.bank_client_id),
-    ...available.map((e) => e.bank_client_id),
-    ...baseClients.map((e) => e.bank_client_id),
-  ]);
-  const uncovered = (overview.data?.clients ?? []).filter((c) => !coveredClients.has(c.bank_client_id));
-  const currencies = new Set(ranked.map((e) => e.currency_kind));
   const cardChipsOf = (e: LookupEntry) =>
     (cards.data ?? [])
       .filter((c) => c.bank_client_id === e.bank_client_id)
@@ -233,14 +236,27 @@ export default function Pos() {
       )}
 
       {resolve.data && (
-        <Card className="flex items-center gap-2.5 p-3.5" data-sid="CB-11.b">
-          <span className="flex-none font-mono text-[15px] font-extrabold text-accl">{resolve.data.code.code}</span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-bold">{resolve.data.code.name}</p>
-            <p className="mt-0.5 text-[10.5px] font-medium text-tx4">
-              {canon ? `${canon.emoji || FALLBACK_EMOJI} ${canon.title_ru}` : "канонической категории нет"}
-            </p>
-          </div>
+        <Card className="p-0" data-sid="CB-11.b">
+          <button
+            type="button"
+            disabled={!canSwitchCanon}
+            onClick={() => setCanonIdx((canonIdx + 1) % Math.max(1, canonList.length))}
+            className="flex w-full items-center gap-2.5 p-3.5 text-left"
+            title={canSwitchCanon ? "Код входит в несколько категорий — переключить" : undefined}
+          >
+            <span className="flex-none font-mono text-[15px] font-extrabold text-accl">{resolve.data.code.code}</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-bold">{resolve.data.code.name}</p>
+              <p className="mt-0.5 text-[10.5px] font-medium text-tx4">
+                {canon ? `${canon.emoji || FALLBACK_EMOJI} ${canon.title_ru}` : "канонической категории нет"}
+              </p>
+            </div>
+            {canSwitchCanon && (
+              <span className="flex-none rounded-lg bg-inset px-2 py-1 text-[10px] font-semibold text-tx3">
+                {canonIdx + 1}/{canonList.length} ▼
+              </span>
+            )}
+          </button>
         </Card>
       )}
 
@@ -316,27 +332,6 @@ export default function Pos() {
                 {CHEVRON}
               </button>
             ))}
-            {uncovered.map((c) => (
-              <button
-                key={c.bank_client_id}
-                type="button"
-                onClick={() => openClient(c.bank_client_id)}
-                className="flex w-full items-center gap-2.5 rounded-2xl border border-brd bg-srf/45 px-3 py-2.5 text-left opacity-65"
-              >
-                <BankBadge name={c.bank_name} size={26} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13.5px] font-bold text-tx3">
-                    {c.bank_name}
-                    {c.holder_label && <span className="font-semibold text-tx4"> · {c.holder_label}</span>}
-                  </p>
-                  <p className="mt-0.5 text-[10.5px] font-medium text-tx4">
-                    {c.period_id == null ? "меню не занесено" : `нет в меню ${monthGenOf(todayISO())}`}
-                  </p>
-                </div>
-                <span className="text-[15px] font-extrabold text-tx4">—</span>
-                {CHEVRON}
-              </button>
-            ))}
           </div>
 
           {/* Base-paying banks fold into one line (2b v3): their answer is
@@ -369,10 +364,6 @@ export default function Pos() {
             </div>
           )}
 
-          <p className="mx-0.5 text-[10.5px] leading-snug font-medium text-tx4">
-            Тап по строке открывает меню этого банка — там категория и выбирается.
-            {currencies.has("points") && currencies.size > 1 && " Баллы в рубли не пересчитываются — рублёвый победитель просто стоит выше."}
-          </p>
 
           {(lookup.data.partner ?? []).length > 0 && (
             <div className="border-t border-brd pt-2">

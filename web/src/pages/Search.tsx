@@ -198,17 +198,21 @@ export default function Search() {
         </button>
       </div>
 
-      <SegTabs
-        sid="CB-04.a"
-        value={tab}
-        onChange={setTab}
-        options={[
-          { value: "all", label: "Всё" },
-          { value: "shops", label: "Магазины" },
-          { value: "cats", label: "Категории" },
-          { value: "mcc", label: "MCC" },
-        ]}
-      />
+      {/* The tabs filter results — with nothing typed there is nothing to
+          filter, so they appear with the first character. */}
+      {q.trim() !== "" && (
+        <SegTabs
+          sid="CB-04.a"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "all", label: "Всё" },
+            { value: "shops", label: "Магазины" },
+            { value: "cats", label: "Категории" },
+            { value: "mcc", label: "MCC" },
+          ]}
+        />
+      )}
 
       {!active && (
         <>

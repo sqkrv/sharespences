@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api, unwrap, type Schemas } from "../api/client";
 import { useClients, usePeriods } from "../hooks";
@@ -58,24 +58,27 @@ function mechanicChip(e: LookupEntry) {
 }
 
 // The 3a expansion: the category's full ranking (rubles, then points — never
-// converted), plus the «можно выбрать» rows with verdicts. Lazily fetched on
-// first expand; usePrefetchOffline warms the active slugs for offline.
-function ExpandedCategory({ slug, date, friendsOn }: { slug: string; date: string | null; friendsOn: boolean }) {
-  const qc = useQueryClient();
+// converted), plus the «можно выбрать» rows. Lazily fetched on first expand;
+// usePrefetchOffline warms the active slugs for offline. Rows navigate to
+// the bank's menu — marking a selection lives there, not here (feedback
+// 2026-08-25, same rule as CB-11).
+function ExpandedCategory({
+  slug,
+  date,
+  friendsOn,
+  openEntry,
+}: {
+  slug: string;
+  date: string | null;
+  friendsOn: boolean;
+  openEntry: (e: { bank_client_id?: number; friend_name?: string; kind?: string }) => void;
+}) {
   // date null = the current month: the key then matches what
   // usePrefetchOffline warmed, so expansion works at a no-signal checkout.
   const lookup = useQuery({
     queryKey: date ? ["lookup", slug, date] : ["lookup", slug],
     queryFn: async () =>
       unwrap(await api.GET("/api/v1/cashback/lookup", { params: { query: { category: slug, ...(date ? { date } : {}) } } })),
-  });
-  const mark = useMutation({
-    mutationFn: async (offerID: number) =>
-      unwrap(await api.POST("/api/v1/cashback/selections", { body: { category_offer_id: offerID } })),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["overview"] });
-      qc.invalidateQueries({ queryKey: ["lookup"] });
-    },
   });
 
   if (lookup.isPending) return <Spinner />;
@@ -88,7 +91,12 @@ function ExpandedCategory({ slug, date, friendsOn }: { slug: string; date: strin
   return (
     <div className="mt-2.5 ml-8 space-y-2 border-t border-brd/60 pt-2.5" data-sid="CB-01.f">
       {ranked.map((e, i) => (
-        <div key={`${e.bank_client_id}-${i}`} className="flex items-center gap-2">
+        <button
+          key={`${e.bank_client_id}-${i}`}
+          type="button"
+          onClick={() => openEntry(e)}
+          className="flex w-full items-center gap-2 text-left"
+        >
           <BankBadge name={e.bank_name} size={18} />
           <span className="min-w-0 flex-1 truncate text-xs font-semibold text-tx2">
             {e.bank_name}
@@ -103,30 +111,28 @@ function ExpandedCategory({ slug, date, friendsOn }: { slug: string; date: strin
             {!e.friend_name && e.kind !== "partner" && capNote(e) && <span className="font-medium text-tx4"> · {capNote(e)}</span>}
           </span>
           <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
-        </div>
+          <span className="flex-none text-[10px] text-tx4">›</span>
+        </button>
       ))}
       {/* Every served «можно выбрать» row is pickable — the API drops the
-          dead ends (slots_full/locked), so no dimmed excuses here. */}
+          dead ends (slots_full/locked); picking happens in the bank menu. */}
       {available.map((e) => (
-        <div key={e.offer_id} className="flex items-center gap-2">
+        <button
+          key={e.offer_id}
+          type="button"
+          onClick={() => openEntry(e)}
+          className="flex w-full items-center gap-2 text-left"
+        >
           <BankBadge name={e.bank_name} size={18} />
           <span className="min-w-0 flex-1 text-xs font-semibold text-tx2">
             {e.bank_name}
             {e.holder_label && ` · ${e.holder_label}`}
-            <span className="block text-[10px] font-medium text-tx4">{verdictNote(e)}</span>
+            {verdictNote(e) && <span className="block text-[10px] font-medium text-tx4">{verdictNote(e)}</span>}
           </span>
           <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
-          <Btn
-            variant="soft"
-            className="!px-2.5 !py-1.5 text-xs whitespace-nowrap"
-            disabled={mark.isPending}
-            onClick={() => mark.mutate(e.offer_id)}
-          >
-            Отметить
-          </Btn>
-        </div>
+          <span className="flex-none text-[10px] text-tx4">›</span>
+        </button>
       ))}
-      {mark.isError && <ErrMsg error={mark.error} />}
       {currencies.has("points") && currencies.size > 1 && (
         <p className="text-[10px] leading-snug font-medium text-tx4">
           Баллы не сравниваются с рублями напрямую — в строке рублёвый победитель, балльный здесь.
@@ -138,7 +144,17 @@ function ExpandedCategory({ slug, date, friendsOn }: { slug: string; date: strin
 
 // One feed row (строка как в 1a): category-first, bank second line, percent
 // right; expands in place — the tap that used to be a screen hop (CB-04).
-function FeedRow({ g, date, friendsOn }: { g: CategoryGroup; date: string | null; friendsOn: boolean }) {
+function FeedRow({
+  g,
+  date,
+  friendsOn,
+  openEntry,
+}: {
+  g: CategoryGroup;
+  date: string | null;
+  friendsOn: boolean;
+  openEntry: (e: { bank_client_id?: number; friend_name?: string; kind?: string }) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const w = winnerOf(g, friendsOn);
   if (!w) return null;
@@ -162,7 +178,7 @@ function FeedRow({ g, date, friendsOn }: { g: CategoryGroup; date: string | null
           {e.holder_label && <span className="text-tx4">· {e.holder_label}</span>}
           {state === "friend" && <Chip tone="friend">друг · {e.friend_name}</Chip>}
           {state !== "available" && e.currency_kind === "points" && <Chip tone="points">{e.points_label || "баллы"}</Chip>}
-          {state === "available" && <span className="text-tx4">{verdictNote(g.available!)}</span>}
+          {state === "available" && verdictNote(g.available!) && <span className="text-tx4">{verdictNote(g.available!)}</span>}
           {state !== "available" && g.others_count > 0 && <span className="text-tx4">+{g.others_count}</span>}
         </>
       }
@@ -177,7 +193,7 @@ function FeedRow({ g, date, friendsOn }: { g: CategoryGroup; date: string | null
         </span>
       }
     >
-      {expanded && <ExpandedCategory slug={g.slug} date={date} friendsOn={friendsOn} />}
+      {expanded && <ExpandedCategory slug={g.slug} date={date} friendsOn={friendsOn} openEntry={openEntry} />}
     </ListRow>
   );
 }
@@ -309,6 +325,21 @@ export default function Overview() {
 
   const feed = mergeFeed(categories, data.partners ?? [], catsSort, friendsOn);
 
+  // A ranking row leads to its bank's menu for the viewed month (feedback
+  // 2026-08-25, same rule as CB-11): marking a selection lives there. A
+  // friend's menu isn't ours to open; партнёрки go to their bank-card home.
+  const openClient = (clientID?: number) => {
+    const c = (data.clients ?? []).find((x) => x.bank_client_id === clientID);
+    if (c == null) return;
+    if (c.period_id != null) navigate(`/periods/${c.period_id}`);
+    else navigate(`/periods/new?client=${c.bank_client_id}&month=${monthKey(monthDate)}`);
+  };
+  const openEntry = (e: { bank_client_id?: number; friend_name?: string; kind?: string }) => {
+    if (e.friend_name) navigate("/friends");
+    else if (e.kind === "partner") navigate("/banks");
+    else openClient(e.bank_client_id);
+  };
+
   return (
     <>
       <div className="flex items-center justify-between gap-2.5" data-sid="CB-01.a">
@@ -333,18 +364,24 @@ export default function Overview() {
       </div>
 
       {/* One search entry for magазины/категории/MCC — works from the very
-          first launch, before any bank exists. */}
-      <button
-        type="button"
-        onClick={() => navigate("/search")}
-        className="flex h-11 w-full items-center gap-2.5 rounded-2xl border border-brd2 bg-srf2 px-3.5 text-left"
-      >
+          first launch, before any bank exists. A real input, not a styled
+          button: iOS opens the keyboard only for a focused editable field
+          inside the tap gesture, so this field takes the focus and CB-04's
+          autoFocus inherits the already-open keyboard after the hop. */}
+      <div className="flex h-11 w-full items-center gap-2.5 rounded-2xl border border-brd2 bg-srf2 px-3.5">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--t-tx4)" strokeWidth="2.4" strokeLinecap="round" className="flex-none">
           <circle cx="10.5" cy="10.5" r="7" />
           <path d="M16 16l5 5" />
         </svg>
-        <span className="text-sm font-medium text-tx4">Магазин, категория или MCC</span>
-      </button>
+        <input
+          value=""
+          onChange={() => {}}
+          onFocus={() => navigate("/search")}
+          placeholder="Магазин, категория или MCC"
+          inputMode="search"
+          className="min-w-0 flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-tx4"
+        />
+      </div>
 
       {roster.length === 0 ? (
         <>
@@ -354,7 +391,7 @@ export default function Overview() {
               <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Кешбеки друзей</p>
               {feed.map((it) =>
                 it.cat ? (
-                  <FeedRow key={it.key} g={it.cat} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} />
+                  <FeedRow key={it.key} g={it.cat} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} openEntry={openEntry} />
                 ) : (
                   <PartnerFeedRow key={it.key} p={it.partner!} />
                 ),
@@ -428,7 +465,7 @@ export default function Overview() {
           <div className="space-y-1.5" data-sid="CB-01.c">
             {feed.map((it) =>
               it.cat ? (
-                <FeedRow key={it.key} g={it.cat} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} />
+                <FeedRow key={it.key} g={it.cat} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} openEntry={openEntry} />
               ) : (
                 <PartnerFeedRow key={it.key} p={it.partner!} />
               ),
@@ -445,14 +482,15 @@ export default function Overview() {
                 {showSingles && (
                   <div className="mt-2 space-y-2 border-t border-brd/60 pt-2">
                     {singles.map((e, i) => (
-                      <div key={i} className="flex items-center gap-2">
+                      <button key={i} type="button" onClick={() => openEntry(e)} className="flex w-full items-center gap-2 text-left">
                         <BankBadge name={e.bank_name} size={18} />
                         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-tx2">
                           {e.raw_title}
                           <span className="font-medium text-tx4"> · {e.bank_name}{e.holder_label ? ` · ${e.holder_label}` : ""}</span>
                         </span>
                         <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
-                      </div>
+                        <span className="flex-none text-[10px] text-tx4">›</span>
+                      </button>
                     ))}
                   </div>
                 )}

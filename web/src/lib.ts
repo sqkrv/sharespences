@@ -232,12 +232,15 @@ export const FALLBACK_EMOJI = "🏷️";
 // S3b verdict copy — fact-based states, never guesses (spec S3b). Shared by
 // the feed's dashed rows and the lookup's «Можно выбрать» section. Every
 // served row is pickable: the API drops slots_full/locked rows (no bank lets
-// a pick be removed mid-period, so those were dead ends, 2026-08-07).
+// a pick be removed mid-period, so those were dead ends, 2026-08-07). The
+// commonest verdict — free, right now — says nothing at all: the dashed
+// style already means «можно выбрать», so only the exceptions get words
+// (feedback 2026-08-25).
 export function verdictNote(e: { verdict: string; kind?: string; activation?: string }): string {
   const parts: string[] = [];
   switch (e.verdict) {
     case "free":
-      parts.push(e.kind === "super" ? "барабан — не занимает слот" : "можно выбрать сейчас");
+      if (e.kind === "super") parts.push("барабан — не занимает слот");
       break;
     case "paid":
       parts.push("смена платная у банка");

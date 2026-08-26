@@ -182,3 +182,16 @@ input[type="date"] {
     opacity: 0;
   }
 }
+
+/* iOS Safari zooms the page onto any focused control whose font-size is
+   under 16px — and stays zoomed after blur. Floor form controls at 16px
+   only where that engine runs: -webkit-touch-callout exists on iOS WebKit
+   alone, so desktop keeps the design sizes. !important because Tailwind's
+   text-* classes outrank an element selector. */
+@supports (-webkit-touch-callout: none) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
