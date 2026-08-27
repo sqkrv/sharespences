@@ -19,6 +19,10 @@ var ErrNotFound = errors.New("код не найден в справочнике
 // ErrBadCode — the input is not a 3-4 digit MCC.
 var ErrBadCode = errors.New("код должен быть числом из 3–4 цифр")
 
+// ErrNotModerator — the caller's role does not pass the moderation gate.
+// One message for every refusal: no existence leaks.
+var ErrNotModerator = errors.New("нужны права модератора")
+
 // FormatCode renders a code the way banks print them: zero-padded to four
 // digits («0742»).
 func FormatCode(code int16) string {

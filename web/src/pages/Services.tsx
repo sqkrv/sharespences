@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMe, useLogout } from "../auth";
 import { useTheme, type ThemeSetting } from "../theme";
 import { useInstallPrompt } from "../pwa";
@@ -105,6 +106,20 @@ export default function Services() {
               запустится без браузера и работает при плохой сети.
             </p>
           )}
+        </Card>
+      )}
+
+      {/* The card is navigation sugar: the server re-checks the role on
+          every moderation call, so hiding it is UX, not security. */}
+      {me.data?.role && me.data.role !== "user" && (
+        <Card className="p-4" data-sid="SYS-03.f">
+          <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Модерация</p>
+          <p className="mt-2 text-sm font-medium text-tx3">
+            Заявки на новые точки продаж: очередь на проверку и недавно опубликованные.
+          </p>
+          <Link to="/moderation" className="mt-3 block text-sm font-semibold text-accl">
+            Открыть модерацию →
+          </Link>
         </Card>
       )}
 

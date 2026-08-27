@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/sqkrv/sharespences/internal/auth"
 	"github.com/sqkrv/sharespences/internal/db"
 )
 
@@ -17,6 +18,10 @@ import (
 // mcc.sql header); no other module touches the MCC tables.
 type Service struct {
 	Q *db.Queries
+	// RoleOf is injected at the composition root (the auth module owns the
+	// "user" table — same seam practice as friends→cashback): the caller's
+	// CURRENT role, read per request, gates moderation.
+	RoleOf func(ctx context.Context, userID uuid.UUID) (auth.Role, error)
 }
 
 var numericRe = regexp.MustCompile(`^[0-9]+$`)
@@ -145,4 +150,67 @@ func (s *Service) CreatePoint(ctx context.Context, userID uuid.UUID, p db.Create
 // Changes returns the newest journal rows (news-digest precursor).
 func (s *Service) Changes(ctx context.Context, limit int32) ([]db.ListMCCChangesRow, error) {
 	return s.Q.ListMCCChanges(ctx, limit)
+}
+
+// requireModerator gates the moderation surface. Every caller gets the
+// same answer on refusal — no existence leaks (roles-moderation inv. 6).
+func (s *Service) requireModerator(ctx context.Context, userID uuid.UUID) error {
+	role, err := s.RoleOf(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if !role.CanModerate() {
+		return ErrNotModerator
+	}
+	return nil
+}
+
+// ModerationPending lists the queue oldest-first (fairness: the longest
+// waiting submission is reviewed first).
+func (s *Service) ModerationPending(ctx context.Context, userID uuid.UUID, limit, offset int32) ([]db.ModerationListPendingPOSRow, error) {
+	if err := s.requireModerator(ctx, userID); err != nil {
+		return nil, err
+	}
+	return s.Q.ModerationListPendingPOS(ctx, db.ModerationListPendingPOSParams{MaxRows: limit, Skip: offset})
+}
+
+// ModerationPublished is the review stream: recently published non-scrape
+// rows — what keeps the instant-publish path supervised after the fact.
+func (s *Service) ModerationPublished(ctx context.Context, userID uuid.UUID, limit, offset int32) ([]db.ModerationListPublishedPOSRow, error) {
+	if err := s.requireModerator(ctx, userID); err != nil {
+		return nil, err
+	}
+	return s.Q.ModerationListPublishedPOS(ctx, db.ModerationListPublishedPOSParams{MaxRows: limit, Skip: offset})
+}
+
+// ModerationApprove publishes a pending submission into the общий каталог.
+func (s *Service) ModerationApprove(ctx context.Context, userID uuid.UUID, id uuid.UUID) error {
+	if err := s.requireModerator(ctx, userID); err != nil {
+		return err
+	}
+	n, err := s.Q.ModerationApprovePOS(ctx, id)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ModerationReject pulls a pending or published non-scrape row out of
+// circulation; the row is kept for audit and stays invisible to everyone,
+// its author included.
+func (s *Service) ModerationReject(ctx context.Context, userID uuid.UUID, id uuid.UUID) error {
+	if err := s.requireModerator(ctx, userID); err != nil {
+		return err
+	}
+	n, err := s.Q.ModerationRejectPOS(ctx, id)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

@@ -115,10 +115,15 @@ func parsePosRow(rec []string) (posRow, error) {
 	}, nil
 }
 
+// origin is set on insert and deliberately NOT in the update list: a row
+// this import first created stays 'mcc_codes', and a row that reached the
+// base another way is not relabelled by a scrape that happens to carry the
+// same id. user_confirmations is left alone for the same reason — the CSV
+// carries mcc-codes.ru's `confirmations`, never ours (00027).
 const posUpsertSQL = `
 	insert into point_of_sale
-		(id, name, merchant_title, mcc_code, type, address, confirmations, created_at, last_confirmed_at)
-	values ($1, $2, $3, $4, $5::point_of_sale_type, $6, $7, $8, $9)
+		(id, name, merchant_title, mcc_code, type, address, confirmations, created_at, last_confirmed_at, origin)
+	values ($1, $2, $3, $4, $5::point_of_sale_type, $6, $7, $8, $9, 'mcc_codes')
 	on conflict (id) do update set
 		name              = excluded.name,
 		merchant_title    = excluded.merchant_title,

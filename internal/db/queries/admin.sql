@@ -181,8 +181,10 @@ where id = $1
   and status = 'pending';
 
 -- name: AdminCreatePOS :one
-insert into point_of_sale (name, merchant_title, mcc_code, type, address)
-values ($1, $2, $3, $4, $5)
+-- origin is literal, not a parameter: a row created through the sidecar was
+-- created by an operator, and nothing else may claim otherwise (00027).
+insert into point_of_sale (name, merchant_title, mcc_code, type, address, origin)
+values ($1, $2, $3, $4, $5, 'admin')
 returning id;
 
 -- name: AdminUpdatePOS :one
@@ -199,3 +201,17 @@ returning id;
 delete
 from point_of_sale
 where id = $1;
+
+-- Roles (AD-08, roles-moderation.md): exact-username promote/demote only —
+-- deliberately NO user-listing query, so the sidecar never grows one.
+
+-- name: AdminGetUserRole :one
+select username, role
+from "user"
+where username = $1;
+
+-- name: AdminSetUserRole :one
+update "user"
+set role = $2
+where username = $1
+returning username, role;

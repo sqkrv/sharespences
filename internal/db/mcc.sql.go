@@ -13,9 +13,9 @@ import (
 )
 
 const createUserPointOfSale = `-- name: CreateUserPointOfSale :one
-insert into point_of_sale (name, merchant_title, mcc_code, type, address, status, author_user_id)
-values ($1, $2, $3, $4, $5, 'pending', $6)
-returning id, name, merchant_title, mcc_code, type, address, confirmations, created_at, last_confirmed_at, location, status, author_user_id
+insert into point_of_sale (name, merchant_title, mcc_code, type, address, status, author_user_id, origin)
+values ($1, $2, $3, $4, $5, 'pending', $6, 'user_manual')
+returning id, name, merchant_title, mcc_code, type, address, confirmations, created_at, last_confirmed_at, location, status, author_user_id, origin, user_confirmations
 `
 
 type CreateUserPointOfSaleParams struct {
@@ -50,6 +50,8 @@ func (q *Queries) CreateUserPointOfSale(ctx context.Context, arg CreateUserPoint
 		&i.Location,
 		&i.Status,
 		&i.AuthorUserID,
+		&i.Origin,
+		&i.UserConfirmations,
 	)
 	return i, err
 }
@@ -58,7 +60,7 @@ const findSimilarPointsOfSale = `-- name: FindSimilarPointsOfSale :many
 select id, name, merchant_title, mcc_code
 from point_of_sale
 where mcc_code = $1
-  and (status = 'approved' or author_user_id = $2::uuid)
+  and (status = 'approved' or (author_user_id = $2::uuid and status = 'pending'))
   -- Point-of-sale type filter: empty means «any». The same merchant is often
   -- a different MCC at the till than in its app, so «где я плачу» is a real
   -- question the base can answer.
@@ -146,7 +148,7 @@ select id,
        status
 from point_of_sale
 where id = $1
-  and (status = 'approved' or author_user_id = $2::uuid)
+  and (status = 'approved' or (author_user_id = $2::uuid and status = 'pending'))
   -- Point-of-sale type filter: empty means «any». The same merchant is often
   -- a different MCC at the till than in its app, so «где я плачу» is a real
   -- question the base can answer.
@@ -259,11 +261,13 @@ select id,
        coalesce(type::text, '')::text as pos_type,
        address,
        confirmations,
+       user_confirmations,
        last_confirmed_at,
-       status
+       status,
+       origin::text as origin
 from point_of_sale
 where mcc_code = $1
-  and (status = 'approved' or author_user_id = $2::uuid)
+  and (status = 'approved' or (author_user_id = $2::uuid and status = 'pending'))
 order by confirmations desc nulls last, name, id
 limit $3
 `
@@ -275,15 +279,17 @@ type ListMerchantsByCodeParams struct {
 }
 
 type ListMerchantsByCodeRow struct {
-	ID              uuid.UUID
-	Name            string
-	MerchantTitle   *string
-	MccCode         *int16
-	PosType         string
-	Address         *string
-	Confirmations   *int64
-	LastConfirmedAt *time.Time
-	Status          PointOfSaleStatus
+	ID                uuid.UUID
+	Name              string
+	MerchantTitle     *string
+	MccCode           *int16
+	PosType           string
+	Address           *string
+	Confirmations     *int64
+	UserConfirmations int64
+	LastConfirmedAt   *time.Time
+	Status            PointOfSaleStatus
+	Origin            string
 }
 
 // «Точки с кодом NNNN» (13a): the known points carrying a code,
@@ -305,8 +311,10 @@ func (q *Queries) ListMerchantsByCode(ctx context.Context, arg ListMerchantsByCo
 			&i.PosType,
 			&i.Address,
 			&i.Confirmations,
+			&i.UserConfirmations,
 			&i.LastConfirmedAt,
 			&i.Status,
+			&i.Origin,
 		); err != nil {
 			return nil, err
 		}
@@ -316,6 +324,174 @@ func (q *Queries) ListMerchantsByCode(ctx context.Context, arg ListMerchantsByCo
 		return nil, err
 	}
 	return items, nil
+}
+
+const moderationApprovePOS = `-- name: ModerationApprovePOS :execrows
+update point_of_sale
+set status = 'approved'
+where id = $1
+  and status = 'pending'
+`
+
+func (q *Queries) ModerationApprovePOS(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, moderationApprovePOS, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const moderationListPendingPOS = `-- name: ModerationListPendingPOS :many
+
+select id,
+       name,
+       merchant_title,
+       mcc_code,
+       coalesce(type::text, '')::text as pos_type,
+       address,
+       origin::text                   as origin,
+       created_at,
+       count(*) over ()::bigint       as total
+from point_of_sale
+where status = 'pending'
+order by created_at, id
+limit $2 offset $1
+`
+
+type ModerationListPendingPOSParams struct {
+	Skip    int32
+	MaxRows int32
+}
+
+type ModerationListPendingPOSRow struct {
+	ID            uuid.UUID
+	Name          string
+	MerchantTitle *string
+	MccCode       *int16
+	PosType       string
+	Address       *string
+	Origin        string
+	CreatedAt     time.Time
+	Total         int64
+}
+
+// Moderation (roles-moderation.md). The queue is ANONYMOUS by column
+// selection: author_user_id is deliberately never selected here — the
+// moderator-facing DTO cannot carry what the query never returns
+// (invariant 1). Writes are scoped to non-scrape rows: the 62k imported
+// rows are the operator's domain (sidecar), not the moderators'.
+func (q *Queries) ModerationListPendingPOS(ctx context.Context, arg ModerationListPendingPOSParams) ([]ModerationListPendingPOSRow, error) {
+	rows, err := q.db.Query(ctx, moderationListPendingPOS, arg.Skip, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ModerationListPendingPOSRow
+	for rows.Next() {
+		var i ModerationListPendingPOSRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MerchantTitle,
+			&i.MccCode,
+			&i.PosType,
+			&i.Address,
+			&i.Origin,
+			&i.CreatedAt,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const moderationListPublishedPOS = `-- name: ModerationListPublishedPOS :many
+select id,
+       name,
+       merchant_title,
+       mcc_code,
+       coalesce(type::text, '')::text as pos_type,
+       address,
+       origin::text                   as origin,
+       created_at,
+       count(*) over ()::bigint       as total
+from point_of_sale
+where status = 'approved'
+  and origin <> 'mcc_codes'
+order by created_at desc, id
+limit $2 offset $1
+`
+
+type ModerationListPublishedPOSParams struct {
+	Skip    int32
+	MaxRows int32
+}
+
+type ModerationListPublishedPOSRow struct {
+	ID            uuid.UUID
+	Name          string
+	MerchantTitle *string
+	MccCode       *int16
+	PosType       string
+	Address       *string
+	Origin        string
+	CreatedAt     time.Time
+	Total         int64
+}
+
+// The review stream: recently published non-scrape rows — what keeps the
+// instant-publish path (user_transaction) supervised after the fact.
+func (q *Queries) ModerationListPublishedPOS(ctx context.Context, arg ModerationListPublishedPOSParams) ([]ModerationListPublishedPOSRow, error) {
+	rows, err := q.db.Query(ctx, moderationListPublishedPOS, arg.Skip, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ModerationListPublishedPOSRow
+	for rows.Next() {
+		var i ModerationListPublishedPOSRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MerchantTitle,
+			&i.MccCode,
+			&i.PosType,
+			&i.Address,
+			&i.Origin,
+			&i.CreatedAt,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const moderationRejectPOS = `-- name: ModerationRejectPOS :execrows
+update point_of_sale
+set status = 'rejected'
+where id = $1
+  and status in ('pending', 'approved')
+  and origin <> 'mcc_codes'
+`
+
+// Reject doubles as the review stream's prune: a published non-scrape row
+// can be pulled back. Rejected rows are kept for audit.
+func (q *Queries) ModerationRejectPOS(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, moderationRejectPOS, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const resolveMCC = `-- name: ResolveMCC :many
@@ -437,12 +613,14 @@ select id,
        coalesce(type::text, '')::text as pos_type,
        address,
        confirmations,
+       user_confirmations,
        last_confirmed_at,
        status,
+       origin::text as origin,
        count(*) over ()::bigint as total_rows
 from point_of_sale
 where mcc_code is not null -- a merchant row without an MCC answers nothing here
-  and (status = 'approved' or author_user_id = $1::uuid)
+  and (status = 'approved' or (author_user_id = $1::uuid and status = 'pending'))
   -- Point-of-sale type filter: empty means «any». The same merchant is often
   -- a different MCC at the till than in its app, so «где я плачу» is a real
   -- question the base can answer.
@@ -470,20 +648,23 @@ type SearchMerchantsParams struct {
 }
 
 type SearchMerchantsRow struct {
-	ID              uuid.UUID
-	Name            string
-	MerchantTitle   *string
-	MccCode         *int16
-	PosType         string
-	Address         *string
-	Confirmations   *int64
-	LastConfirmedAt *time.Time
-	Status          PointOfSaleStatus
-	TotalRows       int64
+	ID                uuid.UUID
+	Name              string
+	MerchantTitle     *string
+	MccCode           *int16
+	PosType           string
+	Address           *string
+	Confirmations     *int64
+	UserConfirmations int64
+	LastConfirmedAt   *time.Time
+	Status            PointOfSaleStatus
+	Origin            string
+	TotalRows         int64
 }
 
 // Pending user submissions are visible to their author only (5e): the общий
-// каталог serves approved rows.
+// каталог serves approved rows. Rejected rows are invisible to everyone,
+// the author included (roles-moderation invariant 3).
 // Every word of the query must appear somewhere in the row, in any order:
 // «доставка яндекс» and «яндекс доставка» are the same question. The words
 // arrive already wrapped in %…% (the service builds them).
@@ -520,8 +701,10 @@ func (q *Queries) SearchMerchants(ctx context.Context, arg SearchMerchantsParams
 			&i.PosType,
 			&i.Address,
 			&i.Confirmations,
+			&i.UserConfirmations,
 			&i.LastConfirmedAt,
 			&i.Status,
+			&i.Origin,
 			&i.TotalRows,
 		); err != nil {
 			return nil, err

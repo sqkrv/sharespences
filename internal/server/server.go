@@ -126,7 +126,9 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 	authSvc := &auth.Service{Q: q}
 	store := &attach.Store{Q: q, Dir: cfg.AttachmentsDir}
 	cbSvc := &cashback.Service{Q: q, RemoveAttachmentFile: store.Remove, ReadAttachmentFile: store.Open, Vision: cfg.Vision}
-	mccSvc := &mcc.Service{Q: q}
+	// The auth module owns the "user" table, so the moderation gate's role
+	// read crosses that seam as an injected function value too.
+	mccSvc := &mcc.Service{Q: q, RoleOf: authSvc.RoleOf}
 	frSvc := &friends.Service{Q: q, Pool: cfg.Pool}
 	// The one function value crossing the friends→cashback seam (ADR-0002:
 	// injected here at the composition root, never a package import).
@@ -267,10 +269,13 @@ type UserDTO struct {
 	Username    string    `json:"username"`
 	DisplayName string    `json:"display_name"`
 	Email       string    `json:"email"`
+	// Role gates the SPA's moderation navigation only — every moderation
+	// operation re-checks the role server-side (roles-moderation inv. 4).
+	Role string `json:"role" enum:"user,moderator,admin"`
 }
 
 func userDTO(u db.User) UserDTO {
-	return UserDTO{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, Email: u.Email}
+	return UserDTO{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, Email: u.Email, Role: string(u.Role)}
 }
 
 func registerAuth(api huma.API, sm *scs.SessionManager, svc *auth.Service) {
