@@ -6,7 +6,10 @@
 //
 // Config via env: DATABASE_URL (required), ADMIN_LISTEN_ADDR (default
 // 127.0.0.1:8081 — the compose service overrides to :8081 in-container so
-// the loopback port publish can reach it).
+// the loopback port publish can reach it), ADMIN_ALLOWED_HOSTS (comma
+// separated; empty allows the loopback names only, which is what keeps a
+// DNS-rebinding page from reaching an unauthenticated panel), ADMIN_DOCS
+// (default false — the huma API reference loads scripts from unpkg.com).
 //
 // The build identifies itself through `version`, stamped at link time with
 // the same tag as the app binary (ADR-0006):
@@ -22,6 +25,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -38,6 +43,26 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// envBool reads a boolean env var, falling back to def when unset or unparsable.
+func envBool(key string, def bool) bool {
+	v, err := strconv.ParseBool(os.Getenv(key))
+	if err != nil {
+		return def
+	}
+	return v
+}
+
+// splitList parses a comma-separated env var, dropping blanks.
+func splitList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func main() {
@@ -61,7 +86,14 @@ func run() error {
 	}
 	defer pool.Close()
 
-	handler, err := admin.New(admin.Config{Pool: pool, Version: version})
+	handler, err := admin.New(admin.Config{
+		Pool: pool, Version: version,
+		// Comma-separated; empty keeps the loopback defaults. Set it only
+		// when the panel is reached under another name (a tunnel alias),
+		// never to open it up.
+		AllowedHosts: splitList(os.Getenv("ADMIN_ALLOWED_HOSTS")),
+		Docs:         envBool("ADMIN_DOCS", false),
+	})
 	if err != nil {
 		return err
 	}
@@ -76,7 +108,7 @@ func run() error {
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
 	}()
-	log.Printf("sharespences-admin %s listening on %s (docs at /docs)", cmp.Or(version, "dev"), srv.Addr)
+	log.Printf("sharespences-admin %s listening on %s", cmp.Or(version, "dev"), srv.Addr)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

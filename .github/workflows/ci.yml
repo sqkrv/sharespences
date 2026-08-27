@@ -5,24 +5,47 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only by default: no job here writes to the repository, and the
+# workflow should not inherit whatever the repository default happens to be.
+permissions:
+  contents: read
+
+# A new push to the same branch supersedes the run it interrupts; main is
+# exempt so every commit on the release branch keeps its own result.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # git diff only inspects TRACKED files, so a brand-new query file (whose
+      # generated .sql.go is untracked) sailed through the gate and only broke
+      # at build time on a fresh clone. Porcelain status reports both.
       - name: sqlc code is up to date
-        run: go tool sqlc generate && git diff --exit-code internal/db
+        run: |
+          go tool sqlc generate
+          git status --porcelain internal/db
+          test -z "$(git status --porcelain internal/db)"
       - run: go vet ./...
       - run: go build ./...
       # includes the E2E acceptance test (PostGIS via testcontainers;
       # Docker is available on ubuntu runners)
       - run: go test ./...
+      # Known vulnerabilities in the dependency tree, checked against the Go
+      # vulnerability database. Reports only what is reachable from this code.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -30,10 +53,11 @@ jobs:
           go-version-file: go.mod
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.12
+          version: v2.13
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -46,6 +70,15 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
+      # Advisories in what actually ships. --omit=dev leaves build tooling out:
+      # vite, workbox and openapi-typescript process our own generated files,
+      # never attacker input. npm audit exits non-zero whenever it finds
+      # anything, so the report is written first and the gate decides.
+      - name: npm advisories (shipped dependencies)
+        working-directory: web
+        run: |
+          npm audit --omit=dev --json > audit.json || true
+          node scripts/audit-gate.mjs < audit.json
       # API types are generated from the Go OpenAPI doc — drift fails CI,
       # mirroring the sqlc up-to-date check on the backend.
       - name: API types are up to date
@@ -58,6 +91,7 @@ jobs:
 
   admin-web:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

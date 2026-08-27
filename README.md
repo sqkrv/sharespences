@@ -10,11 +10,22 @@ docker compose up --build
 ```
 
 brings up PostGIS, applies migrations, loads seed data and serves the app
-(API + embedded SPA) on <http://localhost:8080> — interactive API docs at
-`/docs`. Uploaded attachments and the database persist in named volumes.
+(API + embedded SPA) on <http://localhost:8080>. The OpenAPI document is at
+`/openapi.json`; `DOCS=true` additionally serves the interactive reference at
+`/docs`, which is off by default because it loads Stoplight Elements from
+unpkg.com. Uploaded attachments and the database persist in named volumes.
 
 Set `APP_PORT` (env or a `.env` file) to publish on a different host port,
 e.g. `APP_PORT=9090 docker compose up` serves on <http://localhost:9090>.
+
+The session cookie carries `Secure` by default, which browsers only return
+over HTTPS — Safari will not store it at all over plain http, and sign-in then
+fails with nothing visible to explain why. On a local http stack, opt out
+per-machine rather than editing the compose file:
+
+```bash
+echo COOKIE_SECURE=false >> .env
+```
 
 The database port is **not** published to the host — the app, migrate and
 seed containers reach it over the internal network — so the stack runs on a

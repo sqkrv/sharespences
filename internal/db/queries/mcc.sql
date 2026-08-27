@@ -36,8 +36,9 @@ from bank_category_mcc bcm
          join bank_category bc on bc.id = bcm.bank_category_id
          join bank b on b.id = bc.bank_id
          left join canonical_category cc on cc.id = bc.canonical_category_id
-where bcm.mcc_code = $1
+where bcm.mcc_code = sqlc.arg(mcc_code)
   and bc.active
+  and (bc.created_by is null or bc.created_by = sqlc.arg(user_id)::uuid)
 order by b.name, bc.title;
 
 -- name: SearchMerchants :many

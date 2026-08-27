@@ -68,12 +68,17 @@ func seedMCC(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 
-	// 2. Catalog map (bank name, title) → bank_category row.
+	// 2. Catalog map (bank name, title) → bank_category row. Seed owns the
+	// GLOBAL rows only: since 00019 a title is unique per (bank, owner), not
+	// per bank, so an unfiltered map could resolve a CSV title to some user's
+	// private row and hang the seeded MCC memberships off it — which
+	// ResolveMCC would then show to everyone.
 	catalog := map[[2]string]catalogRow{}
 	rows, err := tx.Query(ctx, `
 		select bc.id, bc.bank_id, b.name, bc.title
 		from bank_category bc
-		         join bank b on b.id = bc.bank_id`)
+		         join bank b on b.id = bc.bank_id
+		where bc.created_by is null`)
 	if err != nil {
 		return fmt.Errorf("seed mcc: load catalog: %w", err)
 	}

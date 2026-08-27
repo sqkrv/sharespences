@@ -131,24 +131,6 @@ func (q *Queries) DeleteCardForUser(ctx context.Context, arg DeleteCardForUserPa
 	return result.RowsAffected(), nil
 }
 
-const getBankByName = `-- name: GetBankByName :one
-select id, name, logo_filename, color_hex
-from bank
-where name = $1
-`
-
-func (q *Queries) GetBankByName(ctx context.Context, name string) (Bank, error) {
-	row := q.db.QueryRow(ctx, getBankByName, name)
-	var i Bank
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.LogoFilename,
-		&i.ColorHex,
-	)
-	return i, err
-}
-
 const getBankClientForUser = `-- name: GetBankClientForUser :one
 select cl.id, cl.user_id, cl.bank_id, cl.label, cl.program_tier_id, b.name as bank_name
 from bank_client cl
@@ -180,45 +162,6 @@ func (q *Queries) GetBankClientForUser(ctx context.Context, arg GetBankClientFor
 		&i.BankID,
 		&i.Label,
 		&i.ProgramTierID,
-		&i.BankName,
-	)
-	return i, err
-}
-
-const getCardForUser = `-- name: GetCardForUser :one
-select bc.id, bc.last_4_digits, bc.payment_system, bc.image_filename, bc.bank_client_id, cl.bank_id, b.name as bank_name
-from bank_card bc
-         join bank_client cl on cl.id = bc.bank_client_id
-         join bank b on b.id = cl.bank_id
-where bc.id = $1
-  and cl.user_id = $2
-`
-
-type GetCardForUserParams struct {
-	ID     int32
-	UserID uuid.UUID
-}
-
-type GetCardForUserRow struct {
-	ID            int32
-	Last4Digits   int32
-	PaymentSystem PaymentSystem
-	ImageFilename *string
-	BankClientID  int64
-	BankID        int32
-	BankName      string
-}
-
-func (q *Queries) GetCardForUser(ctx context.Context, arg GetCardForUserParams) (GetCardForUserRow, error) {
-	row := q.db.QueryRow(ctx, getCardForUser, arg.ID, arg.UserID)
-	var i GetCardForUserRow
-	err := row.Scan(
-		&i.ID,
-		&i.Last4Digits,
-		&i.PaymentSystem,
-		&i.ImageFilename,
-		&i.BankClientID,
-		&i.BankID,
 		&i.BankName,
 	)
 	return i, err

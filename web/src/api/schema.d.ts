@@ -1365,6 +1365,7 @@ export interface components {
              * @example https://example.com/schemas/Cashback-offer-period-createRequest.json
              */
             readonly $schema?: string;
+            /** @description скриншоты, уже загруженные через /attachments */
             attachment_ids?: string[] | null;
             /** Format: int64 */
             bank_client_id: number;
@@ -1440,6 +1441,7 @@ export interface components {
             readonly $schema?: string;
             /** @description true stamps the activation moment (kept on update); false clears it */
             activated?: boolean;
+            /** @description скриншоты, уже загруженные через /attachments */
             attachment_ids?: string[] | null;
             /** Format: int64 */
             bank_client_id?: number;

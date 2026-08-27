@@ -269,3 +269,11 @@ export const FRIENDS_KEY = "lookup-friends";
 export function initWithFriends(): boolean {
   return localStorage.getItem(FRIENDS_KEY) !== "off";
 }
+
+// Public status page (Uptime Kuma, deliberately on separate infrastructure —
+// it has to answer when sharespences.com does not). Linked from the offline
+// chip and from network-failure messages; never fetched, embedded or
+// preconnected, because privacy policy §2.4 states the app loads no
+// third-party resources — an outbound link the user chooses to follow is not
+// one, a request the page makes on its own would be.
+export const STATUS_URL = "https://status.sharespences.com";

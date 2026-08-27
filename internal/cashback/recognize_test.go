@@ -231,6 +231,39 @@ func TestRunRecognitionFailsJobOnBackendError(t *testing.T) {
 	}
 }
 
+type panickingBackend struct{}
+
+func (panickingBackend) Name() string { return "panicking" }
+func (panickingBackend) Complete(context.Context, vision.Request) (vision.Response, error) {
+	panic("decoder blew up on user-supplied bytes")
+}
+
+// runRecognition is the only goroutine the app starts per request, and chi's
+// Recoverer does not reach it: without the deferred recover, a panic anywhere
+// in the decode/model/merge path takes the process down for every user.
+func TestRunRecognitionSurvivesPanic(t *testing.T) {
+	svc := &Service{
+		Vision: panickingBackend{},
+		ReadAttachmentFile: func(uuid.UUID) (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(pngBytes(t, 100, 100))), nil
+		},
+	}
+	job, err := svc.recognitions.start(uuid.New(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.runRecognition(job.id, []uuid.UUID{uuid.New()}, nil, nil, nil, "", nil)
+
+	dto, _ := svc.recognitions.get(job.userID, job.id)
+	if dto.Status != "failed" {
+		t.Fatalf("job status = %q, want failed", dto.Status)
+	}
+	// The panic value must stay in the log — the user reads a Russian sentence.
+	if dto.Error == "" || strings.Contains(dto.Error, "decoder blew up") {
+		t.Fatalf("job error = %q, want a Russian message that does not leak the panic", dto.Error)
+	}
+}
+
 func TestStartRecognitionRequiresBackend(t *testing.T) {
 	svc := &Service{} // Vision nil = feature off
 	_, err := svc.StartRecognition(context.Background(), uuid.New(), 1, []uuid.UUID{uuid.New()})

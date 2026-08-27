@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { api, unwrap } from "./api/client";
-import { midMonthISO } from "./lib";
+import { midMonthISO, STATUS_URL } from "./lib";
 
 // PWA glue per docs/specs/pwa.md (meta-repo): offline indicator, prompt-style
 // update toast, install affordances, and the offline-read cache warm-up.
@@ -13,20 +13,26 @@ import { midMonthISO } from "./lib";
 // all read «online» while every response is silently cache-served. The probe
 // is HEAD (the SW caches match GET only, so it always reaches the network)
 // + no-store (skips the HTTP cache); any HTTP status counts as reachable.
-let offline = !navigator.onLine;
+//
+// The two failures are not the same answer, which is why this is a state and
+// not a boolean: with no network at all there is nothing to send the user to
+// (the status page is a web page too), while a device that has internet but
+// cannot reach us is exactly the case the status page exists for.
+export type NetState = "online" | "device-offline" | "server-unreachable";
+let net: NetState = navigator.onLine ? "online" : "device-offline";
 const netSubs = new Set<() => void>();
 let recoverTimer: ReturnType<typeof setInterval> | undefined;
 
-function setOffline(next: boolean) {
+function setNet(next: NetState) {
   // While offline, re-probe periodically — recovery can't wait for the
   // `online` event (it may never fire in iOS standalone).
-  if (next && recoverTimer == null) recoverTimer = setInterval(() => void probe(), 15_000);
-  if (!next && recoverTimer != null) {
+  if (next !== "online" && recoverTimer == null) recoverTimer = setInterval(() => void probe(), 15_000);
+  if (next === "online" && recoverTimer != null) {
     clearInterval(recoverTimer);
     recoverTimer = undefined;
   }
-  if (next === offline) return;
-  offline = next;
+  if (next === net) return;
+  net = next;
   netSubs.forEach((cb) => cb());
 }
 
@@ -37,13 +43,15 @@ async function probe() {
       cache: "no-store",
       signal: AbortSignal.timeout(4_000), // hung ≈ offline; the SW falls back to cache at 3s anyway
     });
-    setOffline(false);
+    setNet("online");
   } catch {
-    setOffline(true);
+    // A failed probe with the interface up means the server is the problem —
+    // the OS's «offline» is trustworthy in the negative direction only.
+    setNet(navigator.onLine ? "server-unreachable" : "device-offline");
   }
 }
 
-window.addEventListener("offline", () => setOffline(true)); // OS says down — trust it
+window.addEventListener("offline", () => setNet("device-offline")); // OS says down — trust it
 window.addEventListener("online", () => void probe()); // OS says up — verify first
 document.addEventListener("visibilitychange", () => {
   // The checkout moment: the app is re-opened exactly when connectivity is
@@ -52,23 +60,48 @@ document.addEventListener("visibilitychange", () => {
 });
 void probe();
 
+// recheckNetwork re-probes after a request failed the way a network failure
+// looks (a thrown TypeError — an HTTP status means the server answered, so it
+// is not one). Wired into the query/mutation caches in main.tsx.
+export function recheckNetwork(err: unknown) {
+  if (err instanceof TypeError) void probe();
+}
+
 function subscribeNet(cb: () => void) {
   netSubs.add(cb);
   return () => netSubs.delete(cb);
 }
 
-export function useOnline(): boolean {
-  return useSyncExternalStore(subscribeNet, () => !offline);
+export function useNetState(): NetState {
+  return useSyncExternalStore(subscribeNet, () => net);
 }
 
-// «нет сети» pill under the status bar; data on screen is cache-served.
+export function useOnline(): boolean {
+  return useNetState() === "online";
+}
+
+// «нет сети» pill under the status bar; data on screen is cache-served. When
+// the device has internet and only we are unreachable, the pill also carries
+// the way to find out why — the status page lives on separate infrastructure,
+// so it answers exactly when the app does not.
 export function OfflineChip() {
-  const online = useOnline();
-  if (online) return null;
+  const state = useNetState();
+  if (state === "online") return null;
+  const serverDown = state === "server-unreachable";
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[max(env(safe-area-inset-top),8px)] z-40 flex justify-center">
-      <span className="rounded-full border border-gold/25 bg-bg/90 px-3 py-1 text-[10.5px] font-semibold text-gold backdrop-blur">
-        нет сети — данные из кэша
+      <span className="flex items-center gap-1.5 rounded-full border border-gold/25 bg-bg/90 px-3 py-1 text-[10.5px] font-semibold text-gold backdrop-blur">
+        {serverDown ? "сервер не отвечает" : "нет сети — данные из кэша"}
+        {serverDown && (
+          <a
+            href={STATUS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="pointer-events-auto rounded-full bg-gold/15 px-1.5 py-px underline underline-offset-2"
+          >
+            статус
+          </a>
+        )}
       </span>
     </div>
   );

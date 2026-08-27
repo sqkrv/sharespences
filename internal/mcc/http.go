@@ -294,7 +294,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		if err != nil {
 			return nil, httpErr(err)
 		}
-		entry, rows, err := s.Resolve(ctx, code)
+		entry, rows, err := s.Resolve(ctx, auth.UserID(ctx), code)
 		if err != nil {
 			return nil, httpErr(err)
 		}

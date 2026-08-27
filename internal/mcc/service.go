@@ -36,9 +36,10 @@ func (s *Service) Search(ctx context.Context, query string, limit int32) ([]db.M
 }
 
 // Resolve returns the dictionary entry and every bank's active catalog
-// category containing the code. A known code with no memberships is a valid
+// category containing the code — the caller's own custom rows included,
+// another account's excluded (00019). A known code with no memberships is a valid
 // answer (empty banks) — the base simply doesn't cover it yet.
-func (s *Service) Resolve(ctx context.Context, code int16) (db.Mcc, []db.ResolveMCCRow, error) {
+func (s *Service) Resolve(ctx context.Context, userID uuid.UUID, code int16) (db.Mcc, []db.ResolveMCCRow, error) {
 	entry, err := s.Q.GetMCC(ctx, code)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -46,7 +47,7 @@ func (s *Service) Resolve(ctx context.Context, code int16) (db.Mcc, []db.Resolve
 		}
 		return db.Mcc{}, nil, err
 	}
-	rows, err := s.Q.ResolveMCC(ctx, code)
+	rows, err := s.Q.ResolveMCC(ctx, db.ResolveMCCParams{MccCode: code, UserID: userID})
 	if err != nil {
 		return db.Mcc{}, nil, err
 	}
@@ -92,8 +93,8 @@ func SearchPatterns(query string) []string {
 // Memberships lists the bank catalog rows holding a code — the value the
 // cashback module's MCC board consumes across the seam (10b variant 3:
 // each bank is judged by its OWN category for the code).
-func (s *Service) Memberships(ctx context.Context, code int16) ([]db.ResolveMCCRow, error) {
-	return s.Q.ResolveMCC(ctx, code)
+func (s *Service) Memberships(ctx context.Context, userID uuid.UUID, code int16) ([]db.ResolveMCCRow, error) {
+	return s.Q.ResolveMCC(ctx, db.ResolveMCCParams{MccCode: code, UserID: userID})
 }
 
 // MerchantsByCode lists the известные точки carrying a code («Точки с кодом

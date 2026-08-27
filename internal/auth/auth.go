@@ -104,9 +104,30 @@ func (s *Service) Register(ctx context.Context, username, displayName, email, pa
 	return u, nil
 }
 
+// dummyHash is verified against when the email is unknown, so that a miss
+// costs the same ~100 ms of argon2 as a wrong password. Skipping the hash
+// made account existence measurable from the response time alone — registration
+// is open, so anyone can ask whether a given address has an account here.
+// Generated once at init from a random password nothing can supply.
+var dummyHash = func() string {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		panic(err) // crypto/rand failing at startup is not recoverable
+	}
+	h, err := HashPassword(string(secret))
+	if err != nil {
+		panic(err)
+	}
+	return h
+}()
+
 func (s *Service) Login(ctx context.Context, email, password string) (db.User, error) {
 	u, err := s.Q.GetUserByEmail(ctx, NormalizeEmail(email))
-	if err != nil || u.PasswordHash == nil || !VerifyPassword(password, *u.PasswordHash) {
+	if err != nil || u.PasswordHash == nil {
+		VerifyPassword(password, dummyHash)
+		return db.User{}, ErrInvalidCredentials
+	}
+	if !VerifyPassword(password, *u.PasswordHash) {
 		return db.User{}, ErrInvalidCredentials
 	}
 	return u, nil

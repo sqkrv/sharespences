@@ -18,7 +18,7 @@ RUN mkdir -p /src/internal/adminweb && npm run build
 
 # --- Go build: app binary with the SPA embedded (ADR-0002) plus the admin
 # sidecar with its UI (ADR-0008) — one image carries both binaries ---
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
