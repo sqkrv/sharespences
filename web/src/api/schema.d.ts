@@ -332,6 +332,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cashback/mcc-board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** «Чем платить» for one MCC — exact per-bank matching */
+        get: operations["cashback-mcc-board"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cashback/offer-periods": {
         parameters: {
             query?: never;
@@ -884,6 +901,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mcc/codes/{code}/merchants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Known points of sale carrying a code («Точки с кодом», 13a) */
+        get: operations["mcc-code-merchants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mcc/merchants": {
         parameters: {
             query?: never;
@@ -1040,6 +1074,8 @@ export interface components {
             cap_value?: string;
             client_label: string;
             currency_kind: string;
+            /** @description the row's icon: its catalog row's, else the canonical's */
+            emoji?: string;
             /** @description карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда */
             friend_name?: string;
             friend_username?: string;
@@ -1298,6 +1334,20 @@ export interface components {
             partner?: components["schemas"]["PartnerOfferDTO"][] | null;
             /** @description regular + super + special, marked by kind (invariant 6 amendment 2026-07-27) */
             ranked: components["schemas"]["LookupEntryDTO"][] | null;
+        };
+        "Cashback-mcc-boardResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Cashback-mcc-boardResponse.json
+             */
+            readonly $schema?: string;
+            /** @description exact-matched menu rows still pickable («свободный слот») */
+            available?: components["schemas"]["AvailableEntryDTO"][] | null;
+            /** @description «Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships */
+            base?: components["schemas"]["LookupEntryDTO"][] | null;
+            /** @description selected rows whose bank counts this code in that category (bank_category_mcc) — own + friends' */
+            ranked?: components["schemas"]["LookupEntryDTO"][] | null;
         };
         "Cashback-offer-period-attachRequest": {
             /**
@@ -1797,6 +1847,8 @@ export interface components {
             cap_value?: string;
             client_label: string;
             currency_kind: string;
+            /** @description the row's icon: its catalog row's, else the canonical's */
+            emoji?: string;
             /** @description карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда */
             friend_name?: string;
             friend_username?: string;
@@ -1989,12 +2041,19 @@ export interface components {
              */
             mid_period_add?: "allowed" | "locked_after_first" | "paid" | "unknown";
             partner_offers?: components["schemas"]["OverviewPartnerChipDTO"][] | null;
+            pending_from?: string;
+            pending_to?: string;
             period_end?: string;
             /** Format: int64 */
             period_id?: number;
             period_start?: string;
             points_label?: string;
             selected: components["schemas"]["OverviewChipDTO"][] | null;
+            /**
+             * Format: int32
+             * @description day of month the bank opens the next period's selection («выбор с 25-го»)
+             */
+            selection_opens_day?: number;
             /** Format: int64 */
             slots_used: number;
             specials?: components["schemas"]["OverviewChipDTO"][] | null;
@@ -2019,6 +2078,8 @@ export interface components {
             cap_value?: string;
             client_label: string;
             currency_kind: string;
+            /** @description the row's icon: its catalog row's, else the canonical's */
+            emoji?: string;
             /** @description карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда */
             friend_name?: string;
             friend_username?: string;
@@ -3009,6 +3070,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Cashback-lookupResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-mcc-board": {
+        parameters: {
+            query?: {
+                /** @description MCC code */
+                code?: number;
+                /** @description YYYY-MM-DD; defaults to today */
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cashback-mcc-boardResponse"];
                 };
             };
             /** @description Error */
@@ -4242,6 +4337,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CodeDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "mcc-code-merchants": {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                code: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDTO"][] | null;
                 };
             };
             /** @description Error */

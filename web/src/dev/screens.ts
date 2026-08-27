@@ -26,6 +26,7 @@ export const SCREENS: Screen[] = [
   // /pos/new before /pos: the router matches in order and so does this table.
   { id: "CB-13", path: "/pos/new", title: "Новая точка", file: "web/src/pages/PosNew.tsx" },
   { id: "CB-11", path: "/pos", title: "Точка продаж", file: "web/src/pages/Pos.tsx" },
+  { id: "CB-13", path: "/mcc/:code", title: "Код MCC", file: "web/src/pages/Mcc.tsx" },
   // CB-05 (the partner-offer list screen) dissolved into the bank cards on
   // CB-09 + the CB-12 form (партнёрки v2, 2026-08-06); /partners redirects.
   { id: "CB-12", path: "/partners/new", title: "Партнёрское предложение", file: "web/src/pages/PartnerNew.tsx" },

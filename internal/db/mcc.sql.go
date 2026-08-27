@@ -251,6 +251,73 @@ func (q *Queries) ListMCCChanges(ctx context.Context, limit int32) ([]ListMCCCha
 	return items, nil
 }
 
+const listMerchantsByCode = `-- name: ListMerchantsByCode :many
+select id,
+       name,
+       merchant_title,
+       mcc_code,
+       coalesce(type::text, '')::text as pos_type,
+       address,
+       confirmations,
+       last_confirmed_at,
+       status
+from point_of_sale
+where mcc_code = $1
+  and (status = 'approved' or author_user_id = $2::uuid)
+order by confirmations desc nulls last, name, id
+limit $3
+`
+
+type ListMerchantsByCodeParams struct {
+	MccCode *int16
+	UserID  uuid.UUID
+	MaxRows int32
+}
+
+type ListMerchantsByCodeRow struct {
+	ID              uuid.UUID
+	Name            string
+	MerchantTitle   *string
+	MccCode         *int16
+	PosType         string
+	Address         *string
+	Confirmations   *int64
+	LastConfirmedAt *time.Time
+	Status          PointOfSaleStatus
+}
+
+// «Точки с кодом NNNN» (13a): the known points carrying a code,
+// confirmations first — the search's visibility rule applies.
+func (q *Queries) ListMerchantsByCode(ctx context.Context, arg ListMerchantsByCodeParams) ([]ListMerchantsByCodeRow, error) {
+	rows, err := q.db.Query(ctx, listMerchantsByCode, arg.MccCode, arg.UserID, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMerchantsByCodeRow
+	for rows.Next() {
+		var i ListMerchantsByCodeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MerchantTitle,
+			&i.MccCode,
+			&i.PosType,
+			&i.Address,
+			&i.Confirmations,
+			&i.LastConfirmedAt,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resolveMCC = `-- name: ResolveMCC :many
 select b.id     as bank_id,
        b.name   as bank_name,

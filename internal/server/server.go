@@ -133,6 +133,20 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 		}
 		return out, nil
 	}
+	// The mcc→cashback seam, same idiom: the MCC board judges each bank by
+	// its own category for the code (bank_category_mcc), and the membership
+	// rows cross as values.
+	cbSvc.MCCMemberships = func(ctx context.Context, code int16) ([]cashback.MembershipRow, error) {
+		rows, err := mccSvc.Memberships(ctx, code)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]cashback.MembershipRow, len(rows))
+		for i, r := range rows {
+			out[i] = cashback.MembershipRow{BankCategoryID: r.BankCategoryID}
+		}
+		return out, nil
+	}
 
 	registerVersion(api, apiVersion)
 	registerAuth(api, sm, authSvc)

@@ -385,7 +385,7 @@ export default function Search() {
                 <button
                   key={s.code}
                   type="button"
-                  onClick={() => navigate(`/pos?mcc=${s.code}`)}
+                  onClick={() => navigate(`/mcc/${s.code}`)}
                   className="flex w-full items-center gap-2.5 rounded-2xl border border-brd bg-srf px-3 py-2.5 text-left hover:bg-srf2"
                 >
                   <span className="flex-none font-mono text-[13px] font-extrabold text-accl">{s.code}</span>

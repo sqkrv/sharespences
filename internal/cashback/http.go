@@ -210,6 +210,7 @@ type LookupEntryDTO struct {
 	ClientLabel    string  `json:"client_label"`
 	HolderLabel    string  `json:"holder_label,omitempty"`
 	RawTitle       string  `json:"raw_title" doc:"the bank's own menu title — names the mechanic on marked super/special rows («Пятница»)"`
+	Emoji          string  `json:"emoji,omitempty" doc:"the row's icon: its catalog row's, else the canonical's"`
 	Kind           string  `json:"kind"` // regular | super | special | partner — all rank; the UI marks барабан/спец/партнёрку
 	Percent        *string `json:"percent,omitempty"`
 	CurrencyKind   string  `json:"currency_kind"`
@@ -258,7 +259,7 @@ func availableEntryDTOPtr(a *AvailableEntry) *AvailableEntryDTO {
 
 func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 	return LookupEntryDTO{
-		BankClientID: e.ClientID, Kind: string(e.Kind), RawTitle: e.RawTitle,
+		BankClientID: e.ClientID, Kind: string(e.Kind), RawTitle: e.RawTitle, Emoji: e.Emoji,
 		BankName: e.BankName, ClientLabel: e.ClientLabel, HolderLabel: e.HolderLabel, Percent: decToStr(e.Percent),
 		CurrencyKind: string(e.CurrencyKind), PointsLabel: e.PointsLabel,
 		CapValue: decToStr(e.CapValue), CapPerCategory: decToStr(e.CapPerCategory),
@@ -581,27 +582,33 @@ type OverviewCardChipDTO struct {
 // its plastics; period fields are null when the client has no offer_period
 // covering the date.
 type OverviewClientDTO struct {
-	BankClientID   int64                 `json:"bank_client_id"`
-	BankID         int32                 `json:"bank_id"`
-	BankName       string                `json:"bank_name"`
-	HolderLabel    *string               `json:"holder_label,omitempty"`
-	Cards          []OverviewCardChipDTO `json:"cards"`
-	TierName       *string               `json:"tier_name,omitempty"`
-	IsPaidTier     bool                  `json:"is_paid_tier,omitempty"`
-	CapValue       *string               `json:"cap_value,omitempty"`
-	CapPerCategory *string               `json:"cap_per_category,omitempty"`
-	CapScope       string                `json:"cap_scope,omitempty"`
-	CurrencyKind   string                `json:"currency_kind"`
-	PointsLabel    string                `json:"points_label,omitempty"`
-	MidPeriodAdd   string                `json:"mid_period_add,omitempty" enum:"allowed,locked_after_first,paid,unknown" doc:"can a category still be ADDED to a live period"`
-	Activation     string                `json:"activation,omitempty" enum:"immediate,next_day,unknown" doc:"next_day (МКБ): a fresh pick won't cover a purchase made right now"`
-	PeriodID       *int64                `json:"period_id,omitempty"`
-	PeriodStart    *string               `json:"period_start,omitempty"`
-	PeriodEnd      *string               `json:"period_end,omitempty"`
-	SlotsUsed      int                   `json:"slots_used"`
-	MaxCategories  *int32                `json:"max_categories,omitempty"`
-	Selected       []OverviewChipDTO     `json:"selected"`
-	Specials       []OverviewChipDTO     `json:"specials,omitempty"`
+	BankClientID      int64                 `json:"bank_client_id"`
+	BankID            int32                 `json:"bank_id"`
+	BankName          string                `json:"bank_name"`
+	HolderLabel       *string               `json:"holder_label,omitempty"`
+	Cards             []OverviewCardChipDTO `json:"cards"`
+	TierName          *string               `json:"tier_name,omitempty"`
+	IsPaidTier        bool                  `json:"is_paid_tier,omitempty"`
+	CapValue          *string               `json:"cap_value,omitempty"`
+	CapPerCategory    *string               `json:"cap_per_category,omitempty"`
+	CapScope          string                `json:"cap_scope,omitempty"`
+	CurrencyKind      string                `json:"currency_kind"`
+	PointsLabel       string                `json:"points_label,omitempty"`
+	MidPeriodAdd      string                `json:"mid_period_add,omitempty" enum:"allowed,locked_after_first,paid,unknown" doc:"can a category still be ADDED to a live period"`
+	Activation        string                `json:"activation,omitempty" enum:"immediate,next_day,unknown" doc:"next_day (МКБ): a fresh pick won't cover a purchase made right now"`
+	SelectionOpensDay *int32                `json:"selection_opens_day,omitempty" doc:"day of month the bank opens the next period's selection («выбор с 25-го»)"`
+	// PendingFrom/PendingTo: the period this client still has to fill while
+	// its selection window is open — today's period, or the next one once the
+	// bank opened it. Absent = nothing pending.
+	PendingFrom   *string           `json:"pending_from,omitempty"`
+	PendingTo     *string           `json:"pending_to,omitempty"`
+	PeriodID      *int64            `json:"period_id,omitempty"`
+	PeriodStart   *string           `json:"period_start,omitempty"`
+	PeriodEnd     *string           `json:"period_end,omitempty"`
+	SlotsUsed     int               `json:"slots_used"`
+	MaxCategories *int32            `json:"max_categories,omitempty"`
+	Selected      []OverviewChipDTO `json:"selected"`
+	Specials      []OverviewChipDTO `json:"specials,omitempty"`
 	// PartnerOffers carries every status; alive ones render as gold chips,
 	// ended/expired fold into the card's collapsed group (v2, 3c).
 	PartnerOffers []OverviewPartnerChipDTO `json:"partner_offers,omitempty"`
@@ -1234,7 +1241,13 @@ func RegisterHTTP(api huma.API, s *Service) {
 				CapValue: decToStr(c.CapValue), CapPerCategory: decToStr(c.CapPerCat),
 				CapScope: string(c.CapScope), CurrencyKind: string(c.CurrencyKind),
 				PointsLabel: c.PointsLabel, MidPeriodAdd: c.MidPeriodAdd, Activation: c.Activation,
-				PeriodID: c.PeriodID, SlotsUsed: c.SlotsUsed, MaxCategories: c.MaxCategories,
+				SelectionOpensDay: c.SelectionOpensDay,
+				PeriodID:          c.PeriodID, SlotsUsed: c.SlotsUsed, MaxCategories: c.MaxCategories,
+			}
+			if c.Pending != nil {
+				from := c.Pending.Start.Format("2006-01-02")
+				to := c.Pending.End.Format("2006-01-02")
+				dto.PendingFrom, dto.PendingTo = &from, &to
 			}
 			dto.Cards = make([]OverviewCardChipDTO, len(c.Cards))
 			for j, cc := range c.Cards {
@@ -1267,6 +1280,49 @@ func RegisterHTTP(api huma.API, s *Service) {
 	})
 
 	// --- lookup (S3) ---
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cashback-mcc-board", Method: http.MethodGet,
+		Path: "/api/v1/cashback/mcc-board", Summary: "«Чем платить» for one MCC — exact per-bank matching", Tags: []string{"cashback"},
+	}, func(ctx context.Context, in *struct {
+		Code int16  `query:"code" minimum:"1" maximum:"9999" doc:"MCC code"`
+		Date string `query:"date" doc:"YYYY-MM-DD; defaults to today"`
+	}) (*struct {
+		Body struct {
+			Ranked    []LookupEntryDTO    `json:"ranked,omitempty" doc:"selected rows whose bank counts this code in that category (bank_category_mcc) — own + friends'"`
+			Available []AvailableEntryDTO `json:"available,omitempty" doc:"exact-matched menu rows still pickable («свободный слот»)"`
+			Base      []LookupEntryDTO    `json:"base,omitempty" doc:"«Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships"`
+		}
+	}, error) {
+		onDate := time.Now()
+		if in.Date != "" {
+			var err error
+			if onDate, err = parseDate(in.Date, "date"); err != nil {
+				return nil, err
+			}
+		}
+		board, err := s.LookupByMCC(ctx, auth.UserID(ctx), in.Code, onDate)
+		if err != nil {
+			return nil, err
+		}
+		out := &struct {
+			Body struct {
+				Ranked    []LookupEntryDTO    `json:"ranked,omitempty" doc:"selected rows whose bank counts this code in that category (bank_category_mcc) — own + friends'"`
+				Available []AvailableEntryDTO `json:"available,omitempty" doc:"exact-matched menu rows still pickable («свободный слот»)"`
+				Base      []LookupEntryDTO    `json:"base,omitempty" doc:"«Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships"`
+			}
+		}{}
+		for _, e := range board.Ranked {
+			out.Body.Ranked = append(out.Body.Ranked, lookupEntryDTO(e))
+		}
+		for _, a := range board.Available {
+			out.Body.Available = append(out.Body.Available, availableEntryDTO(a))
+		}
+		for _, e := range board.Base {
+			out.Body.Base = append(out.Body.Base, lookupEntryDTO(e))
+		}
+		return out, nil
+	})
 
 	huma.Register(api, huma.Operation{
 		OperationID: "cashback-lookup", Method: http.MethodGet,

@@ -639,13 +639,15 @@ func TestCashbackE2E(t *testing.T) {
 			} `json:"available"`
 		} `json:"categories"`
 		Clients []struct {
-			BankName      string  `json:"bank_name"`
-			HolderLabel   *string `json:"holder_label"`
-			PeriodID      *int64  `json:"period_id"`
-			SlotsUsed     int     `json:"slots_used"`
-			MaxCategories *int32  `json:"max_categories"`
-			TierName      *string `json:"tier_name"`
-			Cards         []struct {
+			BankName          string  `json:"bank_name"`
+			HolderLabel       *string `json:"holder_label"`
+			PeriodID          *int64  `json:"period_id"`
+			SlotsUsed         int     `json:"slots_used"`
+			MaxCategories     *int32  `json:"max_categories"`
+			TierName          *string `json:"tier_name"`
+			SelectionOpensDay *int32  `json:"selection_opens_day"`
+			PendingFrom       *string `json:"pending_from"`
+			Cards             []struct {
 				Last4Digits int32 `json:"last_4_digits"`
 			} `json:"cards"`
 		} `json:"clients"`
@@ -742,6 +744,33 @@ func TestCashbackE2E(t *testing.T) {
 	}
 	if overview.SelectionOpensDay == nil || *overview.SelectionOpensDay != 25 {
 		t.Fatalf("selection_opens_day = %v, want 25", overview.SelectionOpensDay)
+	}
+	// CB-09.b (2026-08-27): the ритуал date is per bank, not only aggregated —
+	// and it comes from the bank's program, so the ВТБ client answers with 26
+	// even though it has no tier. The mark itself is computed from *today*,
+	// not from the requested month: the July fixture leaves the current
+	// period unfilled, so every client has one pending.
+	thisMonth := time.Now().UTC().Format("2006-01") + "-01"
+	seenAlfa, seenVTB := false, false
+	for _, c := range overview.Clients {
+		if c.PendingFrom == nil || *c.PendingFrom != thisMonth {
+			t.Fatalf("overview %s pending_from = %v, want %s (current period unfilled)", c.BankName, c.PendingFrom, thisMonth)
+		}
+		switch c.BankName {
+		case "Альфа-Банк":
+			seenAlfa = true
+			if c.SelectionOpensDay == nil || *c.SelectionOpensDay != 25 {
+				t.Fatalf("Альфа-Банк selection_opens_day = %v, want 25", c.SelectionOpensDay)
+			}
+		case "ВТБ":
+			seenVTB = true
+			if c.SelectionOpensDay == nil || *c.SelectionOpensDay != 26 {
+				t.Fatalf("ВТБ selection_opens_day = %v, want 26 (bank program, not the client tier)", c.SelectionOpensDay)
+			}
+		}
+	}
+	if !seenAlfa || !seenVTB {
+		t.Fatalf("overview clients missing Альфа-Банк/ВТБ rows: %+v", overview.Clients)
 	}
 
 	// Screenshots are editable after creation (2026-07-09): upload →

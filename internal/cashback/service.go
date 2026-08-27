@@ -50,8 +50,19 @@ type Service struct {
 	// seam, same idiom as the attachment funcs). Nil = the friends feature
 	// is absent; friend views are empty, lookup stays personal.
 	ListSharedWithMe func(ctx context.Context, viewerID uuid.UUID) ([]SharedFriend, error)
+	// MCCMemberships resolves an MCC code to the bank catalog rows that hold
+	// it (bank_category_mcc) — injected from the mcc module at assembly
+	// (ADR-0002 seam: values cross, tables don't). Nil = MCC boards answer
+	// empty.
+	MCCMemberships func(ctx context.Context, code int16) ([]MembershipRow, error)
 
 	recognitions recognitionStore
+}
+
+// MembershipRow is one bank catalog row holding an MCC — the value shape the
+// mcc module hands across the seam.
+type MembershipRow struct {
+	BankCategoryID int64
 }
 
 // clientLabel names a bank client for display: «Альфа-Банк» for the account owner's
@@ -128,12 +139,19 @@ func entryOf(o db.ListUserOffersRow) LookupEntry {
 	if o.PointsLabel != nil {
 		pointsLabel = *o.PointsLabel
 	}
+	emoji := ""
+	if o.BankCategoryEmoji != nil {
+		emoji = *o.BankCategoryEmoji
+	} else if o.CanonicalEmoji != nil {
+		emoji = *o.CanonicalEmoji
+	}
 	return LookupEntry{
 		ClientID:       o.BankClientID,
 		ClientLabel:    clientLabel(o.BankName, o.HolderLabel),
 		HolderLabel:    holderOf(o.HolderLabel),
 		BankName:       o.BankName,
 		RawTitle:       o.RawTitle,
+		Emoji:          emoji,
 		Percent:        o.Percent,
 		CurrencyKind:   currencyOf(o),
 		Kind:           OfferKind(o.Kind),
@@ -759,6 +777,13 @@ type OverviewClient struct {
 	MaxCategories *int32 // effective: period override, else tier
 	Selected      []OverviewSelectedRow
 	Specials      []OverviewSelectedRow
+	// SelectionOpensDay is the program's ритуал date («выбор с 25-го»), shown
+	// per bank on CB-09.b — the aggregate on OverviewResult answers «when is
+	// the next one anywhere», which is a different question.
+	SelectionOpensDay *int32
+	// Pending is the period this client still has to fill, when its window is
+	// already open (domain PendingMenu). Nil = nothing to do.
+	Pending *DateRange
 	// Partners are the client's партнёрки as gold chips (v2, 3c): every
 	// status — the SPA shows alive ones inline and folds ended/expired into
 	// a collapsed group, so past offers keep a home after CB-05 dissolves.
@@ -1104,6 +1129,31 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			firstClientOfBank[c.BankID] = c.ID
 		}
 	}
+	// Programs by bank: the ритуал date belongs to the bank's program, not to
+	// the client's tier, so a client with no tier set still gets its «выбор с
+	// 25-го» and its unfilled-menu mark (CB-09.b).
+	programs, err := s.Q.ListPrograms(ctx)
+	if err != nil {
+		return OverviewResult{}, err
+	}
+	programByBank := make(map[int32]db.ListProgramsRow, len(programs))
+	for _, p := range programs {
+		if _, taken := programByBank[p.BankID]; !taken {
+			programByBank[p.BankID] = p
+		}
+	}
+	// Every recorded period with its menu-row count — PendingMenu needs both,
+	// and both are already loaded for the month cut.
+	fillByClient := make(map[int64][]PeriodFill)
+	for _, p := range periods {
+		fill := PeriodFill{Range: rowRange(p.PeriodStart, p.PeriodEnd)}
+		for _, o := range offers {
+			if o.OfferPeriodID == p.ID {
+				fill.Offers++
+			}
+		}
+		fillByClient[p.BankClientID] = append(fillByClient[p.BankClientID], fill)
+	}
 	for _, client := range clients {
 		oc := OverviewClient{
 			ClientID:     client.ID,
@@ -1134,10 +1184,17 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			}
 			oc.MidPeriodAdd = string(program.MidPeriodAdd)
 			oc.Activation = string(program.Activation)
+		}
+		if program, ok := programByBank[client.BankID]; ok {
+			oc.SelectionOpensDay = program.SelectionOpensDay
 			if program.SelectionOpensDay != nil &&
 				(res.SelectionOpensDay == nil || *program.SelectionOpensDay < *res.SelectionOpensDay) {
 				res.SelectionOpensDay = program.SelectionOpensDay
 			}
+			// The mark is about today, not about the month being viewed: a
+			// user browsing July must still see that September is open and
+			// empty (owner 2026-08-27).
+			oc.Pending = PendingMenu(time.Now(), PeriodType(program.PeriodType), program.SelectionOpensDay, fillByClient[client.ID])
 		}
 		// Invariant 4 guarantees at most one period per client covers a date.
 		for _, p := range periods {
@@ -1398,4 +1455,132 @@ func notFound(err error) error {
 func isPgCode(err error, code string) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == code
+}
+
+// MCCBoard is the exact answer for one code (10b variant 3, 2026-08-27):
+// every entry got here through a bank's OWN category holding the code —
+// bank_category_mcc membership — never through a canonical guess. Banks
+// without ingested MCC memberships fall to Base («Кешбек на всё»), honestly:
+// approximate ranking on an MCC-driven screen was rejected outright.
+// Exclusion lists («код исключён банком», 13c) are a recorded follow-up —
+// they need their own model and a per-bank rules ingestion first.
+type MCCBoard struct {
+	Ranked    []LookupEntry    // selected rows, own + friends', stacked супер folded in
+	Available []AvailableEntry // exact-matched menu rows still pickable («свободный слот»)
+	Base      []LookupEntry    // clients whose only answer is the selected base row
+}
+
+// LookupByMCC builds the board for one code on one date. Friends ride the
+// same exact filter over their shared rows — invariants 4 (no caps) and 8
+// (the share window) hold exactly as in friendEntriesByCategory.
+func (s *Service) LookupByMCC(ctx context.Context, userID uuid.UUID, code int16, onDate time.Time) (MCCBoard, error) {
+	var board MCCBoard
+	if s.MCCMemberships == nil {
+		return board, nil
+	}
+	members, err := s.MCCMemberships(ctx, code)
+	if err != nil {
+		return board, err
+	}
+	matched := make(map[int64]bool, len(members))
+	for _, m := range members {
+		matched[m.BankCategoryID] = true
+	}
+
+	offers, err := s.Q.ListUserOffers(ctx, userID)
+	if err != nil {
+		return board, err
+	}
+	regCount := make(map[int64]int) // offer_period_id → selected regular rows
+	for _, o := range offers {
+		if o.Selected && OfferKind(o.Kind) == OfferRegular {
+			regCount[o.OfferPeriodID]++
+		}
+	}
+
+	var entries []LookupEntry
+	var avail []AvailableEntry
+	covered := make(map[int64]bool) // client ids answering above the base fold
+	for _, o := range offers {
+		if o.BankCategoryID == nil || !matched[*o.BankCategoryID] {
+			continue
+		}
+		if !rowRange(o.PeriodStart, o.PeriodEnd).Contains(onDate) {
+			continue
+		}
+		if o.Selected {
+			entries = append(entries, entryOf(o))
+			covered[o.BankClientID] = true
+			continue
+		}
+		if OfferKind(o.Kind) == OfferSpecial {
+			continue
+		}
+		max := o.MaxCategoriesOverride
+		if max == nil {
+			max = o.MaxCategories
+		}
+		verdict := AssessAvailability(AvailabilityCheck{
+			Kind:                 OfferKind(o.Kind),
+			Policy:               MidPeriodAddPolicy(o.MidPeriodAdd),
+			HasRegularSelection:  regCount[o.OfferPeriodID] > 0,
+			MaxCategories:        max,
+			RegularSelectedCount: regCount[o.OfferPeriodID],
+		})
+		if !verdict.Pickable() {
+			continue
+		}
+		avail = append(avail, AvailableEntry{
+			Entry:      entryOf(o),
+			OfferID:    o.CategoryOfferID,
+			Verdict:    verdict,
+			Activation: ActivationKind(o.Activation),
+		})
+		covered[o.BankClientID] = true
+	}
+
+	friends, rows, err := s.sharedRows(ctx, userID)
+	if err != nil {
+		return board, err
+	}
+	if len(rows) > 0 {
+		window := FriendShareWindow(time.Now())
+		owner := make(map[int64]*SharedFriend)
+		for i := range friends {
+			for _, id := range friends[i].BankClientIDs {
+				owner[id] = &friends[i]
+			}
+		}
+		for _, r := range rows {
+			if !r.Selected || r.BankCategoryID == nil || !matched[*r.BankCategoryID] {
+				continue
+			}
+			if !rowRange(r.PeriodStart, r.PeriodEnd).Overlaps(window) {
+				continue
+			}
+			f := owner[r.BankClientID]
+			if f == nil {
+				continue
+			}
+			e := entryOf(db.ListUserOffersRow(r))
+			e.CapValue, e.CapPerCategory, e.OfferCapValue, e.CapScope = nil, nil, nil, ""
+			e.FriendName = f.DisplayName
+			e.FriendUsername = f.Username
+			entries = append(entries, e)
+		}
+	}
+
+	board.Ranked = RankActiveSelections(onDate, entries).Ranked
+	board.Available = RankAvailable(avail)
+
+	var allPurposesID *int64
+	if ap, err := s.Q.GetCanonicalCategoryBySlug(ctx, "all-purchases"); err == nil {
+		allPurposesID = &ap.ID
+	}
+	for _, e := range RankActiveSelections(onDate, fallbackEntries(offers, allPurposesID, nil, entryOf)).Ranked {
+		if !covered[e.ClientID] {
+			board.Base = append(board.Base, e)
+		}
+	}
+	return board, nil
 }

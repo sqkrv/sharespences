@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ApiError, api, unwrap, type LookupEntry } from "../api/client";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useCards, useCategories } from "../hooks";
+import { api, unwrap, type LookupEntry, type Schemas } from "../api/client";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { useBanks, useCards, useCategories } from "../hooks";
 import { BackButton, BankBadge, Card, Chip, ErrMsg, Pct, Spinner } from "../components/ui";
 import {
   FALLBACK_EMOJI,
@@ -11,7 +11,6 @@ import {
   capNote,
   currencyWord,
   fmtDate,
-  fmtPercent,
   initWithFriends,
   monthKey,
   plural,
@@ -19,14 +18,25 @@ import {
 } from "../lib";
 import { pushRecent } from "../recent";
 
-// CB-11 «Точка продаж» (redesign 2b v3): the former CB-04 result state as
-// its own screen, zero clicks after a search tap — the verdict is the first
-// row of the list (6a: no plaque, only weight), then the MCC chip, then
-// «Остальные банки». A row tap opens that bank's menu — categories are
-// picked there, not here.
+// CB-11 «Точка продаж» (redesign 12a): «О точке» first — the confirmation
+// «это та самая точка» — then one ranked leaderboard «Чем платить — по
+// убыванию», no hero. Every row got here through EXACT per-bank matching
+// (10b variant 3): the bank's own category holds the point's MCC. Banks
+// without ingested MCC memberships fall to the «Кешбек на всё» fold —
+// approximate ranking on an MCC screen was rejected outright (2026-08-27).
 //
-// Points never convert to rubles (invariant 5): the ranking groups рубли
-// first and the balance rows keep their own currency, stated in place.
+// The board ranks by the nominal percent across currencies (owner decision
+// 2026-08-27): ordering is not conversion, so invariant 5 stands — the
+// lilac percent and «баллами» wording carry the currency.
+//
+// The category context (?cat=, from the feed's base row and search) keeps
+// the canonical lookup and the 2b verdict-row layout.
+
+type MccBoard = {
+  ranked?: LookupEntry[] | null;
+  available?: Schemas["AvailableEntryDTO"][] | null;
+  base?: LookupEntry[] | null;
+};
 
 // «7+7 барабан» — the stacked pair in a row's sub-line.
 function stackShort(e: LookupEntry): string {
@@ -39,9 +49,8 @@ function capShort(e: LookupEntry): string {
   return capNote(e).replace(/^лимит /, "до ");
 }
 
-// The state vocabulary of an «Остальные банки» row (2b v3).
+// The state vocabulary of a board row (2b v3 / 12a).
 function stateOf(e: LookupEntry): { dot: string; word: string; tone: string } {
-  if (e.kind === "partner") return { dot: "bg-gold", word: "партнёрка", tone: "text-gold" };
   if (e.kind === "super" || e.kind === "special") return { dot: "bg-gold", word: "выдано банком", tone: "text-gold" };
   return { dot: "bg-mint", word: "выбрана", tone: "text-mint" };
 }
@@ -52,120 +61,336 @@ const CHEVRON = (
   </svg>
 );
 
-export default function Pos() {
-  const [params] = useSearchParams();
-  const mcc = params.get("mcc");
-  const merchant = params.get("merchant");
-  const catParam = params.get("cat");
-  const posID = params.get("pos");
-  const [withFriends, setWithFriends] = useState(initWithFriends);
-  const [showBase, setShowBase] = useState(false);
-  const categories = useCategories();
-  const cards = useCards();
+// Address behaviour (ТУР 11 rule): офлайн leads to the map, онлайн IS the
+// site link. Both are outbound links the user taps — never loaded resources
+// (policy §2.4 governs loading, not linking).
+function addressHref(type: string | undefined | null, address: string): string | undefined {
+  if (type === "online") return /^https?:\/\//.test(address) ? address : `https://${address}`;
+  if (type === "offline") return `https://yandex.ru/maps/?text=${encodeURIComponent(address)}`;
+  return undefined;
+}
+
+// The navigation shared by board rows: a bank's row opens that bank's menu
+// for today's month; a friend's menu isn't ours to open; партнёрки go to
+// their bank-card home.
+function useOpenEntry() {
   const navigate = useNavigate();
-
-  const resolve = useQuery({
-    queryKey: ["mcc-resolve", mcc],
-    enabled: mcc != null,
-    retry: false,
-    queryFn: async () => unwrap(await api.GET("/api/v1/mcc/resolve", { params: { query: { code: mcc! } } })),
-  });
-  const unknownCode = resolve.isError && resolve.error instanceof ApiError && resolve.error.status === 404;
-
-  // «О точке» (8b): everything the base knows about the point. Quietly
-  // absent when the screen was reached without a concrete точка.
-  const point = useQuery({
-    queryKey: ["mcc-point", posID],
-    enabled: posID != null,
-    retry: false,
-    queryFn: async () => unwrap(await api.GET("/api/v1/mcc/points-of-sale/{id}", { params: { path: { id: posID! } } })),
-  });
-
-  // Banks file the same MCC under different categories — sometimes several
-  // in one bank. When the code maps to more than one canonical, the MCC chip
-  // switches between them and the whole breakdown follows (decision
-  // 2026-08-25). The concrete end state stays recorded: judge each bank by
-  // ITS OWN category for the code, once per-bank MCC memberships cover the
-  // wallet (today only Альфа/ВТБ/Озон are ingested).
-  const [canonIdx, setCanonIdx] = useState(0);
-  useEffect(() => setCanonIdx(0), [mcc]);
-  const canonList = resolve.data?.canonicals ?? [];
-  const slug = catParam ?? canonList[Math.min(canonIdx, Math.max(0, canonList.length - 1))]?.slug ?? null;
-  const canon = (categories.data ?? []).find((c) => c.slug === slug);
-  const title = merchant ?? canon?.title_ru ?? (mcc ? `MCC ${mcc}` : "Точка продаж");
-  const canSwitchCanon = catParam == null && canonList.length > 1;
-
-  const lookup = useQuery({
-    queryKey: ["lookup", slug],
-    enabled: slug != null,
-    queryFn: async () => unwrap(await api.GET("/api/v1/cashback/lookup", { params: { query: { category: slug! } } })),
-  });
-
-  // client id → this month's period, for row navigation. Clients with no
-  // answer for the category are simply not shown (feedback 2026-08-25 —
-  // supersedes the earlier grey «меню не занесено» rows): the screen's
-  // question is «which card pays here», not an inventory.
   const overview = useQuery({
     queryKey: ["overview"],
     queryFn: async () => unwrap(await api.GET("/api/v1/cashback/overview")),
     staleTime: 60_000,
   });
-
-  // Партнёрки matched by the point's NAME (v2) — honest name-based matching,
-  // shown as their own block: in Лавке such an offer often IS the answer.
-  const partnerMatch = useQuery({
-    queryKey: ["partner-match", merchant],
-    enabled: merchant != null && merchant !== "",
-    queryFn: async () =>
-      unwrap(await api.GET("/api/v1/cashback/partner-offers/match", { params: { query: { query: merchant! } } })),
-  });
-  const matches = partnerMatch.data?.matches ?? [];
-
-  // «Недавнее» on the search screen — session-only, no localStorage.
-  useEffect(() => {
-    if (!merchant && !mcc && !canon) return;
-    pushRecent({
-      label: merchant ?? canon?.title_ru ?? `MCC ${mcc}`,
-      sub: [canon && `${canon.emoji || ""} ${canon.title_ru}`.trim(), mcc && `MCC ${mcc}`].filter(Boolean).join(" · "),
-      to: `/pos?${params.toString()}`,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [merchant, mcc, canon?.slug]);
-
-  const toggleFriends = (v: boolean) => {
-    localStorage.setItem(FRIENDS_KEY, v ? "on" : "off");
-    setWithFriends(v);
-  };
-
-  const rankedAll = lookup.data?.ranked ?? [];
-  const hasFriendCards = rankedAll.some((e) => e.friend_name);
-  const ranked = withFriends ? rankedAll : rankedAll.filter((e) => !e.friend_name);
-  const best = ranked[0];
-  const others = ranked.slice(1);
-  const available = lookup.data?.available ?? [];
-  // Base-paying clients fold into one line — their answer is «За все
-  // покупки», not this category (2b v3).
-  const baseClients = (lookup.data?.fallback ?? []).filter((e) => !e.friend_name);
-  const cardChipsOf = (e: LookupEntry) =>
-    (cards.data ?? [])
-      .filter((c) => c.bank_client_id === e.bank_client_id)
-      .map((c) => `··${String(c.last_4_digits).padStart(4, "0")}`)
-      .join(" ");
-
-  // A row tap opens that bank's menu — the pick lives there (2b v3). A
-  // friend's menu isn't ours to open; their row goes to «Кешбек друзей»,
-  // партнёрки to their home on the bank card.
   const openClient = (clientID?: number) => {
     const c = (overview.data?.clients ?? []).find((x) => x.bank_client_id === clientID);
     if (c == null) return;
     if (c.period_id != null) navigate(`/periods/${c.period_id}`);
     else navigate(`/periods/new?client=${c.bank_client_id}&month=${monthKey(todayISO())}`);
   };
-  const openEntry = (e: LookupEntry) => {
+  const openEntry = (e: { bank_client_id?: number; friend_name?: string; kind?: string }) => {
     if (e.friend_name) navigate("/friends");
     else if (e.kind === "partner") navigate("/banks");
     else openClient(e.bank_client_id);
   };
+  return { openClient, openEntry };
+}
+
+// «О точке» (12a): everything the base knows, first on the screen — MCC row
+// linking to the code screen, memberships as category chips, the statement
+// string, the channel, the address as a link, the record's freshness.
+export function AboutPoint({
+  mcc,
+  point,
+}: {
+  mcc: string | null;
+  point?: Schemas["MerchantDTO"];
+}) {
+  const navigate = useNavigate();
+  const resolve = useQuery({
+    queryKey: ["mcc-resolve", mcc],
+    enabled: mcc != null,
+    retry: false,
+    queryFn: async () => unwrap(await api.GET("/api/v1/mcc/resolve", { params: { query: { code: mcc! } } })),
+  });
+  const canonicals = resolve.data?.canonicals ?? [];
+  const categories = useCategories();
+  const emojiOf = (slug?: string | null) => (categories.data ?? []).find((c) => c.slug === slug)?.emoji;
+  const addr = point?.address;
+  const href = addr ? addressHref(point?.type, addr) : undefined;
+
+  const rows: [string, React.ReactNode][] = [];
+  if (mcc && resolve.data) {
+    rows.push([
+      "MCC",
+      <button key="mcc" type="button" className="text-left" onClick={() => navigate(`/mcc/${mcc}`)}>
+        <span className="font-mono font-extrabold text-accl">{resolve.data.code.code}</span>
+        <span className="text-tx2"> {resolve.data.code.name}</span>
+        <span className="text-tx4"> ›</span>
+      </button>,
+    ]);
+  }
+  if (canonicals.length > 0) {
+    rows.push([
+      "категория",
+      canonicals.map((c) => `${emojiOf(c.slug) || FALLBACK_EMOJI} ${c.title}`).join(" · "),
+    ]);
+  }
+  if (point?.merchant_title) rows.push(["в выписке", <span key="mt" className="font-mono tracking-wide">{point.merchant_title}</span>]);
+  if (point?.type) rows.push(["канал", POS_TYPE_RU[point.type] ?? point.type]);
+  if (addr) {
+    rows.push([
+      "адрес",
+      href ? (
+        <a key="addr" href={href} target="_blank" rel="noreferrer" className="text-accl underline decoration-accl/40">
+          {addr}
+        </a>
+      ) : (
+        addr
+      ),
+    ]);
+  }
+  if (point) {
+    rows.push([
+      "данные",
+      [
+        Number(point.confirmations) > 0
+          ? `подтвердили ${point.confirmations} ${plural(Number(point.confirmations), "человек", "человека", "человек")}`
+          : "пока без подтверждений",
+        point.last_confirmed_at && `обновлено ${fmtDate(point.last_confirmed_at.slice(0, 10))}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    ]);
+  }
+  if (rows.length === 0) return null;
+  return (
+    <Card className="space-y-1.5 p-3.5" data-sid="CB-11.g">
+      <p className="text-[10px] font-extrabold tracking-[.14em] text-tx3 uppercase">О точке</p>
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex items-baseline gap-2">
+          <dt className="w-[78px] flex-none text-[10px] font-medium tracking-[.06em] text-tx4 uppercase">{label}</dt>
+          <dd className="min-w-0 flex-1 text-[12px] font-semibold text-tx2">{value}</dd>
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+// One board row's percent as a number, unknown last.
+function pctOf(p?: string | null): number {
+  return p != null ? parseFloat(p) : -1;
+}
+
+type BoardRow =
+  | { key: string; kind: "entry"; percent?: string | null; e: LookupEntry }
+  | { key: string; kind: "avail"; percent?: string | null; a: Schemas["AvailableEntryDTO"] }
+  | { key: string; kind: "partner"; percent?: string | null; m: LookupEntry };
+
+// The «Чем платить — по убыванию» leaderboard (12a): selected rows, the
+// name-matched партнёрки and the still-pickable «свободный слот» rows in one
+// list, nominal percent descending. The winner is the top row — bank-color
+// stripe and a bigger rate, no hero plaque.
+export function Leaderboard({ board, matches, sid }: { board: MccBoard; matches: LookupEntry[]; sid?: string }) {
+  const [withFriends, setWithFriends] = useState(initWithFriends);
+  const [showBase, setShowBase] = useState(false);
+  const banks = useBanks();
+  const { openClient, openEntry } = useOpenEntry();
+  const colorOf = (bank: string) => (banks.data ?? []).find((b) => b.name === bank)?.color_hex ?? undefined;
+
+  const ranked = (board.ranked ?? []).filter((e) => withFriends || !e.friend_name);
+  const hasFriends = (board.ranked ?? []).some((e) => e.friend_name);
+  const rows: BoardRow[] = [
+    ...ranked.map((e, i): BoardRow => ({ key: `e${i}`, kind: "entry", percent: e.percent, e })),
+    ...matches.map((m, i): BoardRow => ({ key: `p${i}`, kind: "partner", percent: m.percent, m })),
+    ...(board.available ?? []).map((a): BoardRow => ({ key: `a${a.offer_id}`, kind: "avail", percent: a.percent, a })),
+  ].sort((x, y) => pctOf(y.percent) - pctOf(x.percent));
+  const base = board.base ?? [];
+
+  if (rows.length === 0 && base.length === 0) {
+    return (
+      <Card className="space-y-1.5 p-4 text-center">
+        <p className="text-sm font-semibold text-tx2">Точных ответов нет</p>
+        <p className="text-[10.5px] font-medium text-tx4">
+          Банк попадает сюда, когда известно, что он считает этот код в одной из категорий своего меню.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      {hasFriends && (
+        <button
+          type="button"
+          data-sid="CB-11.d"
+          onClick={() => {
+            localStorage.setItem(FRIENDS_KEY, withFriends ? "off" : "on");
+            setWithFriends(!withFriends);
+          }}
+          className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-[12px] font-semibold transition ${
+            withFriends ? "border-acc/40 bg-acc/10 text-accl" : "border-brd2 bg-srf2 text-tx3"
+          }`}
+        >
+          Карты друзей в подборе
+          <span className={`h-5 w-9 flex-none rounded-full p-0.5 transition ${withFriends ? "bg-acc" : "bg-inset"}`}>
+            <span className={`block h-4 w-4 rounded-full bg-white transition ${withFriends ? "translate-x-4" : ""}`} />
+          </span>
+        </button>
+      )}
+
+      <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Чем платить — по убыванию</p>
+      <div className="space-y-1.5" data-sid={sid}>
+        {rows.map((row, i) => {
+          const lead = i === 0;
+          const pctCls = lead ? "text-[19px]" : "text-[15px]";
+          const stripe = lead
+            ? { borderLeft: `3px solid ${(row.kind === "entry" && colorOf(row.e.bank_name)) || (row.kind === "avail" && colorOf(row.a.bank_name)) || (row.kind === "partner" && colorOf(row.m.bank_name)) || "var(--t-acc)"}` }
+            : undefined;
+          if (row.kind === "partner") {
+            const m = row.m;
+            return (
+              <button
+                key={row.key}
+                type="button"
+                onClick={() => openEntry(m)}
+                style={stripe}
+                className="flex w-full items-center gap-2.5 rounded-2xl border border-gold/30 bg-gold/5 px-3 py-2.5 text-left"
+              >
+                <span className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[9px] bg-gold/15 text-xs font-extrabold text-gold">★</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold text-gold">{m.raw_title}</p>
+                  <p className="truncate text-[10px] font-medium text-tx4">
+                    {[m.bank_name, "совпадение по названию", m.needs_activation && "требует активации"].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+                <Pct percent={m.percent} currency={m.currency_kind} className={pctCls} />
+                {CHEVRON}
+              </button>
+            );
+          }
+          if (row.kind === "avail") {
+            const a = row.a;
+            return (
+              <button
+                key={row.key}
+                type="button"
+                onClick={() => openClient(a.bank_client_id)}
+                style={stripe}
+                className="flex w-full items-center gap-2.5 rounded-2xl border border-dashed border-dash bg-srf/50 px-3 py-2.5 text-left"
+              >
+                <BankBadge name={a.bank_name} size={26} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13.5px] font-bold">
+                    {a.bank_name}
+                    {a.holder_label && <span className="font-semibold text-tx4"> · {a.holder_label}</span>}
+                  </p>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] font-medium">
+                    <span className="h-1.5 w-1.5 flex-none rounded-full border-[1.5px] border-tx4" />
+                    <span className="font-semibold text-tx3">свободный слот</span>
+                    <span className="text-tx4">{a.emoji && `${a.emoji} `}«{a.raw_title}»</span>
+                  </p>
+                </div>
+                <Pct percent={a.percent} currency={a.currency_kind} className={pctCls} />
+                {CHEVRON}
+              </button>
+            );
+          }
+          const e = row.e;
+          const st = stateOf(e);
+          const extras = [stackShort(e) || (e.kind === "super" ? "барабан" : e.kind === "special" ? "спец" : ""), capShort(e)]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            <button
+              key={row.key}
+              type="button"
+              onClick={() => openEntry(e)}
+              style={stripe}
+              className={`flex w-full items-center gap-2.5 rounded-2xl border px-3 py-2.5 text-left ${e.friend_name ? "border-acc/40 bg-srf" : "border-brd2 bg-srf"}`}
+            >
+              <BankBadge name={e.bank_name} size={26} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[13.5px] font-bold">
+                  {e.bank_name}
+                  {e.holder_label && <span className="font-semibold text-tx4"> · {e.holder_label}</span>}
+                </p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] font-medium">
+                  <span className={`h-1.5 w-1.5 flex-none rounded-full ${st.dot}`} />
+                  <span className={`font-bold ${st.tone}`}>{st.word}</span>
+                  <span className="text-tx4">
+                    {e.emoji && `${e.emoji} `}«{e.raw_title}»{extras && ` · ${extras}`}
+                  </span>
+                  {e.friend_name && <Chip tone="friend">друг · {e.friend_name}</Chip>}
+                  {e.currency_kind === "points" && <span className="text-tx4">{currencyWord(e.currency_kind, e.points_label)}</span>}
+                </p>
+              </div>
+              <Pct percent={e.percent} currency={e.currency_kind} className={pctCls} />
+              {CHEVRON}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Everything without an exact answer — incl. every bank whose MCC
+          memberships are not ingested yet — answers with its base row. */}
+      {base.length > 0 && (
+        <div className="rounded-xl border border-brd bg-srf/60 px-3 py-2.5" data-sid="CB-11.f">
+          <button type="button" onClick={() => setShowBase(!showBase)} className="flex w-full items-center gap-2 text-left">
+            <span className="min-w-0 flex-1 text-xs font-semibold text-tx4">
+              Кешбек на всё · {base.length} —{" "}
+              {base.map((e) => (e.holder_label ? `${e.bank_name} · ${e.holder_label}` : e.bank_name)).join(", ")}
+            </span>
+            <span className="text-[9px] text-tx4">{showBase ? "▲" : "▼"}</span>
+          </button>
+          {showBase && (
+            <div className="mt-2 space-y-2 border-t border-brd/60 pt-2">
+              {base.map((e, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <BankBadge name={e.bank_name} size={18} />
+                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-tx2">
+                    {e.bank_name}
+                    {e.holder_label && <span className="font-medium text-tx4"> · {e.holder_label}</span>}
+                    <span className="font-medium text-tx4"> · «{e.raw_title}»</span>
+                  </span>
+                  <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+// The точка screen (12a): «О точке» first, then the leaderboard.
+function PointScreen({ mcc, merchant, posID }: { mcc: string; merchant: string | null; posID: string | null }) {
+  const board = useQuery({
+    queryKey: ["mcc-board", mcc],
+    queryFn: async () => unwrap(await api.GET("/api/v1/cashback/mcc-board", { params: { query: { code: Number(mcc) } } })),
+  });
+  const point = useQuery({
+    queryKey: ["mcc-point", posID],
+    enabled: posID != null,
+    retry: false,
+    queryFn: async () => unwrap(await api.GET("/api/v1/mcc/points-of-sale/{id}", { params: { path: { id: posID! } } })),
+  });
+  const partnerMatch = useQuery({
+    queryKey: ["partner-match", merchant],
+    enabled: merchant != null && merchant !== "",
+    queryFn: async () =>
+      unwrap(await api.GET("/api/v1/cashback/partner-offers/match", { params: { query: { query: merchant! } } })),
+  });
+  const title = merchant ?? `MCC ${mcc}`;
+
+  useEffect(() => {
+    if (!merchant) return;
+    pushRecent({
+      label: merchant,
+      sub: `MCC ${mcc}`,
+      to: `/pos?mcc=${mcc}&merchant=${encodeURIComponent(merchant)}${posID ? `&pos=${posID}` : ""}`,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [merchant, mcc, posID]);
 
   return (
     <>
@@ -175,19 +400,66 @@ export default function Pos() {
         <span className="flex-none rounded-lg bg-inset px-2 py-1 text-[10.5px] font-semibold text-tx3">точка продаж</span>
       </div>
 
-      {mcc != null && resolve.isPending && <Spinner />}
-      {unknownCode && (
-        <Card className="p-4 text-center">
-          <p className="text-sm font-medium text-tx3">Код {mcc} не найден в справочнике MCC.</p>
-        </Card>
-      )}
-      {resolve.isError && !unknownCode && <ErrMsg error={resolve.error} />}
+      <AboutPoint mcc={mcc} point={point.data} />
 
-      {slug != null && lookup.isPending && <Spinner />}
+      {board.isPending && <Spinner />}
+      {board.isError && <ErrMsg error={board.error} />}
+      {board.data && <Leaderboard board={board.data} matches={partnerMatch.data?.matches ?? []} sid="CB-11.c" />}
+    </>
+  );
+}
+
+// The category screen (?cat=): the canonical lookup, kept on the 2b verdict
+// layout — a category is not MCC-driven and stays canonical by design.
+function CategoryScreen({ slug }: { slug: string }) {
+  const categories = useCategories();
+  const cards = useCards();
+  const [withFriends, setWithFriends] = useState(initWithFriends);
+  const [showBase, setShowBase] = useState(false);
+  const { openClient, openEntry } = useOpenEntry();
+  const canon = (categories.data ?? []).find((c) => c.slug === slug);
+  const title = canon?.title_ru ?? "Категория";
+
+  const lookup = useQuery({
+    queryKey: ["lookup", slug],
+    queryFn: async () => unwrap(await api.GET("/api/v1/cashback/lookup", { params: { query: { category: slug } } })),
+  });
+
+  useEffect(() => {
+    if (!canon) return;
+    pushRecent({
+      label: canon.title_ru,
+      sub: `${canon.emoji || ""}`.trim(),
+      to: `/pos?cat=${slug}`,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canon?.slug]);
+
+  const rankedAll = lookup.data?.ranked ?? [];
+  const hasFriendCards = rankedAll.some((e) => e.friend_name);
+  const ranked = withFriends ? rankedAll : rankedAll.filter((e) => !e.friend_name);
+  const best = ranked[0];
+  const others = ranked.slice(1);
+  const available = lookup.data?.available ?? [];
+  const baseClients = (lookup.data?.fallback ?? []).filter((e) => !e.friend_name);
+  const cardChipsOf = (e: LookupEntry) =>
+    (cards.data ?? [])
+      .filter((c) => c.bank_client_id === e.bank_client_id)
+      .map((c) => `··${String(c.last_4_digits).padStart(4, "0")}`)
+      .join(" ");
+
+  return (
+    <>
+      <div className="flex items-center gap-2.5">
+        <BackButton fallback="/search" />
+        <h1 className="min-w-0 flex-1 truncate text-xl font-extrabold tracking-tight">{title}</h1>
+        <span className="flex-none rounded-lg bg-inset px-2 py-1 text-[10.5px] font-semibold text-tx3">категория</span>
+      </div>
+
+      {lookup.isPending && <Spinner />}
       {lookup.isError && <ErrMsg error={lookup.error} />}
 
-      {/* The verdict is a row, not a plaque (6a): logo, cards + mechanic +
-          cap in one muted line, the rate at 40px. Tap opens the bank menu. */}
+      {/* The verdict is a row, not a plaque (6a). Tap opens the bank menu. */}
       {best && (
         <button
           type="button"
@@ -223,98 +495,23 @@ export default function Pos() {
         </button>
       )}
 
-      {slug != null && lookup.data?.message && !best && (
+      {lookup.data?.message && !best && (
         <Card className="space-y-1.5 p-4 text-center">
           <p className="text-sm font-semibold text-tx2">{lookup.data.message}</p>
           <p className="text-[10.5px] font-medium text-tx4">Карта попадает сюда, когда в её меню есть эта категория и она выбрана.</p>
         </Card>
       )}
 
-      {matches.length > 0 && (
-        <div className="space-y-1.5" data-sid="CB-11.e">
-          <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-gold uppercase">Партнёрка в этой точке</p>
-          {matches.map((e, i) => (
-            <div key={i} className="flex items-center gap-2.5 rounded-2xl border border-gold/30 bg-gold/5 px-3 py-2.5">
-              <span className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[9px] bg-gold/15 text-xs font-extrabold text-gold">★</span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-semibold text-gold">{e.raw_title}</p>
-                <p className="truncate text-[10px] font-medium text-tx4">
-                  {[e.bank_name, "совпадение по названию точки", e.needs_activation && "требует активации"].filter(Boolean).join(" · ")}
-                </p>
-              </div>
-              <Pct percent={e.percent} currency={e.currency_kind} className="text-[15px]" />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {resolve.data && (
-        <Card className="p-0" data-sid="CB-11.b">
-          <button
-            type="button"
-            disabled={!canSwitchCanon}
-            onClick={() => setCanonIdx((canonIdx + 1) % Math.max(1, canonList.length))}
-            className="flex w-full items-center gap-2.5 p-3.5 text-left"
-            title={canSwitchCanon ? "Код входит в несколько категорий — переключить" : undefined}
-          >
-            <span className="flex-none font-mono text-[15px] font-extrabold text-accl">{resolve.data.code.code}</span>
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-bold">{resolve.data.code.name}</p>
-              <p className="mt-0.5 text-[10.5px] font-medium text-tx4">
-                {canon ? `${canon.emoji || FALLBACK_EMOJI} ${canon.title_ru}` : "канонической категории нет"}
-              </p>
-            </div>
-            {canSwitchCanon && (
-              <span className="flex-none rounded-lg bg-inset px-2 py-1 text-[10px] font-semibold text-tx3">
-                {canonIdx + 1}/{canonList.length} ▼
-              </span>
-            )}
-          </button>
-        </Card>
-      )}
-
-      {/* «О точке» — the base's own facts about this точка (8b): the
-          statement string, address + type, the record's freshness. */}
-      {point.data && (
-        <Card className="space-y-1.5 p-3.5" data-sid="CB-11.g">
-          <p className="text-[10px] font-extrabold tracking-[.14em] text-tx3 uppercase">О точке</p>
-          {(
-            [
-              ["в выписке", point.data.merchant_title && <span className="font-mono tracking-wide">{point.data.merchant_title}</span>],
-              [
-                "адрес",
-                [point.data.address, point.data.type && POS_TYPE_RU[point.data.type]].filter(Boolean).join(" · ") || null,
-              ],
-              [
-                "запись",
-                [
-                  `${point.data.confirmations} ${plural(Number(point.data.confirmations), "подтверждение", "подтверждения", "подтверждений")}`,
-                  point.data.last_confirmed_at && `актуально на ${fmtDate(point.data.last_confirmed_at.slice(0, 10))}`,
-                ]
-                  .filter(Boolean)
-                  .join(" · "),
-              ],
-            ] as const
-          ).map(
-            ([label, value]) =>
-              value != null &&
-              value !== "" && (
-                <div key={label} className="flex items-baseline gap-2">
-                  <dt className="w-[78px] flex-none text-[10px] font-medium tracking-[.06em] text-tx4 uppercase">{label}</dt>
-                  <dd className="min-w-0 flex-1 text-[12px] font-semibold text-tx2">{value}</dd>
-                </div>
-              ),
-          )}
-        </Card>
-      )}
-
-      {slug != null && !!lookup.data && (
+      {!!lookup.data && (
         <>
           {hasFriendCards && (
             <button
               type="button"
               data-sid="CB-11.d"
-              onClick={() => toggleFriends(!withFriends)}
+              onClick={() => {
+                localStorage.setItem(FRIENDS_KEY, withFriends ? "off" : "on");
+                setWithFriends(!withFriends);
+              }}
               className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-[12px] font-semibold transition ${
                 withFriends ? "border-acc/40 bg-acc/10 text-accl" : "border-brd2 bg-srf2 text-tx3"
               }`}
@@ -355,8 +552,6 @@ export default function Pos() {
                 </button>
               );
             })}
-            {/* Every served row here is pickable — the API drops the dead
-                ends. Picking happens in the bank's menu, a tap away. */}
             {available.map((e) => (
               <button
                 key={e.offer_id}
@@ -382,13 +577,11 @@ export default function Pos() {
             ))}
           </div>
 
-          {/* Base-paying banks fold into one line (2b v3): their answer is
-              «За все покупки», not this category. */}
           {baseClients.length > 0 && (
             <div className="rounded-xl border border-brd bg-srf/60 px-3 py-2.5" data-sid="CB-11.f">
               <button type="button" onClick={() => setShowBase(!showBase)} className="flex w-full items-center gap-2 text-left">
                 <span className="min-w-0 flex-1 text-xs font-semibold text-tx4">
-                  Платят базу · {baseClients.length} —{" "}
+                  Кешбек на всё · {baseClients.length} —{" "}
                   {baseClients.map((e) => (e.holder_label ? `${e.bank_name} · ${e.holder_label}` : e.bank_name)).join(", ")}
                 </span>
                 <span className="text-[9px] text-tx4">{showBase ? "▲" : "▼"}</span>
@@ -410,58 +603,24 @@ export default function Pos() {
               )}
             </div>
           )}
-
-
-          {(lookup.data.partner ?? []).length > 0 && (
-            <div className="border-t border-brd pt-2">
-              <p className="mx-0.5 mb-1.5 text-[10px] font-semibold tracking-wide text-tx4 uppercase">Партнёрские (справочно)</p>
-              {(lookup.data.partner ?? []).map((p) => (
-                <p key={p.id} className="text-[12.5px] font-medium text-tx3">
-                  {p.merchant_title} — {fmtPercent(p.percent)} ({p.bank_name}
-                  {p.valid_to && ` · до ${p.valid_to}`})
-                </p>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* A code with no canonical ranks nothing — but the catalog still
-          knows which bank category it falls into; show that instead of a
-          dead end. */}
-      {slug == null && resolve.data && (
-        <>
-          {(resolve.data.banks ?? []).length === 0 ? (
-            <Card className="p-4 text-center">
-              <p className="text-sm font-medium text-tx3">
-                Пока ни у одного банка нет этого кода в известных составах категорий — база пополняется из документов банков.
-              </p>
-            </Card>
-          ) : (
-            <>
-              <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Как это считают банки</p>
-              <div className="space-y-1.5">
-                {(resolve.data.banks ?? []).map((b) => (
-                  <div key={b.bank_category_id} className="flex items-center gap-2.5 rounded-2xl border border-brd bg-srf px-3 py-2.5">
-                    <BankBadge name={b.bank_name} size={26} color={b.bank_color_hex} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-semibold">
-                        {b.emoji && <span className="mr-1">{b.emoji}</span>}
-                        {b.title}
-                        {b.kind === "special" && <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] text-[9px] font-bold text-gold">спец</span>}
-                      </p>
-                      <p className="truncate text-[10px] font-medium text-tx4">
-                        {b.bank_name}
-                        {b.note ? ` · ${b.note}` : ""}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
         </>
       )}
     </>
   );
+}
+
+export default function Pos() {
+  const [params] = useSearchParams();
+  const mcc = params.get("mcc");
+  const merchant = params.get("merchant");
+  const catParam = params.get("cat");
+  const posID = params.get("pos");
+
+  // A bare code is a code question, not a точка — the code screen answers it.
+  if (mcc != null && merchant == null && posID == null) {
+    return <Navigate to={`/mcc/${mcc}`} replace />;
+  }
+  if (mcc != null) return <PointScreen mcc={mcc} merchant={merchant} posID={posID} />;
+  if (catParam != null) return <CategoryScreen slug={catParam} />;
+  return <Navigate to="/search" replace />;
 }

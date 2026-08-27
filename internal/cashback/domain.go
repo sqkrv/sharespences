@@ -369,6 +369,7 @@ type LookupEntry struct {
 	HolderLabel    string // держатель («Мама»); empty = the owner
 	BankName       string
 	RawTitle       string // the bank's own menu title — names the mechanic on marked super/special rows («Пятница»)
+	Emoji          string // the row's icon: catalog row's, else canonical's; "" when neither
 	Percent        *decimal.Decimal
 	CurrencyKind   CurrencyKind
 	Kind           OfferKind
@@ -726,4 +727,84 @@ func SuggestCanonical(rawTitle string, aliases []Alias) (int64, bool) {
 		}
 	}
 	return 0, false
+}
+
+// PeriodFill is one recorded offer period plus how many menu rows it holds —
+// the two facts «is this month done?» needs.
+type PeriodFill struct {
+	Range  DateRange
+	Offers int
+}
+
+// PendingMenu answers what CB-09.b marks: which period this bank client still
+// has to fill, given today. Nil means nothing is pending.
+//
+// Two windows count as «пора» (owner 2026-08-27):
+//
+//   - the period covering today — a forgotten month is still worth filling,
+//     because a bank that allows mid-period adds (Альфа) has not taken the
+//     month away yet, and even where it has, the record is what the lookup
+//     answers from;
+//   - the next period, once the bank has opened its selection — the 25th-of-
+//     the-month ритуал. «Opened» is day-of-month ≥ selection_opens_day within
+//     the month the current period ENDS in, which is the same thing for a
+//     monthly program and the honest generalisation for a quarterly one.
+//
+// «Filled» means the period exists AND holds at least one menu row: an empty
+// period is «начал и бросил», exactly the case the mark exists for (owner
+// 2026-08-27). A program with no known opens-day (Газпромбанк) never reports
+// the next period — the app does not guess a date it was never told.
+func PendingMenu(now time.Time, periodType PeriodType, opensDay *int32, filled []PeriodFill) *DateRange {
+	current := periodRangeAt(now, periodType)
+	if current == nil {
+		return nil // week/rolling: no calendar rule to derive a window from
+	}
+	if !isFilled(*current, filled) {
+		return current
+	}
+	if opensDay == nil {
+		return nil
+	}
+	// The window opens inside the month the current period ends in — the
+	// current month for a monthly program, the quarter's last month for МКБ.
+	if current.End.Day() < int(*opensDay) || dateOnly(now).Day() < int(*opensDay) ||
+		dateOnly(now).Month() != current.End.Month() {
+		return nil
+	}
+	next := periodRangeAt(current.End.AddDate(0, 0, 1), periodType)
+	if next == nil || isFilled(*next, filled) {
+		return nil
+	}
+	return next
+}
+
+// periodRangeAt returns the calendar range of the given type containing t.
+// Only the types with a calendar rule answer; week/rolling return nil rather
+// than a guess.
+func periodRangeAt(t time.Time, periodType PeriodType) *DateRange {
+	d := dateOnly(t)
+	switch periodType {
+	case PeriodCalendarMonth:
+		start := Date(d.Year(), d.Month(), 1)
+		return &DateRange{Start: start, End: start.AddDate(0, 1, -1)}
+	case PeriodQuarter:
+		firstMonth := time.Month((int(d.Month())-1)/3*3 + 1)
+		start := Date(d.Year(), firstMonth, 1)
+		return &DateRange{Start: start, End: start.AddDate(0, 3, -1)}
+	default:
+		return nil
+	}
+}
+
+// isFilled reports whether a recorded period overlaps the calendar range and
+// carries menu rows. Overlap rather than equality: a bank's own period may be
+// shifted from the calendar month (Ozon's расчётный период), and the question
+// is «is this stretch of time recorded», not «does it match to the day».
+func isFilled(r DateRange, filled []PeriodFill) bool {
+	for _, f := range filled {
+		if f.Offers > 0 && f.Range.Overlaps(r) {
+			return true
+		}
+	}
+	return false
 }

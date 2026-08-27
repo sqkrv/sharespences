@@ -89,6 +89,19 @@ func SearchPatterns(query string) []string {
 	return patterns
 }
 
+// Memberships lists the bank catalog rows holding a code — the value the
+// cashback module's MCC board consumes across the seam (10b variant 3:
+// each bank is judged by its OWN category for the code).
+func (s *Service) Memberships(ctx context.Context, code int16) ([]db.ResolveMCCRow, error) {
+	return s.Q.ResolveMCC(ctx, code)
+}
+
+// MerchantsByCode lists the известные точки carrying a code («Точки с кодом
+// 5812», 13a) — confirmations first, same visibility rule as the search.
+func (s *Service) MerchantsByCode(ctx context.Context, userID uuid.UUID, code int16, limit int32) ([]db.ListMerchantsByCodeRow, error) {
+	return s.Q.ListMerchantsByCode(ctx, db.ListMerchantsByCodeParams{MccCode: &code, UserID: userID, MaxRows: limit})
+}
+
 // Point serves the «О точке» card (8b): one row by id, under the search's
 // visibility rule — approved, or the caller's own pending submission.
 func (s *Service) Point(ctx context.Context, userID uuid.UUID, id uuid.UUID) (db.GetPointOfSaleRow, error) {

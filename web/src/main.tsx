@@ -17,6 +17,7 @@ import PeriodNew from "./pages/PeriodNew";
 import Period from "./pages/Period";
 import Search from "./pages/Search";
 import Pos from "./pages/Pos";
+import Mcc from "./pages/Mcc";
 import PosNew from "./pages/PosNew";
 import PartnerNew from "./pages/PartnerNew";
 import Friends from "./pages/Friends";
@@ -87,6 +88,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/search" element={<Search />} />
             <Route path="/pos/new" element={<PosNew />} />
             <Route path="/pos" element={<Pos />} />
+            <Route path="/mcc/:code" element={<Mcc />} />
             {/* The old CB-04 address — cached PWA shells and bookmarks still
                 open it: a category deep link becomes the POS view, the rest
                 lands on the search screen. */}

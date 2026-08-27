@@ -121,6 +121,39 @@ func RegisterHTTP(api huma.API, s *Service) {
 	})
 
 	huma.Register(api, huma.Operation{
+		OperationID: "mcc-code-merchants", Method: http.MethodGet,
+		Path: "/api/v1/mcc/codes/{code}/merchants", Summary: "Known points of sale carrying a code («Точки с кодом», 13a)", Tags: []string{"mcc"},
+	}, func(ctx context.Context, in *struct {
+		Code  int16 `path:"code" minimum:"1" maximum:"9999"`
+		Limit int32 `query:"limit" default:"10" minimum:"1" maximum:"30"`
+	}) (*struct{ Body []MerchantDTO }, error) {
+		rows, err := s.MerchantsByCode(ctx, auth.UserID(ctx), in.Code, in.Limit)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]MerchantDTO, len(rows))
+		for i, r := range rows {
+			d := MerchantDTO{
+				ID: r.ID.String(), Name: r.Name, MerchantTitle: r.MerchantTitle,
+				Address: r.Address, LastConfirmedAt: r.LastConfirmedAt,
+				Status: string(r.Status),
+			}
+			if r.MccCode != nil {
+				d.MCC = FormatCode(*r.MccCode)
+			}
+			if r.PosType != "" {
+				t := r.PosType
+				d.Type = &t
+			}
+			if r.Confirmations != nil {
+				d.Confirmations = *r.Confirmations
+			}
+			out[i] = d
+		}
+		return &struct{ Body []MerchantDTO }{out}, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID: "mcc-point-get", Method: http.MethodGet,
 		Path: "/api/v1/mcc/points-of-sale/{id}", Summary: "One point of sale — the «О точке» card", Tags: []string{"mcc"},
 	}, func(ctx context.Context, in *struct {

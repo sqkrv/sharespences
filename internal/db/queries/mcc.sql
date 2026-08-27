@@ -84,6 +84,24 @@ where mcc_code is not null -- a merchant row without an MCC answers nothing here
 order by confirmations desc nulls last, last_confirmed_at desc nulls last, name, id
 limit sqlc.arg(max_rows) offset sqlc.arg(skip_rows);
 
+-- name: ListMerchantsByCode :many
+-- «Точки с кодом NNNN» (13a): the known points carrying a code,
+-- confirmations first — the search's visibility rule applies.
+select id,
+       name,
+       merchant_title,
+       mcc_code,
+       coalesce(type::text, '')::text as pos_type,
+       address,
+       confirmations,
+       last_confirmed_at,
+       status
+from point_of_sale
+where mcc_code = sqlc.arg(mcc_code)
+  and (status = 'approved' or author_user_id = sqlc.arg(user_id)::uuid)
+order by confirmations desc nulls last, name, id
+limit sqlc.arg(max_rows);
+
 -- name: GetPointOfSale :one
 -- The «О точке» card (8b): one row by id — approved, or the caller's own
 -- pending submission (the same visibility rule the search applies).

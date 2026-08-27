@@ -1040,3 +1040,106 @@ func TestFriendShareWindow(t *testing.T) {
 		t.Fatal("window overlaps last month")
 	}
 }
+
+// TestPendingMenu covers what CB-09.b marks (owner 2026-08-27): the period a
+// bank client still has to fill — today's, or the next one once the bank has
+// opened its selection.
+func TestPendingMenu(t *testing.T) {
+	const alfaOpens = int32(25)
+	opens := func(d int32) *int32 { return &d }
+	filled := func(r DateRange) PeriodFill { return PeriodFill{Range: r, Offers: 4} }
+	empty := func(r DateRange) PeriodFill { return PeriodFill{Range: r, Offers: 0} }
+	august := DateRange{Start: Date(2026, time.August, 1), End: Date(2026, time.August, 31)}
+	september := DateRange{Start: Date(2026, time.September, 1), End: Date(2026, time.September, 30)}
+
+	tests := []struct {
+		name       string
+		now        time.Time
+		periodType PeriodType
+		opensDay   *int32
+		filled     []PeriodFill
+		want       *DateRange
+	}{
+		{
+			name: "nothing recorded → today's period is pending",
+			now:  Date(2026, time.August, 10), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			want: &august,
+		},
+		{
+			name: "period exists but holds no menu rows → still pending (owner: «начал и бросил»)",
+			now:  Date(2026, time.August, 10), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{empty(august)}, want: &august,
+		},
+		{
+			name: "current filled, window not open yet → nothing pending",
+			now:  Date(2026, time.August, 10), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(august)}, want: nil,
+		},
+		{
+			name: "current filled, window open, next missing → next is pending",
+			now:  Date(2026, time.August, 25), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(august)}, want: &september,
+		},
+		{
+			name: "current filled, window open, next empty → next is pending",
+			now:  Date(2026, time.August, 27), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(august), empty(september)}, want: &september,
+		},
+		{
+			name: "both filled → nothing pending",
+			now:  Date(2026, time.August, 27), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(august), filled(september)}, want: nil,
+		},
+		{
+			name: "unknown opens-day (Газпромбанк) → the next period is never claimed to be open",
+			now:  Date(2026, time.August, 31), periodType: PeriodCalendarMonth, opensDay: nil,
+			filled: []PeriodFill{filled(august)}, want: nil,
+		},
+		{
+			name: "current month unfilled outranks the next-month window",
+			now:  Date(2026, time.August, 27), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(september)}, want: &august,
+		},
+		{
+			name: "quarter (МКБ): the window opens in the quarter's LAST month, not every month",
+			now:  Date(2026, time.August, 27), periodType: PeriodQuarter, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(DateRange{Start: Date(2026, time.July, 1), End: Date(2026, time.September, 30)})},
+			want:   nil,
+		},
+		{
+			name: "quarter: in the last month past the opens-day the next quarter is pending",
+			now:  Date(2026, time.September, 26), periodType: PeriodQuarter, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(DateRange{Start: Date(2026, time.July, 1), End: Date(2026, time.September, 30)})},
+			want:   &DateRange{Start: Date(2026, time.October, 1), End: Date(2026, time.December, 31)},
+		},
+		{
+			name: "a shifted bank period covering today counts as recorded (Ozon расчётный период)",
+			now:  Date(2026, time.August, 10), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(DateRange{Start: Date(2026, time.July, 20), End: Date(2026, time.August, 19)})},
+			want:   nil,
+		},
+		{
+			name: "rolling/week programs have no calendar window → never marked",
+			now:  Date(2026, time.August, 27), periodType: PeriodRolling, opensDay: opens(alfaOpens),
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := PendingMenu(tt.now, tt.periodType, tt.opensDay, tt.filled)
+			switch {
+			case tt.want == nil && got != nil:
+				t.Fatalf("PendingMenu() = %s…%s, want nothing pending",
+					got.Start.Format("2006-01-02"), got.End.Format("2006-01-02"))
+			case tt.want != nil && got == nil:
+				t.Fatalf("PendingMenu() = nil, want %s…%s",
+					tt.want.Start.Format("2006-01-02"), tt.want.End.Format("2006-01-02"))
+			case tt.want != nil && (!got.Start.Equal(tt.want.Start) || !got.End.Equal(tt.want.End)):
+				t.Fatalf("PendingMenu() = %s…%s, want %s…%s",
+					got.Start.Format("2006-01-02"), got.End.Format("2006-01-02"),
+					tt.want.Start.Format("2006-01-02"), tt.want.End.Format("2006-01-02"))
+			}
+		})
+	}
+}

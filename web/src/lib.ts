@@ -228,7 +228,7 @@ export function plural(n: number, one: string, few: string, many: string): strin
 // Human labels of point_of_sale.type — shared by the search rows and the
 // «О точке» card.
 export const POS_TYPE_RU: Record<string, string> = {
-  offline: "офлайн",
+  offline: "офлайн-точка",
   online: "онлайн",
   app: "приложение",
   other: "другое",

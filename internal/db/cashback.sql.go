@@ -1034,6 +1034,7 @@ select co.id                     as category_offer_id,
        co.percent,
        co.kind,
        co.cap_value              as offer_cap_value,
+       co.bank_category_id,
        op.id                     as offer_period_id,
        op.bank_client_id,
        op.period_start,
@@ -1041,6 +1042,10 @@ select co.id                     as category_offer_id,
        op.max_categories_override,
        cl.label                  as holder_label,
        b.name                    as bank_name,
+       -- The row's icon (9a/12a): its catalog row's emoji, else the
+       -- canonical's — resolved here so every reader shows the same icon.
+       bc.emoji                  as bank_category_emoji,
+       cc.emoji                  as canonical_emoji,
        pt.cap_value,
        pt.cap_scope              as tier_cap_scope,
        pt.cap_per_category,
@@ -1062,6 +1067,8 @@ from category_offer co
          join bank_client cl on cl.id = op.bank_client_id
          join bank b on b.id = cl.bank_id
          left join selection s on s.category_offer_id = co.id
+         left join bank_category bc on bc.id = co.bank_category_id
+         left join canonical_category cc on cc.id = co.canonical_category_id
          left join program_tier pt on pt.id = cl.program_tier_id
          left join cashback_program cp on cp.id = pt.program_id
 where op.bank_client_id = any ($1::bigint[])
@@ -1074,6 +1081,7 @@ type ListOffersForClientsRow struct {
 	Percent               *decimal.Decimal
 	Kind                  CashbackOfferKind
 	OfferCapValue         *decimal.Decimal
+	BankCategoryID        *int64
 	OfferPeriodID         int64
 	BankClientID          int64
 	PeriodStart           time.Time
@@ -1081,6 +1089,8 @@ type ListOffersForClientsRow struct {
 	MaxCategoriesOverride *int32
 	HolderLabel           *string
 	BankName              string
+	BankCategoryEmoji     *string
+	CanonicalEmoji        *string
 	CapValue              *decimal.Decimal
 	TierCapScope          NullCashbackCapScope
 	CapPerCategory        *decimal.Decimal
@@ -1115,6 +1125,7 @@ func (q *Queries) ListOffersForClients(ctx context.Context, clientIds []int64) (
 			&i.Percent,
 			&i.Kind,
 			&i.OfferCapValue,
+			&i.BankCategoryID,
 			&i.OfferPeriodID,
 			&i.BankClientID,
 			&i.PeriodStart,
@@ -1122,6 +1133,8 @@ func (q *Queries) ListOffersForClients(ctx context.Context, clientIds []int64) (
 			&i.MaxCategoriesOverride,
 			&i.HolderLabel,
 			&i.BankName,
+			&i.BankCategoryEmoji,
+			&i.CanonicalEmoji,
 			&i.CapValue,
 			&i.TierCapScope,
 			&i.CapPerCategory,
@@ -1453,6 +1466,7 @@ select co.id                     as category_offer_id,
        co.percent,
        co.kind,
        co.cap_value              as offer_cap_value,
+       co.bank_category_id,
        op.id                     as offer_period_id,
        op.bank_client_id,
        op.period_start,
@@ -1460,6 +1474,10 @@ select co.id                     as category_offer_id,
        op.max_categories_override,
        cl.label                  as holder_label,
        b.name                    as bank_name,
+       -- The row's icon (9a/12a): its catalog row's emoji, else the
+       -- canonical's — resolved here so every reader shows the same icon.
+       bc.emoji                  as bank_category_emoji,
+       cc.emoji                  as canonical_emoji,
        pt.cap_value,
        pt.cap_scope              as tier_cap_scope,
        pt.cap_per_category,
@@ -1485,6 +1503,8 @@ from category_offer co
          join bank_client cl on cl.id = op.bank_client_id
          join bank b on b.id = cl.bank_id
          left join selection s on s.category_offer_id = co.id
+         left join bank_category bc on bc.id = co.bank_category_id
+         left join canonical_category cc on cc.id = co.canonical_category_id
          left join program_tier pt on pt.id = cl.program_tier_id
          left join cashback_program cp on cp.id = pt.program_id
 where cl.user_id = $1
@@ -1497,6 +1517,7 @@ type ListUserOffersRow struct {
 	Percent               *decimal.Decimal
 	Kind                  CashbackOfferKind
 	OfferCapValue         *decimal.Decimal
+	BankCategoryID        *int64
 	OfferPeriodID         int64
 	BankClientID          int64
 	PeriodStart           time.Time
@@ -1504,6 +1525,8 @@ type ListUserOffersRow struct {
 	MaxCategoriesOverride *int32
 	HolderLabel           *string
 	BankName              string
+	BankCategoryEmoji     *string
+	CanonicalEmoji        *string
 	CapValue              *decimal.Decimal
 	TierCapScope          NullCashbackCapScope
 	CapPerCategory        *decimal.Decimal
@@ -1536,6 +1559,7 @@ func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListU
 			&i.Percent,
 			&i.Kind,
 			&i.OfferCapValue,
+			&i.BankCategoryID,
 			&i.OfferPeriodID,
 			&i.BankClientID,
 			&i.PeriodStart,
@@ -1543,6 +1567,8 @@ func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListU
 			&i.MaxCategoriesOverride,
 			&i.HolderLabel,
 			&i.BankName,
+			&i.BankCategoryEmoji,
+			&i.CanonicalEmoji,
 			&i.CapValue,
 			&i.TierCapScope,
 			&i.CapPerCategory,

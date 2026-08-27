@@ -267,3 +267,4 @@ internal/adminweb/dist/*
 
 # local-dev compose override (publishes the DB port); never deployed
 docker-compose.override.yaml
+web/tsconfig.tsbuildinfo
