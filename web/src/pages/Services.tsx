@@ -138,7 +138,11 @@ export default function Services() {
           </p>
         )}
 
-        <a href="/docs" className="mt-3 block text-sm font-semibold text-accl">
+        {/* The rendered /docs page is a development aid (it loads Stoplight
+            from unpkg, which production must not do), so the link points at
+            the document itself — always served, and what a client generator
+            wants anyway. */}
+        <a href="/openapi.json" className="mt-3 block text-sm font-semibold text-accl">
           OpenAPI-документация →
         </a>
       </Card>

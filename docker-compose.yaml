@@ -1,5 +1,5 @@
 # Local run/dev stack: `docker compose up --build` → migrated + seeded app on
-# http://localhost:8080 (docs at /docs). Throwaway dev credentials only —
+# http://localhost:8080. Throwaway dev credentials only —
 # this file is not a production deployment.
 # ⚠️ Env lives HERE in the anchor, never under a service: `<<:` merge keys
 # are shallow, so an `environment:` on `app:` would replace this whole map
@@ -17,11 +17,15 @@ x-backend: &backend
   image: sharespences
   environment:
     DATABASE_URL: postgres://sharespences:sharespences@db:5432/sharespences
-    # This stack serves plain http on localhost, where a Secure session cookie
-    # would never be stored by Safari — so login would silently fail. The
-    # server defaults to Secure ON; only this local stack opts out. A real
-    # deployment sits behind TLS and must NOT set this.
-    COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    # ⚠️ Defaults to TRUE, and must stay that way. This same file is the
+    # production deployment descriptor (`git pull` + `docker compose up -d
+    # --build`), so a `:-false` default here silently ships a session cookie
+    # without the Secure flag to a real deployment — the variable is injected
+    # unconditionally, which overrides the binary's own secure-by-default.
+    # For local http, where Safari refuses to store a Secure cookie and login
+    # then fails with no visible error, opt out per-machine instead:
+    #   echo COOKIE_SECURE=false >> .env
+    COOKIE_SECURE: ${COOKIE_SECURE:-true}
     # Screenshot recognizer (README «Screenshot recognizer») — off unless
     # VISION_BACKEND is set in the environment / .env. host.docker.internal
     # reaches an Ollama on the Docker host (extra_hosts below).
@@ -93,7 +97,7 @@ services:
       seed:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/docs"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/api/v1/version"]
       interval: 30s
       timeout: 3s
       retries: 3

@@ -28,14 +28,34 @@ func decToStr(d *decimal.Decimal) *string {
 	return &s
 }
 
+// Bounds on a money/percent field, both checked before the value can reach
+// the driver. The columns are numeric(19,4), so nothing legitimate comes close
+// to either limit — but shopspring's parser accepts a 500 000-digit integer
+// and an exponent up to MaxInt32, and pgx then materialises whichever it gets
+// as a big.Int while encoding the statement. Measured on this code: `1e-200000`
+// cost 1.6 s of server time for a 40-byte body and was accepted (201); larger
+// exponents do not come back at all, and http.Server sets no WriteTimeout, so
+// nothing cuts the request off.
+const (
+	maxDecimalLen = 32  // digits a human types, with room to spare
+	maxDecimalExp = 100 // numeric(19,4) needs -4..0
+)
+
 func strToDec(s *string, field string) (*decimal.Decimal, error) {
 	if s == nil {
 		return nil, nil
 	}
+	notANumber := huma.Error422UnprocessableEntity(fmt.Sprintf("%s: «%s» — не число", field, *s))
+	if len(*s) > maxDecimalLen {
+		return nil, notANumber
+	}
 	// RU keyboards type «1,5» — the comma is a decimal separator here.
 	d, err := decimal.NewFromString(strings.ReplaceAll(*s, ",", "."))
 	if err != nil {
-		return nil, huma.Error422UnprocessableEntity(fmt.Sprintf("%s: «%s» — не число", field, *s))
+		return nil, notANumber
+	}
+	if e := d.Exponent(); e < -maxDecimalExp || e > maxDecimalExp {
+		return nil, notANumber
 	}
 	return &d, nil
 }
@@ -314,14 +334,27 @@ func parsePartnerFields(percent, capValue, minAmount, validFrom, validTo *string
 // attachToPartner links screenshots after checking each one belongs to the
 // caller — an attachment id is guessable, so ownership is verified per file.
 func (s *Service) attachToPartner(ctx context.Context, userID uuid.UUID, offerID int64, ids []uuid.UUID) error {
+	if err := s.assertOwnsAttachments(ctx, userID, ids); err != nil {
+		return httpErr(err)
+	}
 	for _, aid := range ids {
-		if _, err := s.Q.GetAttachmentForUser(ctx, db.GetAttachmentForUserParams{ID: aid, UserID: &userID}); err != nil {
-			return httpErr(notFound(err))
-		}
 		if err := s.Q.AttachToPartnerOffer(ctx, db.AttachToPartnerOfferParams{
 			PartnerOfferID: offerID, AttachmentID: aid,
 		}); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// assertOwnsAttachments is the pre-flight the create paths run before writing
+// anything: a foreign id used to be discovered only after the parent row had
+// been inserted, which answered 404 while leaving the row behind.
+func (s *Service) assertOwnsAttachments(ctx context.Context, userID uuid.UUID, ids []uuid.UUID) error {
+	uid := userID
+	for _, aid := range ids {
+		if _, err := s.Q.GetAttachmentForUser(ctx, db.GetAttachmentForUserParams{ID: aid, UserID: &uid}); err != nil {
+			return notFound(err)
 		}
 	}
 	return nil
@@ -568,7 +601,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			BankClientID  int64       `json:"bank_client_id"`
 			PeriodStart   string      `json:"period_start" format:"date"`
 			PeriodEnd     string      `json:"period_end" format:"date"`
-			AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty"`
+			AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty" maxItems:"10" doc:"скриншоты, уже загруженные через /attachments"`
 		}
 	}) (*struct{ Body OfferPeriodDTO }, error) {
 		start, err := parseDate(in.Body.PeriodStart, "period_start")
@@ -1139,13 +1172,19 @@ func RegisterHTTP(api huma.API, s *Service) {
 			CapValue      *string     `json:"cap_value,omitempty"`
 			MinAmount     *string     `json:"min_amount,omitempty" doc:"minimum qualifying purchase («от 2 000 ₽»); display only"`
 			Notes         *string     `json:"notes,omitempty"`
-			AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty"`
+			AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty" maxItems:"10" doc:"скриншоты, уже загруженные через /attachments"`
 		}
 	}) (*struct{ Body PartnerOfferDTO }, error) {
 		f, err := parsePartnerFields(in.Body.Percent, in.Body.CapValue, in.Body.MinAmount,
 			in.Body.ValidFrom, in.Body.ValidTo)
 		if err != nil {
 			return nil, err
+		}
+		if err := s.AssertOwnsClient(ctx, auth.UserID(ctx), in.Body.BankClientID); err != nil {
+			return nil, httpErr(err)
+		}
+		if err := s.assertOwnsAttachments(ctx, auth.UserID(ctx), in.Body.AttachmentIDs); err != nil {
+			return nil, httpErr(err)
 		}
 		p, err := s.Q.CreatePartnerOffer(ctx, db.CreatePartnerOfferParams{
 			UserID: auth.UserID(ctx), BankID: in.Body.BankID, BankClientID: in.Body.BankClientID,
@@ -1215,6 +1254,9 @@ func RegisterHTTP(api huma.API, s *Service) {
 		if err != nil {
 			return nil, err
 		}
+		if err := s.AssertOwnsClient(ctx, auth.UserID(ctx), in.Body.BankClientID); err != nil {
+			return nil, httpErr(err)
+		}
 		p, err := s.Q.UpdatePartnerOfferForUser(ctx, db.UpdatePartnerOfferForUserParams{
 			ID: in.ID, UserID: auth.UserID(ctx),
 			BankID: in.Body.BankID, BankClientID: in.Body.BankClientID,
@@ -1256,18 +1298,8 @@ func RegisterHTTP(api huma.API, s *Service) {
 		ID           int64     `path:"id"`
 		AttachmentID uuid.UUID `path:"attachment_id"`
 	}) (*struct{}, error) {
-		userID := auth.UserID(ctx)
-		if _, err := s.Q.GetPartnerOfferForUser(ctx, db.GetPartnerOfferForUserParams{ID: in.ID, UserID: userID}); err != nil {
-			return nil, httpErr(notFound(err))
-		}
-		n, err := s.Q.DetachFromPartnerOffer(ctx, db.DetachFromPartnerOfferParams{
-			PartnerOfferID: in.ID, AttachmentID: in.AttachmentID,
-		})
-		if err != nil {
-			return nil, err
-		}
-		if n == 0 {
-			return nil, huma.Error404NotFound("скриншот не найден")
+		if err := s.DetachPartnerScreenshot(ctx, auth.UserID(ctx), in.ID, in.AttachmentID); err != nil {
+			return nil, httpErr(err)
 		}
 		return nil, nil
 	})
@@ -1299,12 +1331,8 @@ func RegisterHTTP(api huma.API, s *Service) {
 	}, func(ctx context.Context, in *struct {
 		ID int64 `path:"id"`
 	}) (*struct{}, error) {
-		n, err := s.Q.DeletePartnerOfferForUser(ctx, db.DeletePartnerOfferForUserParams{ID: in.ID, UserID: auth.UserID(ctx)})
-		if err != nil {
-			return nil, err
-		}
-		if n == 0 {
-			return nil, huma.Error404NotFound("не найдено")
+		if err := s.DeletePartnerOffer(ctx, auth.UserID(ctx), in.ID); err != nil {
+			return nil, httpErr(err)
 		}
 		return &struct{}{}, nil
 	})

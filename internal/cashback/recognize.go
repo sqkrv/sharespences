@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -239,6 +241,18 @@ func (s *Service) GetRecognition(userID, id uuid.UUID) (RecognitionJobDTO, error
 func (s *Service) runRecognition(jobID uuid.UUID, attachmentIDs []uuid.UUID, titles []string, catalog []CatalogRow, aliases []Alias, bankName string, otherBanks []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(len(attachmentIDs))*vision.MaxImageBudget())
 	defer cancel()
+	// This is the only goroutine the app starts per request, and chi's
+	// Recoverer covers request goroutines only — an unrecovered panic here
+	// takes the whole process down for every user. Everything below runs on
+	// user-supplied bytes through third-party image decoders, so contain it:
+	// the job fails, the process lives. The panic value stays in the log; the
+	// user gets the same wording as any other failed read.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("recognition %s panicked: %v\n%s", jobID, r, debug.Stack())
+			s.recognitions.fail(jobID, "не удалось распознать скриншоты — заполни период вручную")
+		}
+	}()
 	rec := vision.NewRecognizer(s.Vision)
 
 	// One screenshot takes minutes on the reference model, so a per-image

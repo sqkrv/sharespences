@@ -800,9 +800,17 @@ func TestCashbackE2E(t *testing.T) {
 	if got := sel(scratchOffer.ID, "2026-08-10T10:00:00Z"); got != http.StatusCreated {
 		t.Fatalf("scratch selection: %d", got)
 	}
+	scratchShot := owner.upload("scratch.png", "image/png", []byte("fake-png-bytes"))
+	owner.must("POST", fmt.Sprintf("/api/v1/cashback/offer-periods/%d/attachments", scratch.ID),
+		map[string]any{"attachment_id": scratchShot}, nil, http.StatusNoContent)
 	owner.must("DELETE", fmt.Sprintf("/api/v1/cashback/offer-periods/%d", scratch.ID), nil, nil, http.StatusNoContent)
 	if got := owner.do("GET", fmt.Sprintf("/api/v1/cashback/offer-periods/%d", scratch.ID), nil, nil); got != http.StatusNotFound {
 		t.Fatalf("deleted period still readable: %d, want 404", got)
+	}
+	// Policy §7.4: the screenshot goes with the record it hung off, rather than
+	// staying on disk with no link left that could ever reach it.
+	if got := owner.do("GET", "/api/v1/attachments/"+scratchShot+"/content", nil, nil); got != http.StatusNotFound {
+		t.Fatalf("attachment after period delete: %d, want 404", got)
 	}
 
 	// --- E2E step 5: lookup supermarkets on July 15 → both cards ranked
@@ -1328,8 +1336,51 @@ func TestCashbackE2E(t *testing.T) {
 	if got := other.do("GET", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", partnerOffer.ID), nil, nil); got != http.StatusNotFound {
 		t.Fatalf("foreign partner-offer get: %d, want 404", got)
 	}
+	// An offer `other` legitimately owns — the subject of the update probe below.
+	var foreignProbe struct {
+		ID int64 `json:"id"`
+	}
+	other.must("POST", "/api/v1/cashback/partner-offers", map[string]any{
+		"bank_id": vtbID, "merchant_title": "своё",
+	}, &foreignProbe, http.StatusCreated)
+	// The offer's OWN id is scoped, but bank_client_id arrives in the body:
+	// pointing it at someone else's client would file an invisible row against
+	// that account and leave them unable to delete their own client (the FK
+	// answers 409 for history they cannot see).
+	if got := other.do("POST", "/api/v1/cashback/partner-offers", map[string]any{
+		"bank_id": vtbID, "bank_client_id": partnerClient.ID, "merchant_title": "захват",
+	}, nil); got != http.StatusNotFound {
+		t.Fatalf("partner-offer create on a foreign bank client: %d, want 404", got)
+	}
+	if got := other.do("PUT", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", foreignProbe.ID), map[string]any{
+		"bank_id": vtbID, "bank_client_id": partnerClient.ID, "merchant_title": "захват",
+	}, nil); got != http.StatusNotFound {
+		t.Fatalf("partner-offer update onto a foreign bank client: %d, want 404", got)
+	}
 	owner.must("DELETE", fmt.Sprintf("/api/v1/cashback/partner-offers/%d/attachments/%s", partnerOffer.ID, shotID),
 		nil, nil, http.StatusNoContent)
+	// Detaching from a partner offer reclaims the attachment the same way
+	// detaching from a period does — policy §7.4 makes no distinction.
+	if got := owner.do("GET", "/api/v1/attachments/"+shotID+"/content", nil, nil); got != http.StatusNotFound {
+		t.Fatalf("attachment after partner detach: %d, want 404", got)
+	}
+
+	// Deleting an offer that STILL has a screenshot has to work: the link row
+	// carries a plain foreign key, so removing the offer under it raised 23503
+	// and surfaced as a 500.
+	var shotOffer struct {
+		ID int64 `json:"id"`
+	}
+	owner.must("POST", "/api/v1/cashback/partner-offers", map[string]any{
+		"bank_id": vtbID, "merchant_title": "С неотцепленным скрином",
+	}, &shotOffer, http.StatusCreated)
+	stuckShot := owner.upload("stuck.png", "image/png", []byte("fake-png-bytes"))
+	owner.must("POST", fmt.Sprintf("/api/v1/cashback/partner-offers/%d/attachments", shotOffer.ID),
+		map[string]any{"attachment_id": stuckShot}, nil, http.StatusNoContent)
+	owner.must("DELETE", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", shotOffer.ID), nil, nil, http.StatusNoContent)
+	if got := owner.do("GET", "/api/v1/attachments/"+stuckShot+"/content", nil, nil); got != http.StatusNotFound {
+		t.Fatalf("attachment after partner-offer delete: %d, want 404", got)
+	}
 
 	if got := owner.do("DELETE", fmt.Sprintf("/api/v1/bank-clients/%d", partnerClient.ID), nil, nil); got != http.StatusConflict {
 		t.Fatalf("delete client with partner offer: %d, want 409", got)

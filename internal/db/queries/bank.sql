@@ -3,11 +3,6 @@ select *
 from bank
 order by id;
 
--- name: GetBankByName :one
-select *
-from bank
-where name = $1;
-
 -- name: CreateBankClient :one
 insert into bank_client (user_id, bank_id, label, program_tier_id)
 values ($1, $2, $3, $4)
@@ -63,14 +58,6 @@ from bank_card bc
          join bank b on b.id = cl.bank_id
 where cl.user_id = $1
 order by bc.id;
-
--- name: GetCardForUser :one
-select bc.*, cl.bank_id, b.name as bank_name
-from bank_card bc
-         join bank_client cl on cl.id = bc.bank_client_id
-         join bank b on b.id = cl.bank_id
-where bc.id = $1
-  and cl.user_id = $2;
 
 -- name: DeleteCardForUser :execrows
 delete

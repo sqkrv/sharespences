@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
+import { purgeResponseCaches } from "../auth";
 import { Btn, Card, Field, Input, ErrMsg } from "../components/ui";
 import DevChip from "../dev/DevChip";
 
@@ -61,7 +62,14 @@ export default function Login() {
 
   const login = useMutation({
     mutationFn: async () => unwrap(await api.POST("/api/v1/auth/login", { body: { email, password } })),
-    onSuccess: (user) => {
+    onSuccess: async (user) => {
+      // A previous user may have closed the tab without signing out, leaving
+      // their responses in the offline cache (keyed by URL only) — drop them
+      // before this session can be served from them.
+      await purgeResponseCaches();
+      // Whatever the previous account left in the query cache would otherwise
+      // render for this one until each query refetched.
+      qc.clear();
       qc.setQueryData(["me"], user);
       navigate(from, { replace: true });
     },

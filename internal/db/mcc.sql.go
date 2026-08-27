@@ -110,8 +110,14 @@ from bank_category_mcc bcm
          left join canonical_category cc on cc.id = bc.canonical_category_id
 where bcm.mcc_code = $1
   and bc.active
+  and (bc.created_by is null or bc.created_by = $2::uuid)
 order by b.name, bc.title
 `
+
+type ResolveMCCParams struct {
+	MccCode int16
+	UserID  uuid.UUID
+}
 
 type ResolveMCCRow struct {
 	BankID         int32
@@ -127,8 +133,8 @@ type ResolveMCCRow struct {
 	Note           *string
 }
 
-func (q *Queries) ResolveMCC(ctx context.Context, mccCode int16) ([]ResolveMCCRow, error) {
-	rows, err := q.db.Query(ctx, resolveMCC, mccCode)
+func (q *Queries) ResolveMCC(ctx context.Context, arg ResolveMCCParams) ([]ResolveMCCRow, error) {
+	rows, err := q.db.Query(ctx, resolveMCC, arg.MccCode, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
