@@ -374,31 +374,56 @@ function PointScreen({ mcc, merchant, posID }: { mcc: string; merchant: string |
     retry: false,
     queryFn: async () => unwrap(await api.GET("/api/v1/mcc/points-of-sale/{id}", { params: { path: { id: posID! } } })),
   });
+  // The point's identity comes from the API, never from the address bar.
+  // `?merchant=` used to be rendered as the title on its own, so any hand-made
+  // link — including one to a row still in moderation or already rejected —
+  // opened as a normal точка продаж, and even landed in «Недавнее» (report
+  // 2026-08-27). The API scopes those rows away; the screen has to respect
+  // that answer instead of drawing the name it was handed.
+  const named = point.data?.name;
+  const unresolved = merchant != null && merchant !== "" && named == null;
+  const loadingPoint = posID != null && point.isPending;
+  const title = named ?? `MCC ${mcc}`;
   const partnerMatch = useQuery({
-    queryKey: ["partner-match", merchant],
-    enabled: merchant != null && merchant !== "",
+    queryKey: ["partner-match", named],
+    enabled: named != null && named !== "",
     queryFn: async () =>
-      unwrap(await api.GET("/api/v1/cashback/partner-offers/match", { params: { query: { query: merchant! } } })),
+      unwrap(await api.GET("/api/v1/cashback/partner-offers/match", { params: { query: { query: named! } } })),
   });
-  const title = merchant ?? `MCC ${mcc}`;
 
   useEffect(() => {
-    if (!merchant) return;
+    if (!named) return;
     pushRecent({
-      label: merchant,
+      label: named,
       sub: `MCC ${mcc}`,
-      to: `/pos?mcc=${mcc}&merchant=${encodeURIComponent(merchant)}${posID ? `&pos=${posID}` : ""}`,
+      to: `/pos?mcc=${mcc}&merchant=${encodeURIComponent(named)}${posID ? `&pos=${posID}` : ""}`,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [merchant, mcc, posID]);
+  }, [named, mcc, posID]);
 
   return (
     <>
       <div className="flex items-center gap-2.5">
         <BackButton fallback="/search" />
-        <h1 className="min-w-0 flex-1 truncate text-xl font-extrabold tracking-tight">{title}</h1>
-        <span className="flex-none rounded-lg bg-inset px-2 py-1 text-[10.5px] font-semibold text-tx3">точка продаж</span>
+        <h1 className="min-w-0 flex-1 truncate text-xl font-extrabold tracking-tight">
+          {loadingPoint ? "…" : title}
+        </h1>
+        {named != null && (
+          <span className="flex-none rounded-lg bg-inset px-2 py-1 text-[10.5px] font-semibold text-tx3">точка продаж</span>
+        )}
       </div>
+
+      {/* A link naming a point the base will not serve: on moderation, rejected,
+          deleted, or simply invented. The MCC below is still a real answer, so
+          the screen degrades to it rather than 404-ing the whole page. */}
+      {unresolved && !loadingPoint && (
+        <Card className="space-y-1 p-4" data-sid="CB-11.d">
+          <p className="text-sm font-semibold text-tx2">Такой точки в базе нет</p>
+          <p className="text-[11.5px] font-medium text-tx4">
+            Ссылка могла вести на точку, которая ещё на модерации или отклонена. Ниже — чем платить по MCC {mcc}.
+          </p>
+        </Card>
+      )}
 
       <AboutPoint mcc={mcc} point={point.data} />
 

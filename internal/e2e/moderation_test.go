@@ -103,6 +103,15 @@ func TestModerationE2E(t *testing.T) {
 	if n := merchantHits(t, mod, "Лавка у Автора"); n != 0 {
 		t.Fatalf("stranger sees %d hits for a pending row, want 0", n)
 	}
+	// The by-id read is the route a direct link takes (report 2026-08-27: a
+	// точка on moderation opened for anyone who had the URL). Search hiding
+	// the row is not enough — the link skips search entirely.
+	if got := author.do("GET", "/api/v1/mcc/points-of-sale/"+created.ID, nil, nil); got != 200 {
+		t.Fatalf("author opening own pending row by id: %d, want 200", got)
+	}
+	if got := mod.do("GET", "/api/v1/mcc/points-of-sale/"+created.ID, nil, nil); got != 404 {
+		t.Fatalf("stranger opening a pending row by direct link: %d, want 404", got)
+	}
 
 	// --- the gate: role user → the same Russian 403 on every operation ---
 	if got, body := rawGetStatus(t, mod, "/api/v1/moderation/pos"); got != 403 ||
@@ -182,6 +191,9 @@ func TestModerationE2E(t *testing.T) {
 	mod.must("POST", "/api/v1/moderation/pos/"+second.ID+"/reject", nil, nil, 204)
 	if n := merchantHits(t, author, "Сомнительный ларёк"); n != 0 {
 		t.Fatalf("rejected row still visible to its author: %d hits", n)
+	}
+	if got := author.do("GET", "/api/v1/mcc/points-of-sale/"+second.ID, nil, nil); got != 404 {
+		t.Fatalf("author opening own REJECTED row by direct link: %d, want 404", got)
 	}
 	// A rejected row cannot be approved: it left the queue for good.
 	if got := mod.do("POST", "/api/v1/moderation/pos/"+second.ID+"/approve", nil, nil); got != 404 {
