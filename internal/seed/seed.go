@@ -24,6 +24,14 @@ import (
 
 const asOf = "as of 2025-05 (wiki table); re-verify in the bank app"
 
+// ВТБ's «Мультибонус» rules, read 2026-08-26. Таблица 2 gives the caps per
+// package; Таблица 3.1 (in force from 26.08.2026) gives the slot counts.
+const vtbAsOf = "as of 2026-08-26, официальные Условия ПЛ «Мультибонус» (Таблица 2 — лимиты, Таблица 3.1 — слоты, действует с 26.08.2026)"
+
+// СберСпасибо rules, редакция 28.07.2026, Таблица 2 — sixteen priority rungs
+// keyed on package/subscription/card, each with its own slot count and cap.
+const sberAsOf = "as of 2026-07-28, официальные Правила «СберСпасибо», Таблица 2"
+
 // Альфа-Банк's cap ladder is read off the bank's own MCCD appendix (2026-08),
 // which states it verbatim: cards outside the Alfa Only / Максимум packages get
 // 5000, or 7000 with an Альфа-Смарт subscription; cards inside them get 30 000.
@@ -93,10 +101,21 @@ var programs = []program{
 		bank: "ВТБ", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub", opensDay: 26,
 		midPeriodAdd: "locked_after_first", activation: "immediate", // one-shot (п. 3.5); +5 мин ≈ immediate
-		notes: asOf + "; дополнительные категории за хранение остатков — record-only",
+		notes: vtbAsOf + "; Отчетный период = календарный месяц (п. 1.7); бонусные рубли зачисляются на счёт 1:1, баланс обнуляется в начале периода (пп. 2.13–2.14); дополнительные категории за хранение остатков — record-only",
 		tiers: []tier{
-			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 3, notes: asOf + "; % варьируется до 15%"},
-			{name: "Привилегия", capValue: "30000", capScope: "total", maxCategories: 3, notes: asOf},
+			// Names are the packages the rules themselves use (Таблица 2);
+			// 00031 renames the project's earlier «Стандартный»/«Привилегия».
+			// maxCategories is the STANDARD count — Таблица 3.1 adds slots for
+			// a client's Уровень (+1 Серебряный / +2 Золотой on Мультикарта;
+			// +2 for Изумруд/Сапфир/Рубин/Бриллиант on Привилегия-Мультикарта;
+			// +2 for Private Banking on Прайм+), which is a per-period fact and
+			// belongs in offer_period.max_categories_override, not here.
+			{name: "Мультикарта", capValue: "3000", capScope: "total", maxCategories: 3,
+				notes: vtbAsOf + "; +1 категория для Уровня «Серебряный», +2 для «Золотой»; % варьируется до 15%"},
+			{name: "Привилегия-Мультикарта", capValue: "30000", capScope: "total", maxCategories: 3,
+				notes: vtbAsOf + "; +2 категории для Уровней «Изумруд»/«Сапфир»/«Рубин»/«Бриллиант»"},
+			{name: "Прайм+", capValue: "100000", capScope: "total", maxCategories: 3,
+				notes: vtbAsOf + "; +2 категории для Уровня «Private Banking»"},
 		},
 	},
 	{
@@ -148,6 +167,44 @@ var programs = []program{
 		},
 	},
 	{
+		// Таблица 2 is a sixteen-rung PRIORITY ladder, not a set of products: a
+		// client matching several criteria gets exactly one — the highest
+		// порядковый номер — except Детская СберКарта, which is pinned to rung 1
+		// however else the holder qualifies (п. 2.1.7). Seeded here are the ten
+		// distinct (slots, cap) shapes; rungs sharing a shape are listed in the
+		// notes rather than duplicated as rows.
+		bank: "СберБанк", name: "СберСпасибо", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "points", pointsLabel: "бонусы СберСпасибо",
+		// «Активация Категории» is per-period and one-shot; purchases in the
+		// first 15 minutes after activating may not count (п. 2.1.9), which is
+		// a delay no `activation` value expresses — recorded as immediate,
+		// with the caveat in the notes.
+		midPeriodAdd: "locked_after_first", activation: "immediate",
+		notes: sberAsOf + "; Расчетный период = календарный месяц; начисление за каждые полные 100 ₽ с округлением вниз (п. 3.2.4); покупки в первые 15 минут после активации категории могут не учитываться (п. 2.1.9); ⚠️ курс бонуса к рублю устанавливается Уполномоченной компанией и в Правилах не зафиксирован",
+		tiers: []tier{
+			{name: "Детская СберКарта", capValue: "3000", capScope: "total", maxCategories: 2,
+				notes: sberAsOf + "; категории назначаются банком, самостоятельная активация не требуется; приоритет 1 независимо от других критериев"},
+			{name: "Карты Standart, Gold, Classic", capValue: "2000", capScope: "total", maxCategories: 3, notes: sberAsOf},
+			{name: "СберКарта", capValue: "2000", capScope: "total", maxCategories: 3,
+				notes: sberAsOf + "; либо владелец Платежного счета"},
+			{name: "Тарифный план «СберПрайм Зарплатный»", paid: true, capValue: "2000", capScope: "total", maxCategories: 4,
+				notes: sberAsOf + "; 5 000 бонусов, если зарплатные зачисления за предыдущий месяц ≥ 70 000 ₽; та же ступень — ТП «Релиз» и ТП «Патриот»"},
+			{name: "Тарифный план «СберПрайм Старт»", paid: true, capValue: "5000", capScope: "total", maxCategories: 4,
+				notes: sberAsOf + "; либо пакет услуг «СберПрайм Старт Зарплатный»"},
+			{name: "Карты с «большими бонусами»", capValue: "5000", capScope: "total", maxCategories: 5,
+				notes: sberAsOf + "; премиальные пластики (Visa Infinite/Platinum, World MasterCard Elite/Black Edition, МИР Премиальная) и Кредитная СберКарта"},
+			{name: "Подписка СберПрайм", paid: true, capValue: "10000", capScope: "total", maxCategories: 5,
+				notes: sberAsOf + "; та же ступень — ТП «Формула выгоды»"},
+			{name: "Подписка СберПрайм+", paid: true, capValue: "15000", capScope: "total", maxCategories: 5, notes: sberAsOf},
+			{name: "СберПремьер", capValue: "20000", capScope: "total", maxCategories: 5,
+				notes: sberAsOf + "; пакет услуг «Премиальное обслуживание» уровней 1–3; та же ступень — «СберПервый» и уровень 5"},
+			{name: "Премиальное обслуживание, уровень 4", capValue: "50000", capScope: "total", maxCategories: 5,
+				notes: sberAsOf + "; 20 000 бонусов для держателя дополнительной карты, а не владельца пакета"},
+			{name: "Sber Private Banking", capScope: "total", maxCategories: 6,
+				notes: sberAsOf + "; лимит не установлен; категории назначаются банком, самостоятельная активация не требуется"},
+		},
+	},
+	{
 		bank: "Т-Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "incremental",
 		currencyKind: "rub",
 		// Filling a still-empty slot later is what the picker demonstrably
@@ -167,7 +224,9 @@ var programs = []program{
 }
 
 // Reference-only banks (wiki): no programs seeded.
-var extraBanks = []string{"Сбербанк"}
+// Reference-only banks (wiki): no programs seeded. СберБанк left this list on
+// 2026-08-26 when its programme was read off the official СберСпасибо rules.
+var extraBanks = []string{}
 
 // Emoji are UI icons for the picker, curated in the taxonomy page
 // (2026-07-16, timeless).
@@ -507,7 +566,7 @@ var bankColors = map[string]string{
 	"Яндекс Пэй":  "#FC3F1D",
 	"Газпромбанк": "#10069F",
 	"МКБ":         "#E31E24",
-	"Сбербанк":    "#21A038",
+	"СберБанк":    "#21A038",
 	"Т-Банк":      "#FFDD2D",
 }
 
