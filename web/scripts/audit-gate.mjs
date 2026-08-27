@@ -12,14 +12,11 @@
 //
 // Usage: npm audit --omit=dev --json | node scripts/audit-gate.mjs
 
-const ACCEPTED_ADVISORIES = {
-  // React Router RSC-mode CSRF bypass. This SPA mounts <BrowserRouter> with
-  // declarative <Routes>/<Route> only — no data router, no loaders, no
-  // actions, no RSC — so the affected pipeline does not exist here. npm's
-  // suggested fix is a DOWNGRADE to 7.11.0; the forward fix is react-router 8,
-  // which is a major migration. Drop this entry when that lands.
-  "GHSA-qwww-vcr4-c8h2": "react-router RSC mode is not used (BrowserRouter only)",
-};
+// Empty is the desired state. Add an entry only for an advisory judged
+// not-applicable to what ships, with the reason on the line above it — the
+// staleness check below then forces the entry back out once the advisory
+// stops appearing, so an acceptance cannot outlive its justification.
+const ACCEPTED_ADVISORIES = {};
 
 const raw = await new Promise((resolve, reject) => {
   let buf = "";
