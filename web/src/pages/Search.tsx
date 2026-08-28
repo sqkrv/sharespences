@@ -178,7 +178,25 @@ export default function Search() {
   const showShops = tab === "all" || tab === "shops";
   const showCats = tab === "all" || tab === "cats";
   const showMcc = tab === "all" || tab === "mcc";
-  const filteredOut = tab === "shops" && posType !== "" && merchantRows.length === 0 && !merchants.isPending;
+  // Which queries the active tab actually shows. This matters because a
+  // DISABLED query in TanStack v5 reports status 'pending' forever — nothing
+  // will ever fetch it — so keying the spinner on isPending left «Загрузка…»
+  // up permanently wherever a query was switched off: on «Категории» (both
+  // off), on «MCC» (merchants off), and on «Всё» whenever the query looked
+  // like a code (report 2026-08-28). It only looked intermittent because a
+  // previous search on «Всё» leaves cached data under the same key, which
+  // flips the query to 'success' and hides the bug.
+  const codesActive = active && showMcc;
+  const merchantsActive = active && showShops && !isCode;
+  // isFetching is «a request is in flight», which is what a spinner claims.
+  const busy = (codesActive && codes.isFetching) || (merchantsActive && merchants.isFetching);
+  // Paused = the request cannot even start (offline, or the server is not
+  // answering — queries run networkMode 'offlineFirst'). Spinning forever is
+  // the one thing that must not happen there: the search has not started and
+  // never will until the connection is back.
+  const stalled =
+    (codesActive && codes.fetchStatus === "paused") || (merchantsActive && merchants.fetchStatus === "paused");
+  const filteredOut = tab === "shops" && posType !== "" && merchantRows.length === 0 && !busy && !stalled;
   // The empty state answers the tab the user is standing on. Adding a точка
   // продаж is an answer to «магазин не нашёлся» and to nothing else — on
   // «Категории» and «MCC» it is a non sequitur (report 2026-08-28), and on
@@ -194,8 +212,8 @@ export default function Search() {
         : "Ничего не найдено — попробуй иначе или введи MCC-код с чека.";
   const nothingFound =
     active &&
-    !codes.isPending &&
-    !merchants.isPending &&
+    !busy &&
+    !stalled &&
     (!showShops || merchantRows.length === 0) &&
     (!showCats || matchedCats.length === 0) &&
     (!showMcc || (codes.data ?? []).length === 0);
@@ -409,8 +427,14 @@ export default function Search() {
             </div>
           )}
 
-          {(codes.isPending || merchants.isPending) && active && <Spinner />}
+          {busy && <Spinner />}
+          {stalled && (
+            <Card className="p-4 text-center" data-sid="CB-04.k">
+              <p className="text-sm font-medium text-tx3">Нет связи с сервером — поиск недоступен.</p>
+            </Card>
+          )}
           {codes.isError && <ErrMsg error={codes.error} />}
+          {merchants.isError && <ErrMsg error={merchants.error} />}
           {/* The zero-results tail leads to manual creation (5e) — the
               каталог grows where it failed to answer. */}
           {/* An empty list because of the filter is not an empty base: offering
