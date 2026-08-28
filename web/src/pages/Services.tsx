@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { api, unwrap } from "../api/client";
 import { useMe, useLogout } from "../auth";
 import { useTheme, type ThemeSetting } from "../theme";
 import { useInstallPrompt } from "../pwa";
@@ -16,6 +18,39 @@ const built = new Date(BUILD);
 const buildLabel = Number.isNaN(built.getTime())
   ? null
   : built.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+
+// SYS-03.f (roles ≠ user only): the queue counter follows the design's
+// «Входящие · 2» group-label pattern, so a moderator sees from «Сервисы»
+// whether anything waits without opening MD-01. Query key shares the
+// ["moderation"] prefix — moderating invalidates the counter too.
+function ModerationCard() {
+  const queue = useQuery({
+    queryKey: ["moderation", "badge"],
+    queryFn: async () =>
+      unwrap(await api.GET("/api/v1/moderation/pos", { params: { query: { state: "pending", limit: 1 } } })),
+    staleTime: 60_000,
+  });
+  const total = queue.data?.total ?? 0;
+  return (
+    <Card className="p-4" data-sid="SYS-03.f">
+      <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Модерация</p>
+      <p className="mt-2 text-sm font-medium text-tx3">
+        Заявки на новые точки продаж: очередь на проверку и недавно опубликованные.
+      </p>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <Link to="/moderation" className="text-sm font-semibold text-accl">
+          Открыть модерацию →
+        </Link>
+        {queue.data &&
+          (total > 0 ? (
+            <span className="rounded-lg bg-acc/15 px-2 py-0.5 text-[11px] font-bold text-accl">в очереди · {total}</span>
+          ) : (
+            <span className="text-[11px] font-medium text-tx4">очередь пуста</span>
+          ))}
+      </div>
+    </Card>
+  );
+}
 
 // «Сервисы» hosts what the design's shell has no other place for: profile, the
 // three-state theme control, install, docs, logout, dev mode, and the app's own
@@ -111,17 +146,7 @@ export default function Services() {
 
       {/* The card is navigation sugar: the server re-checks the role on
           every moderation call, so hiding it is UX, not security. */}
-      {me.data?.role && me.data.role !== "user" && (
-        <Card className="p-4" data-sid="SYS-03.f">
-          <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Модерация</p>
-          <p className="mt-2 text-sm font-medium text-tx3">
-            Заявки на новые точки продаж: очередь на проверку и недавно опубликованные.
-          </p>
-          <Link to="/moderation" className="mt-3 block text-sm font-semibold text-accl">
-            Открыть модерацию →
-          </Link>
-        </Card>
-      )}
+      {me.data?.role && me.data.role !== "user" && <ModerationCard />}
 
       <Card className="p-4" data-sid="SYS-03.d">
         <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Для разработчиков</p>

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { STATUS_URL } from "../lib";
+import { POS_TYPE_RU, STATUS_URL } from "../lib";
 
 // Components mirror the Claude Design «Кэшбеки - Модуль» idiom: srf cards
 // with brd borders, the accent gradient for the primary action, mint for
@@ -476,5 +476,41 @@ export function Spinner() {
 export function Empty({ children }: { children: ReactNode }) {
   return (
     <p className="rounded-xl border border-brd bg-srf px-3 py-4 text-center text-sm font-medium text-tx3">{children}</p>
+  );
+}
+
+// Point-of-sale channel icon (redesign 2b/2c rows; shared with MD-01). The
+// paths mirror the design canvas's offline/online/app/other glyph set.
+const POS_TYPE_PATH: Record<string, ReactNode> = {
+  offline: (
+    <>
+      <path d="M12 21s-6.8-5.4-6.8-11a6.8 6.8 0 0 1 13.6 0c0 5.6-6.8 11-6.8 11Z" />
+      <circle cx="12" cy="10.5" r="2.4" />
+    </>
+  ),
+  online: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17" />
+      <path d="M12 3.5c2.4 2.6 3.6 5.4 3.6 8.5S14.4 18.4 12 20.5c-2.4-2.6-3.6-5.4-3.6-8.5S9.6 5.6 12 3.5z" />
+    </>
+  ),
+  app: (
+    <>
+      <rect x="7" y="2.5" width="10" height="19" rx="2.6" />
+      <path d="M10.8 18.4h2.4" />
+    </>
+  ),
+  other: <path d="M4.5 19.5h4L18 10a2.7 2.7 0 0 0-3.8-3.8L4.5 15.5v4z" />,
+};
+
+export function PosTypeIcon({ type }: { type?: string | null }) {
+  const label = (type && POS_TYPE_RU[type]) || "тип неизвестен";
+  return (
+    <span title={label} aria-label={label} className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[9px] bg-inset text-tx3">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        {(type && POS_TYPE_PATH[type]) || <path d="M8 12h8" />}
+      </svg>
+    </span>
   );
 }

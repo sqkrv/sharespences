@@ -3,8 +3,8 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api, unwrap, type Schemas } from "../api/client";
 import { useCategories } from "../hooks";
-import { BankBadge, Card, ErrMsg, Pct, SegTabs, Spinner } from "../components/ui";
-import { FALLBACK_EMOJI, POS_TYPE_RU, normalizeTitle } from "../lib";
+import { BankBadge, Card, ErrMsg, Pct, PosTypeIcon, SegTabs, Spinner } from "../components/ui";
+import { FALLBACK_EMOJI, normalizeTitle } from "../lib";
 import { recentEntries, type RecentEntry } from "../recent";
 
 // CB-04 v2 «Поиск» (redesign 2c/2i): one field, tabs filter the entered
@@ -13,39 +13,7 @@ import { recentEntries, type RecentEntry } from "../recent";
 // MCC and the merchant base are bank-independent, so rows simply render
 // without percentages until banks exist.
 
-const POS_TYPE_PATH: Record<string, React.ReactNode> = {
-  offline: (
-    <>
-      <path d="M12 21s-6.8-5.4-6.8-11a6.8 6.8 0 0 1 13.6 0c0 5.6-6.8 11-6.8 11Z" />
-      <circle cx="12" cy="10.5" r="2.4" />
-    </>
-  ),
-  online: (
-    <>
-      <circle cx="12" cy="12" r="8.5" />
-      <path d="M3.5 12h17" />
-      <path d="M12 3.5c2.4 2.6 3.6 5.4 3.6 8.5S14.4 18.4 12 20.5c-2.4-2.6-3.6-5.4-3.6-8.5S9.6 5.6 12 3.5z" />
-    </>
-  ),
-  app: (
-    <>
-      <rect x="7" y="2.5" width="10" height="19" rx="2.6" />
-      <path d="M10.8 18.4h2.4" />
-    </>
-  ),
-  other: <path d="M4.5 19.5h4L18 10a2.7 2.7 0 0 0-3.8-3.8L4.5 15.5v4z" />,
-};
 
-function PosTypeIcon({ type }: { type?: string | null }) {
-  const label = (type && POS_TYPE_RU[type]) || "тип неизвестен";
-  return (
-    <span title={label} aria-label={label} className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[9px] bg-inset text-tx3">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-        {(type && POS_TYPE_PATH[type]) || <path d="M8 12h8" />}
-      </svg>
-    </span>
-  );
-}
 
 type Tab = "all" | "shops" | "cats" | "mcc";
 

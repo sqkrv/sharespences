@@ -1,12 +1,15 @@
-// MD-01 Модерация (roles-moderation.md): очередь заявок 5e и поток недавно
-// опубликованных точек. The «Сервисы» card renders this route only for
-// role ≠ user; that is navigation sugar — the server re-checks the role on
+// MD-01 Модерация (roles-moderation.md), actualized to the redesign3
+// canvas language: заявка-rows per 4e (accent-bordered pending rows, the
+// Принять/✕ action pair), точка anatomy per 2b (PosTypeIcon lead, name /
+// mono merchant title / address, MCC in mono accl on the right), uppercase
+// group labels with counters. The «Сервисы» card renders this route only
+// for role ≠ user — navigation sugar; the server re-checks the role on
 // every operation, so a demoted moderator's next click answers 403.
 // The rows are ANONYMOUS: the API never carries the submitter.
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "../api/client";
-import { Badge, Btn, Card, Empty, ErrMsg, SegTabs, Spinner } from "../components/ui";
+import { BackButton, Btn, Empty, ErrMsg, PosTypeIcon, SegTabs, Spinner } from "../components/ui";
 
 type Tab = "pending" | "published";
 
@@ -14,12 +17,6 @@ const ORIGIN_LABEL: Record<string, string> = {
   user_manual: "добавлена вручную",
   user_transaction: "из операции",
   admin: "оператор",
-};
-const TYPE_LABEL: Record<string, string> = {
-  offline: "офлайн",
-  online: "онлайн",
-  app: "приложение",
-  other: "другое",
 };
 
 export default function Moderation() {
@@ -41,10 +38,14 @@ export default function Moderation() {
   });
 
   const items = list.data?.items ?? [];
+  const total = list.data?.total ?? 0;
 
   return (
     <>
-      <h1 className="text-[25px] font-extrabold tracking-tight">Модерация</h1>
+      <div className="flex items-center gap-2.5">
+        <BackButton fallback="/services" />
+        <h1 className="min-w-0 flex-1 truncate text-xl font-extrabold tracking-tight">Модерация</h1>
+      </div>
 
       <SegTabs
         sid="MD-01.a"
@@ -63,49 +64,71 @@ export default function Moderation() {
       )}
 
       {items.length > 0 && (
-        <Card className="divide-y divide-brd2 p-0" data-sid="MD-01.b">
+        <div className="space-y-1.5" data-sid="MD-01.b">
+          <p className="mx-0.5 pt-1 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">
+            {tab === "pending" ? "Очередь" : "Опубликованные"} · {total}
+          </p>
           {items.map((p) => (
-            <div key={p.id} className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-bold">{p.name}</p>
-                  {p.merchant_title && <p className="text-[12px] font-medium text-tx3">{p.merchant_title}</p>}
-                  <p className="mt-1 text-[12px] font-medium text-tx3">
-                    {p.mcc && <span className="font-mono">MCC {p.mcc}</span>}
-                    {p.type && <> · {TYPE_LABEL[p.type] ?? p.type}</>}
+            <div
+              key={p.id}
+              className={`flex items-start gap-2.5 rounded-2xl border bg-srf px-3 py-2.5 ${
+                tab === "pending" ? "border-acc/35" : "border-brd"
+              }`}
+            >
+              <PosTypeIcon type={p.type} />
+              {/* Three fixed roles, one per line — the 2b точка anatomy —
+                  then the meta line and the action pair. */}
+              <div className="min-w-0 flex-1 space-y-[3px]">
+                <p className="truncate text-[12.5px] leading-tight font-semibold text-tx2">{p.name}</p>
+                {p.merchant_title && (
+                  <p className="truncate font-mono text-[10px] leading-tight font-semibold tracking-wide text-tx3">
+                    {p.merchant_title}
                   </p>
-                  {p.address && <p className="mt-0.5 text-[12px] font-medium text-tx4">{p.address}</p>}
-                  <p className="mt-1 text-[11px] font-medium text-tx4">
-                    {p.created_at}
-                    {tab === "published" && p.origin !== "user_manual" && (
-                      <>
-                        {" "}
-                        <Badge tone="slate">{ORIGIN_LABEL[p.origin] ?? p.origin}</Badge>
-                      </>
-                    )}
-                  </p>
-                </div>
-                <div className="flex flex-none flex-col gap-1.5">
-                  {tab === "pending" && (
-                    <Btn disabled={act.isPending} onClick={() => act.mutate({ id: p.id, verb: "approve" })}>
-                      Одобрить
+                )}
+                {p.address && <p className="truncate text-[10px] leading-tight font-medium text-tx4">{p.address}</p>}
+                <p className="text-[10px] leading-tight font-medium text-tx4">
+                  {p.created_at}
+                  {tab === "published" && p.origin !== "user_manual" && ` · ${ORIGIN_LABEL[p.origin] ?? p.origin}`}
+                </p>
+                <div className="flex gap-1.5 pt-1.5">
+                  {tab === "pending" ? (
+                    <>
+                      <Btn
+                        variant="soft"
+                        className="!px-2.5 !py-1.5 text-xs"
+                        disabled={act.isPending}
+                        onClick={() => act.mutate({ id: p.id, verb: "approve" })}
+                      >
+                        Одобрить
+                      </Btn>
+                      <Btn
+                        variant="ghost"
+                        className="!px-2.5 !py-1.5 text-xs"
+                        disabled={act.isPending}
+                        onClick={() => act.mutate({ id: p.id, verb: "reject" })}
+                      >
+                        Отклонить
+                      </Btn>
+                    </>
+                  ) : (
+                    <Btn
+                      variant="ghost"
+                      className="!px-2.5 !py-1.5 text-xs"
+                      disabled={act.isPending}
+                      onClick={() => {
+                        if (!confirm(`Отозвать «${p.name}» из каталога?`)) return;
+                        act.mutate({ id: p.id, verb: "reject" });
+                      }}
+                    >
+                      Отозвать
                     </Btn>
                   )}
-                  <Btn
-                    variant="danger"
-                    disabled={act.isPending}
-                    onClick={() => {
-                      if (tab === "published" && !confirm(`Отозвать «${p.name}» из каталога?`)) return;
-                      act.mutate({ id: p.id, verb: "reject" });
-                    }}
-                  >
-                    {tab === "pending" ? "Отклонить" : "Отозвать"}
-                  </Btn>
                 </div>
               </div>
+              {p.mcc && <span className="font-mono text-[12px] leading-tight font-bold text-accl">{p.mcc}</span>}
             </div>
           ))}
-        </Card>
+        </div>
       )}
       <ErrMsg error={act.error} />
     </>
