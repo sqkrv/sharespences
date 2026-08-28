@@ -74,6 +74,15 @@ because that stack serves plain http on localhost (Safari refuses to store a
 Secure cookie there, and login would fail silently). A real deployment must
 not set it.
 
+The stack keeps itself up. `db`, `app` and `admin` carry `restart:
+unless-stopped`, so they come back from a crash and after a host reboot,
+while a stop taken deliberately for maintenance stays stopped across one —
+`always` would instead bring the app back up against a database an upgrade
+had only half finished. `migrate` and `seed` opt out explicitly: they are
+one-shots, and the rest of the stack waits on them reporting completion.
+Restarts follow process exit, so a container whose healthcheck reports
+unhealthy while its process keeps running is not one of them.
+
 Builds identify themselves. Pass the version at build time and it is served
 at `GET /api/v1/version` and shown in «Сервисы» → «О приложении»:
 

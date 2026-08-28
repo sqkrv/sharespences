@@ -38,9 +38,20 @@ x-backend: &backend
     # is 127.0.0.1:8081 for native runs. Other services ignore this var.
     ADMIN_LISTEN_ADDR: :8081
 
+# Restart policies are set per service, deliberately not on the anchor above:
+# the anchor is shared with the two one-shots, which must never restart. The
+# long-running services take `unless-stopped` so the stack comes back after a
+# host reboot — this same file is the production deployment descriptor — while
+# a deliberate `docker compose stop` for maintenance stays stopped across one.
+# `always` would instead bring the app back up mid-maintenance, against a
+# database an upgrade had only half finished. Either policy acts on process
+# exit and daemon start only: Docker does not restart a container because its
+# healthcheck reports unhealthy, so a hung-but-running process still needs a
+# human.
 services:
   db:
     image: postgis/postgis:18-3.6 # same image as the e2e tests
+    restart: unless-stopped
     environment:
       POSTGRES_USER: sharespences
       POSTGRES_PASSWORD: sharespences
@@ -69,6 +80,11 @@ services:
   migrate:
     <<: *backend
     command: ["migrate"]
+    # One-shot. Quoted because a bare `no` is YAML's boolean false rather than
+    # the policy name — and a one-shot that restarts never reports "completed
+    # successfully", which is precisely what its dependents wait on, so the
+    # whole stack would hang instead of coming up.
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
@@ -76,12 +92,14 @@ services:
   seed: # idempotent reference data (banks, КБ programs) — safe to re-run
     <<: *backend
     command: ["seed"]
+    restart: "no" # one-shot, as above
     depends_on:
       migrate:
         condition: service_completed_successfully
 
   app:
     <<: *backend
+    restart: unless-stopped
     # Published host port; override with APP_PORT (env or .env), e.g.
     # APP_PORT=9090. The container always listens on 8080 internally, so the
     # healthcheck below and the internal network are unaffected.
@@ -105,6 +123,7 @@ services:
   admin:
     <<: *backend
     entrypoint: ["/usr/local/bin/sharespences-admin"]
+    restart: unless-stopped
     # The loopback publish IS the access control (ADR-0008): the operator
     # reaches the panel through an SSH tunnel; nothing is exposed publicly.
     # Never widen this to a plain "8081:8081".
