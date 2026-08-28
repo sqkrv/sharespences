@@ -17,14 +17,6 @@ alter table "user"
 -- author's own PENDING ones only.
 alter type point_of_sale_status add value 'rejected';
 
--- The reviewer's trace (design 1c/1d): moderation_note is the reject
--- reason — a note for the OPERATOR, never returned to the author;
--- moderated_at is when the verdict fell, which for a manual row is also
--- its publish moment (the review stream orders by it).
-alter table point_of_sale
-    add column moderation_note text,
-    add column moderated_at    timestamptz;
-
 -- The moderation review stream: recently published non-scrape rows. The
 -- scrape is 62k rows and grows only via import; everything else is what
 -- moderators watch.
@@ -33,9 +25,6 @@ create index point_of_sale_reviewable_idx on point_of_sale (created_at desc)
 
 -- +goose Down
 drop index point_of_sale_reviewable_idx;
-alter table point_of_sale
-    drop column moderated_at,
-    drop column moderation_note;
 alter table "user"
     drop column role;
 drop type user_role;
