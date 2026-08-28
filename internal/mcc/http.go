@@ -199,6 +199,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			ID: r.ID.String(), Name: r.Name, MerchantTitle: r.MerchantTitle,
 			Address: r.Address, LastConfirmedAt: r.LastConfirmedAt,
 			Status: string(r.Status),
+			Origin: r.Origin, UserConfirmations: r.UserConfirmations,
 		}
 		if r.MccCode != nil {
 			d.MCC = FormatCode(*r.MccCode)
@@ -232,6 +233,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				ID: r.ID.String(), Name: r.Name, MerchantTitle: r.MerchantTitle,
 				Address: r.Address, LastConfirmedAt: r.LastConfirmedAt,
 				Status: string(r.Status),
+				Origin: r.Origin, UserConfirmations: r.UserConfirmations,
 			}
 			if r.MccCode != nil {
 				d.MCC = FormatCode(*r.MccCode)

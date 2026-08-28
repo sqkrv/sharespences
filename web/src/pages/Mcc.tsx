@@ -3,7 +3,7 @@ import { ApiError, api, unwrap } from "../api/client";
 import { useNavigate, useParams } from "react-router-dom";
 import { useCategories } from "../hooks";
 import { BackButton, Card, ErrMsg, Spinner } from "../components/ui";
-import { FALLBACK_EMOJI } from "../lib";
+import { FALLBACK_EMOJI, POS_ORIGIN_MARK } from "../lib";
 import { Leaderboard } from "./Pos";
 
 // CB-13 «Экран кода» (13a) — where a tap on an MCC lands: the official code
@@ -89,9 +89,19 @@ export default function Mcc() {
                 <span className="block truncate text-[13px] font-bold">{m.name}</span>
                 {m.address && <span className="block truncate text-[10.5px] font-medium text-tx4">{m.address}</span>}
               </span>
+              {POS_ORIGIN_MARK[m.origin] && (
+                <span className="flex-none rounded-md bg-inset px-1 py-[1px] text-[9px] font-semibold text-tx4">
+                  {POS_ORIGIN_MARK[m.origin]}
+                </span>
+              )}
               <span className="text-tx4">›</span>
             </button>
           ))}
+          {/* The same at-point-of-use credit the search list carries — this
+              list serves the scrape too and had no attribution at all. */}
+          <p className="mx-0.5 text-[10.5px] leading-snug font-medium text-tx4">
+            База точек — данные <span className="font-semibold text-tx3">mcc-codes.ru</span>, кроме точек с пометкой.
+          </p>
         </div>
       )}
     </>

@@ -227,6 +227,15 @@ export function plural(n: number, one: string, few: string, many: string): strin
 
 // Human labels of point_of_sale.type — shared by the search rows and the
 // «О точке» card.
+// Provenance mark of a точка (origin, 00027). mcc-codes.ru rows carry the
+// blanket license credit and get NO mark; everything people wrote here is
+// marked, which is what keeps that credit exactly true on a mixed base.
+export const POS_ORIGIN_MARK: Record<string, string> = {
+  user_manual: "от пользователей",
+  user_transaction: "от пользователей",
+  admin: "Sharespences",
+};
+
 export const POS_TYPE_RU: Record<string, string> = {
   offline: "офлайн-точка",
   online: "онлайн",

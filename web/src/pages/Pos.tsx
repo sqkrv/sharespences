@@ -149,9 +149,21 @@ export function AboutPoint({
     ]);
   }
   if (point) {
+    // The credit rides the row it is true of (origin, 00027): scrape rows
+    // name mcc-codes.ru — the license's point of use — the rest name who
+    // actually wrote them.
+    const source =
+      point.origin === "mcc_codes"
+        ? "mcc-codes.ru"
+        : point.origin === "admin"
+          ? "каталог Sharespences"
+          : point.origin === "user_transaction"
+            ? "из операций пользователей"
+            : "добавлена пользователем";
     rows.push([
       "данные",
       [
+        source,
         Number(point.confirmations) > 0
           ? `подтвердили ${point.confirmations} ${plural(Number(point.confirmations), "человек", "человека", "человек")}`
           : "пока без подтверждений",

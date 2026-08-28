@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api, unwrap, type Schemas } from "../api/client";
 import { useCategories } from "../hooks";
 import { BankBadge, Card, ErrMsg, Pct, PosTypeIcon, SegTabs, Spinner } from "../components/ui";
-import { FALLBACK_EMOJI, normalizeTitle } from "../lib";
+import { FALLBACK_EMOJI, POS_ORIGIN_MARK, normalizeTitle } from "../lib";
 import { recentEntries, type RecentEntry } from "../recent";
 
 // CB-04 v2 «Поиск» (redesign 2c/2i): one field, tabs filter the entered
@@ -320,6 +320,11 @@ export default function Search() {
                   </div>
                   <div className="flex flex-none flex-col items-end gap-1">
                     <span className="font-mono text-[12px] leading-tight font-bold text-accl">{m.mcc}</span>
+                    {POS_ORIGIN_MARK[m.origin] && (
+                      <span className="rounded-md bg-inset px-1 py-[1px] text-[9px] font-semibold text-tx4">
+                        {POS_ORIGIN_MARK[m.origin]}
+                      </span>
+                    )}
                     {m.confirmations > 0 && (
                       <span
                         title={`Подтверждений: ${m.confirmations}`}
@@ -449,10 +454,12 @@ export default function Search() {
       )}
 
       {/* mcc-codes.ru permits copying with attribution at the point of use
-          (2026-07-29) — this line is the license, keep it. */}
+          (2026-07-29) — this line is the license, keep it. Since the base is
+          mixed (00027), the credit is scoped: rows people wrote carry their
+          own mark, so what's left unmarked is exactly the scrape. */}
       <p className="mx-1 text-[10.5px] leading-snug font-medium text-tx4">
-        Справочник MCC и база точек — данные <span className="font-semibold text-tx3">mcc-codes.ru</span>; код можно узнать из чека
-        или выписки.
+        Справочник MCC и база точек — данные <span className="font-semibold text-tx3">mcc-codes.ru</span>, кроме точек с
+        пометкой «от пользователей» или «Sharespences»; код можно узнать из чека или выписки.
       </p>
     </>
   );

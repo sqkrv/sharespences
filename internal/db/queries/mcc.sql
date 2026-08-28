@@ -119,8 +119,10 @@ select id,
        coalesce(type::text, '')::text as pos_type,
        address,
        confirmations,
+       user_confirmations,
        last_confirmed_at,
-       status
+       status,
+       origin::text as origin
 from point_of_sale
 where id = $1
   and (status = 'approved' or (author_user_id = sqlc.arg(user_id)::uuid and status = 'pending'))

@@ -146,8 +146,10 @@ select id,
        coalesce(type::text, '')::text as pos_type,
        address,
        confirmations,
+       user_confirmations,
        last_confirmed_at,
-       status
+       status,
+       origin::text as origin
 from point_of_sale
 where id = $1
   and (status = 'approved' or (author_user_id = $2::uuid and status = 'pending'))
@@ -164,15 +166,17 @@ type GetPointOfSaleParams struct {
 }
 
 type GetPointOfSaleRow struct {
-	ID              uuid.UUID
-	Name            string
-	MerchantTitle   *string
-	MccCode         *int16
-	PosType         string
-	Address         *string
-	Confirmations   *int64
-	LastConfirmedAt *time.Time
-	Status          PointOfSaleStatus
+	ID                uuid.UUID
+	Name              string
+	MerchantTitle     *string
+	MccCode           *int16
+	PosType           string
+	Address           *string
+	Confirmations     *int64
+	UserConfirmations int64
+	LastConfirmedAt   *time.Time
+	Status            PointOfSaleStatus
+	Origin            string
 }
 
 // The «О точке» card (8b): one row by id — approved, or the caller's own
@@ -188,8 +192,10 @@ func (q *Queries) GetPointOfSale(ctx context.Context, arg GetPointOfSaleParams) 
 		&i.PosType,
 		&i.Address,
 		&i.Confirmations,
+		&i.UserConfirmations,
 		&i.LastConfirmedAt,
 		&i.Status,
+		&i.Origin,
 	)
 	return i, err
 }
