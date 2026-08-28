@@ -677,7 +677,8 @@ func TestAssessAvailability(t *testing.T) {
 
 // TestRankAvailable: actionable verdicts first, then the ranked ordering
 // (currency group, percent desc) within. Blocked verdicts (slots_full,
-// locked) never reach ranking — services drop non-Pickable rows.
+// locked) rank too since 2026-08-28 — the lookup boards show them apart —
+// and always land after everything still pickable.
 func TestRankAvailable(t *testing.T) {
 	mk := func(v AvailabilityVerdict, pctStr string, cur CurrencyKind, bank string) AvailableEntry {
 		return AvailableEntry{
@@ -688,11 +689,15 @@ func TestRankAvailable(t *testing.T) {
 	got := RankAvailable([]AvailableEntry{
 		mk(AvailUnknown, "10", CurrencyRub, "Газпромбанк"),
 		mk(AvailFree, "5", CurrencyRub, "А"),
+		mk(AvailSlotsFull, "20", CurrencyRub, "ВТБ"),
 		mk(AvailFree, "8", CurrencyRub, "Б"),
 		mk(AvailFree, "7", CurrencyPoints, "Яндекс Пэй"),
+		mk(AvailLocked, "15", CurrencyRub, "Ozon Банк"),
 		mk(AvailPaid, "9", CurrencyRub, "МКБ"),
 	})
-	wantOrder := []string{"8", "5", "7", "9", "10"} // free rub desc, free points, paid, unknown
+	// free rub desc, free points, paid, unknown — then the blocked pair,
+	// however high their percent (they pay nothing this period).
+	wantOrder := []string{"8", "5", "7", "9", "10", "20", "15"}
 	if len(got) != len(wantOrder) {
 		t.Fatalf("RankAvailable() len = %d, want %d", len(got), len(wantOrder))
 	}
@@ -703,9 +708,11 @@ func TestRankAvailable(t *testing.T) {
 	}
 }
 
-// TestVerdictPickable pins the display rule (2026-08-07): a row whose slot
+// TestVerdictPickable pins the CTA rule (2026-08-07): a row whose slot
 // window is gone can never come back — no bank lets a pick be removed — so
-// slots_full and locked are not shown, everything else is.
+// slots_full and locked carry no call to action, everything else does. Since
+// 2026-08-28 that no longer means invisible: the lookup boards serve blocked
+// rows in their own section, only the feed still drops them.
 func TestVerdictPickable(t *testing.T) {
 	want := map[AvailabilityVerdict]bool{
 		AvailFree: true, AvailPaid: true, AvailUnknown: true,

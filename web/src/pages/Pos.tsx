@@ -15,6 +15,7 @@ import {
   monthKey,
   plural,
   todayISO,
+  verdictNote,
 } from "../lib";
 import { pushRecent } from "../recent";
 
@@ -35,6 +36,7 @@ import { pushRecent } from "../recent";
 type MccBoard = {
   ranked?: LookupEntry[] | null;
   available?: Schemas["AvailableEntryDTO"][] | null;
+  blocked?: Schemas["AvailableEntryDTO"][] | null;
   base?: LookupEntry[] | null;
 };
 
@@ -192,6 +194,50 @@ function pctOf(p?: string | null): number {
   return p != null ? parseFloat(p) : -1;
 }
 
+// «В меню, но не выбрано»: rows the bank does hold for this answer, in a
+// period that can no longer take them — slots full, or a one-shot menu
+// already confirmed. Dead ends, so they stay out of the percent leaderboard
+// (they pay nothing here) and carry no CTA; what they carry is the fact the
+// board looked broken without — «у этого банка эта категория есть, просто не
+// выбрана». The client's real answer for this point stays in the base fold
+// below. A tap opens the bank's menu, where next period is picked.
+function BlockedRows({ rows }: { rows: Schemas["AvailableEntryDTO"][] }) {
+  const { openClient } = useOpenEntry();
+  if (rows.length === 0) return null;
+  return (
+    <>
+      <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">В меню, но не выбрано</p>
+      <div className="space-y-1.5" data-sid="CB-11.h">
+        {rows.map((e) => (
+          <button
+            key={e.offer_id}
+            type="button"
+            onClick={() => openClient(e.bank_client_id)}
+            className="flex w-full items-center gap-2.5 rounded-2xl border border-brd bg-srf/45 px-3 py-2.5 text-left opacity-65"
+          >
+            <BankBadge name={e.bank_name} size={26} />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13.5px] font-bold">
+                {e.bank_name}
+                {e.holder_label && <span className="font-semibold text-tx4"> · {e.holder_label}</span>}
+              </p>
+              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] font-medium">
+                <span className="h-1.5 w-1.5 flex-none rounded-full bg-tx4" />
+                <span className="font-semibold text-tx3">{verdictNote(e)}</span>
+                <span className="text-tx4">
+                  {e.emoji && `${e.emoji} `}«{e.raw_title}»
+                </span>
+              </p>
+            </div>
+            <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
+            {CHEVRON}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
 type BoardRow =
   | { key: string; kind: "entry"; percent?: string | null; e: LookupEntry }
   | { key: string; kind: "avail"; percent?: string | null; a: Schemas["AvailableEntryDTO"] }
@@ -216,8 +262,9 @@ export function Leaderboard({ board, matches, sid }: { board: MccBoard; matches:
     ...(board.available ?? []).map((a): BoardRow => ({ key: `a${a.offer_id}`, kind: "avail", percent: a.percent, a })),
   ].sort((x, y) => pctOf(y.percent) - pctOf(x.percent));
   const base = board.base ?? [];
+  const blocked = board.blocked ?? [];
 
-  if (rows.length === 0 && base.length === 0) {
+  if (rows.length === 0 && base.length === 0 && blocked.length === 0) {
     return (
       <Card className="space-y-1.5 p-4 text-center">
         <p className="text-sm font-semibold text-tx2">Точных ответов нет</p>
@@ -249,7 +296,12 @@ export function Leaderboard({ board, matches, sid }: { board: MccBoard; matches:
         </button>
       )}
 
-      <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Чем платить — по убыванию</p>
+      {/* The label belongs to the list — with nothing rankable it used to
+          head an empty div, which now reads as a section that lost its
+          rows above «В меню, но не выбрано». */}
+      {rows.length > 0 && (
+        <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Чем платить — по убыванию</p>
+      )}
       <div className="space-y-1.5" data-sid={sid}>
         {rows.map((row, i) => {
           const lead = i === 0;
@@ -342,6 +394,8 @@ export function Leaderboard({ board, matches, sid }: { board: MccBoard; matches:
         })}
       </div>
 
+      <BlockedRows rows={blocked} />
+
       {/* Everything without an exact answer — incl. every bank whose MCC
           memberships are not ingested yet — answers with its base row. */}
       {base.length > 0 && (
@@ -429,7 +483,7 @@ function PointScreen({ mcc, merchant, posID }: { mcc: string; merchant: string |
           deleted, or simply invented. The MCC below is still a real answer, so
           the screen degrades to it rather than 404-ing the whole page. */}
       {unresolved && !loadingPoint && (
-        <Card className="space-y-1 p-4" data-sid="CB-11.d">
+        <Card className="space-y-1 p-4" data-sid="CB-11.i">
           <p className="text-sm font-semibold text-tx2">Такой точки в базе нет</p>
           <p className="text-[11.5px] font-medium text-tx4">
             Ссылка могла вести на точку, которая ещё на модерации или отклонена. Ниже — чем платить по MCC {mcc}.
@@ -478,6 +532,7 @@ function CategoryScreen({ slug }: { slug: string }) {
   const best = ranked[0];
   const others = ranked.slice(1);
   const available = lookup.data?.available ?? [];
+  const blocked = lookup.data?.blocked ?? [];
   const baseClients = (lookup.data?.fallback ?? []).filter((e) => !e.friend_name);
   const cardChipsOf = (e: LookupEntry) =>
     (cards.data ?? [])
@@ -613,6 +668,8 @@ function CategoryScreen({ slug }: { slug: string }) {
               </button>
             ))}
           </div>
+
+          <BlockedRows rows={blocked} />
 
           {baseClients.length > 0 && (
             <div className="rounded-xl border border-brd bg-srf/60 px-3 py-2.5" data-sid="CB-11.f">

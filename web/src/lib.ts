@@ -248,12 +248,12 @@ export const POS_TYPE_RU: Record<string, string> = {
 export const FALLBACK_EMOJI = "🏷️";
 
 // S3b verdict copy — fact-based states, never guesses (spec S3b). Shared by
-// the feed's dashed rows and the lookup's «Можно выбрать» section. Every
-// served row is pickable: the API drops slots_full/locked rows (no bank lets
-// a pick be removed mid-period, so those were dead ends, 2026-08-07). The
-// commonest verdict — free, right now — says nothing at all: the dashed
-// style already means «можно выбрать», so only the exceptions get words
-// (feedback 2026-08-25).
+// the feed's dashed rows, the lookup's «Можно выбрать» section and the
+// lookup boards' «В меню, но не выбрано» block. The commonest verdict —
+// free, right now — says nothing at all: the dashed style already means
+// «можно выбрать», so only the exceptions get words (feedback 2026-08-25).
+// The two blocked verdicts do carry words: their rows are dim and reasonless
+// otherwise (2026-08-28; the feed still never receives them).
 export function verdictNote(e: { verdict: string; kind?: string; activation?: string }): string {
   const parts: string[] = [];
   switch (e.verdict) {
@@ -263,10 +263,18 @@ export function verdictNote(e: { verdict: string; kind?: string; activation?: st
     case "paid":
       parts.push("платно");
       break;
+    case "slots_full":
+      parts.push("слоты заняты");
+      break;
+    case "locked":
+      parts.push("выбор закрыт");
+      break;
     default:
       parts.push("правила неизвестны");
   }
-  if (e.activation === "next_day") parts.push("активация завтра");
+  // «активация завтра» is advice for a pick still ahead of you — a blocked
+  // row has none, so the note would only muddle its reason.
+  if (e.activation === "next_day" && e.verdict !== "slots_full" && e.verdict !== "locked") parts.push("активация завтра");
   return parts.join(" · ");
 }
 

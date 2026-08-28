@@ -264,7 +264,16 @@ type lookupJSON struct {
 		BankName string  `json:"bank_name"`
 		Percent  *string `json:"percent"`
 	} `json:"fallback"`
-	Message string `json:"message"`
+	Available []availableJSON `json:"available"`
+	Blocked   []availableJSON `json:"blocked"`
+	Message   string          `json:"message"`
+}
+
+type availableJSON struct {
+	BankName string  `json:"bank_name"`
+	RawTitle string  `json:"raw_title"`
+	Percent  *string `json:"percent"`
+	Verdict  string  `json:"verdict"`
 }
 
 func TestCashbackE2E(t *testing.T) {
@@ -672,6 +681,19 @@ func TestCashbackE2E(t *testing.T) {
 	// (2026-08-07; earlier redesign cut showed it dashed with slots_full).
 	if len(overview.Categories) != 4 {
 		t.Fatalf("overview categories = %d, want 4 selected (unpickable Рестораны dropped)", len(overview.Categories))
+	}
+	// The lookup does NOT drop it (2026-08-28): the same row the feed hides
+	// is served under `blocked`, because «у Альфы эта категория есть» is the
+	// answer the screen looked broken without. It stays out of `available` —
+	// nothing here can be picked before the period ends.
+	var restaurants lookupJSON
+	owner.must("GET", "/api/v1/cashback/lookup?category=restaurants&date=2026-07-15", nil, &restaurants, http.StatusOK)
+	if len(restaurants.Available) != 0 {
+		t.Fatalf("restaurants available = %+v, want none (Альфа-Банк is 4/4)", restaurants.Available)
+	}
+	if len(restaurants.Blocked) != 1 || restaurants.Blocked[0].BankName != "Альфа-Банк" ||
+		restaurants.Blocked[0].RawTitle != "Рестораны" || restaurants.Blocked[0].Verdict != "slots_full" {
+		t.Fatalf("restaurants blocked = %+v, want the Альфа-Банк Рестораны row with slots_full", restaurants.Blocked)
 	}
 	withBest, withAvail := 0, 0
 	type catRow = struct {

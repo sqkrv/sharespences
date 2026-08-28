@@ -293,13 +293,15 @@ func lookupEntryDTO(e LookupEntry) LookupEntryDTO {
 }
 
 // AvailableEntryDTO is one S3b «Можно выбрать» row: an offered-but-unselected
-// menu offer with a fact-based verdict (spec S3b, 2026-07-16). Only pickable
-// rows are served — slots_full/locked are dead ends (no bank lets a pick be
-// removed mid-period) and are dropped server-side (2026-08-07).
+// menu offer with a fact-based verdict (spec S3b, 2026-07-16). The verdict
+// decides which list carries it: `available` holds the pickable three, the
+// lookup boards' `blocked` holds slots_full/locked — dead ends this period
+// (no bank lets a pick be removed mid-period), served since 2026-08-28 as
+// «в меню, но не выбрано» rather than dropped. The feed drops them still.
 type AvailableEntryDTO struct {
 	LookupEntryDTO
 	OfferID    int64  `json:"offer_id" doc:"category_offer id — «Отметить выбранной» posts the ordinary selection for it"`
-	Verdict    string `json:"verdict" enum:"free,paid,unknown"`
+	Verdict    string `json:"verdict" enum:"free,paid,unknown,slots_full,locked"`
 	Activation string `json:"activation" enum:"immediate,next_day,unknown" doc:"next_day (МКБ): a fresh pick won't cover a purchase made right now"`
 }
 
@@ -1324,6 +1326,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		Body struct {
 			Ranked    []LookupEntryDTO    `json:"ranked,omitempty" doc:"selected rows whose bank counts this code in that category (bank_category_mcc) — own + friends'"`
 			Available []AvailableEntryDTO `json:"available,omitempty" doc:"exact-matched menu rows still pickable («свободный слот»)"`
+			Blocked   []AvailableEntryDTO `json:"blocked,omitempty" doc:"exact-matched menu rows this period can no longer take (slots_full/locked) — shown apart, the client still answers with its base row"`
 			Base      []LookupEntryDTO    `json:"base,omitempty" doc:"«Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships"`
 		}
 	}, error) {
@@ -1342,6 +1345,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Body struct {
 				Ranked    []LookupEntryDTO    `json:"ranked,omitempty" doc:"selected rows whose bank counts this code in that category (bank_category_mcc) — own + friends'"`
 				Available []AvailableEntryDTO `json:"available,omitempty" doc:"exact-matched menu rows still pickable («свободный слот»)"`
+				Blocked   []AvailableEntryDTO `json:"blocked,omitempty" doc:"exact-matched menu rows this period can no longer take (slots_full/locked) — shown apart, the client still answers with its base row"`
 				Base      []LookupEntryDTO    `json:"base,omitempty" doc:"«Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships"`
 			}
 		}{}
@@ -1350,6 +1354,9 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		for _, a := range board.Available {
 			out.Body.Available = append(out.Body.Available, availableEntryDTO(a))
+		}
+		for _, a := range board.Blocked {
+			out.Body.Blocked = append(out.Body.Blocked, availableEntryDTO(a))
 		}
 		for _, e := range board.Base {
 			out.Body.Base = append(out.Body.Base, lookupEntryDTO(e))
@@ -1370,6 +1377,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Ranked    []LookupEntryDTO     `json:"ranked" doc:"regular + super + special, marked by kind (invariant 6 amendment 2026-07-27)"`
 			Fallback  []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
 			Available []AvailableEntryDTO  `json:"available,omitempty" doc:"S3b: offered-but-unselected menu rows, actionable verdicts first"`
+			Blocked   []AvailableEntryDTO  `json:"blocked,omitempty" doc:"offered-but-unselected rows this period can no longer take (slots_full/locked)"`
 			Partner   []PartnerOfferDTO    `json:"partner,omitempty"`
 			Message   string               `json:"message,omitempty"`
 		}
@@ -1392,6 +1400,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Ranked    []LookupEntryDTO     `json:"ranked" doc:"regular + super + special, marked by kind (invariant 6 amendment 2026-07-27)"`
 				Fallback  []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
 				Available []AvailableEntryDTO  `json:"available,omitempty" doc:"S3b: offered-but-unselected menu rows, actionable verdicts first"`
+				Blocked   []AvailableEntryDTO  `json:"blocked,omitempty" doc:"offered-but-unselected rows this period can no longer take (slots_full/locked)"`
 				Partner   []PartnerOfferDTO    `json:"partner,omitempty"`
 				Message   string               `json:"message,omitempty"`
 			}
@@ -1407,6 +1416,9 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		for _, a := range res.Available {
 			out.Body.Available = append(out.Body.Available, availableEntryDTO(a))
+		}
+		for _, a := range res.Blocked {
+			out.Body.Blocked = append(out.Body.Blocked, availableEntryDTO(a))
 		}
 		for _, p := range res.Partner {
 			out.Body.Partner = append(out.Body.Partner, PartnerOfferDTO{

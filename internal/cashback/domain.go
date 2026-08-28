@@ -474,9 +474,15 @@ func AssessAvailability(c AvailabilityCheck) AvailabilityVerdict {
 
 // Pickable reports whether the row can still become a selection. slots_full
 // and locked are dead ends: no bank lets a chosen category be unpicked
-// mid-period, so «free a slot first» is never an action the user can take —
-// blocked rows are filtered out instead of being shown with an excuse
-// (2026-08-07; supersedes the S3b «показ всегда при наличии» reading).
+// mid-period, so «free a slot first» is never an action the user can take
+// (2026-08-07).
+//
+// Since 2026-08-28 that governs the call to action, not visibility: the
+// lookup boards serve blocked rows in a section of their own — «в меню, но
+// не выбрано» — because «этот банк считает код в своей категории» is worth
+// knowing even when the period is settled, and a board that hides it reads
+// as broken. The feed still drops them: its row advertises a rate the user
+// can go and take.
 func (v AvailabilityVerdict) Pickable() bool {
 	return v != AvailSlotsFull && v != AvailLocked
 }
@@ -490,16 +496,20 @@ type AvailableEntry struct {
 	Activation ActivationKind
 }
 
-// verdictOrder: free first, then paid, then unknown. Blocked verdicts never
-// reach ranking — callers drop non-Pickable rows at construction.
+// verdictOrder: free first, then paid, then unknown, then the blocked pair
+// (slots_full, locked). Blocked rows are ranked in a list of their own, but
+// the shared order keeps a mixed slice honest — nothing that cannot be
+// picked ever sorts above something that can, whatever its percent.
 func verdictOrder(v AvailabilityVerdict) int {
 	switch v {
 	case AvailFree:
 		return 0
 	case AvailPaid:
 		return 1
-	default: // AvailUnknown
+	case AvailUnknown:
 		return 2
+	default: // AvailSlotsFull, AvailLocked
+		return 3
 	}
 }
 

@@ -1155,7 +1155,7 @@ export interface components {
             /** @description the барабан granted on top of that pick — mark the row «барабан» when this is set */
             stacked_super?: string;
             /** @enum {string} */
-            verdict: "free" | "paid" | "unknown";
+            verdict: "free" | "paid" | "unknown" | "slots_full" | "locked";
         };
         "Bank-client-createRequest": {
             /**
@@ -1377,6 +1377,8 @@ export interface components {
             readonly $schema?: string;
             /** @description S3b: offered-but-unselected menu rows, actionable verdicts first */
             available?: components["schemas"]["AvailableEntryDTO"][] | null;
+            /** @description offered-but-unselected rows this period can no longer take (slots_full/locked) */
+            blocked?: components["schemas"]["AvailableEntryDTO"][] | null;
             category: components["schemas"]["CanonicalCategoryDTO"];
             date: string;
             /** @description selected «За все покупки» — pays when nothing ranks */
@@ -1397,6 +1399,8 @@ export interface components {
             available?: components["schemas"]["AvailableEntryDTO"][] | null;
             /** @description «Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships */
             base?: components["schemas"]["LookupEntryDTO"][] | null;
+            /** @description exact-matched menu rows this period can no longer take (slots_full/locked) — shown apart, the client still answers with its base row */
+            blocked?: components["schemas"]["AvailableEntryDTO"][] | null;
             /** @description selected rows whose bank counts this code in that category (bank_category_mcc) — own + friends' */
             ranked?: components["schemas"]["LookupEntryDTO"][] | null;
         };

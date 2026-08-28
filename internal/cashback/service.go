@@ -1353,7 +1353,8 @@ type LookupResultView struct {
 	Category  db.CanonicalCategory
 	Ranked    []LookupEntry    // regular + super + special + partner, marked by kind
 	Fallback  []LookupEntry    // selected «За все покупки» — pays when nothing ranks
-	Available []AvailableEntry // S3b: offered-but-unselected rows with verdicts
+	Available []AvailableEntry // S3b: offered-but-unselected rows still pickable
+	Blocked   []AvailableEntry // offered-but-unselected rows this period can no longer take
 	Partner   []db.ListPartnerOffersForUserRow
 }
 
@@ -1441,7 +1442,7 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 			regCount[o.OfferPeriodID]++
 		}
 	}
-	var available []AvailableEntry
+	var available, blocked []AvailableEntry
 	for _, o := range all {
 		if o.Selected || o.CanonicalCategoryID == nil || *o.CanonicalCategoryID != cat.ID {
 			continue
@@ -1461,15 +1462,17 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 			MaxCategories:        max,
 			RegularSelectedCount: regCount[o.OfferPeriodID],
 		})
-		if !verdict.Pickable() {
-			continue
-		}
-		available = append(available, AvailableEntry{
+		row := AvailableEntry{
 			Entry:      entryOf(o),
 			OfferID:    o.CategoryOfferID,
 			Verdict:    verdict,
 			Activation: ActivationKind(o.Activation),
-		})
+		}
+		if !verdict.Pickable() {
+			blocked = append(blocked, row)
+			continue
+		}
+		available = append(available, row)
 	}
 
 	// «За все покупки» answers the lookup when nothing ranks — and is worth
@@ -1507,7 +1510,7 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 	}
 	return LookupResultView{
 		Category: cat, Ranked: ranked.Ranked,
-		Fallback: fallback, Available: RankAvailable(available), Partner: footnote,
+		Fallback: fallback, Available: RankAvailable(available), Blocked: RankAvailable(blocked), Partner: footnote,
 	}, nil
 }
 
@@ -1563,6 +1566,7 @@ func isPgCode(err error, code string) bool {
 type MCCBoard struct {
 	Ranked    []LookupEntry    // selected rows, own + friends', stacked супер folded in
 	Available []AvailableEntry // exact-matched menu rows still pickable («свободный слот»)
+	Blocked   []AvailableEntry // exact-matched menu rows this period can no longer take
 	Base      []LookupEntry    // clients whose only answer is the selected base row
 }
 
@@ -1625,7 +1629,7 @@ func (s *Service) LookupByMCC(ctx context.Context, userID uuid.UUID, code int16,
 	}
 
 	var entries []LookupEntry
-	var avail []AvailableEntry
+	var avail, blocked []AvailableEntry
 	covered := make(map[int64]bool) // client ids answering above the base fold
 	for _, o := range offers {
 		if !countsForCode(o.BankID, o.BankCategoryID, o.CanonicalCategoryID) {
@@ -1653,15 +1657,20 @@ func (s *Service) LookupByMCC(ctx context.Context, userID uuid.UUID, code int16,
 			MaxCategories:        max,
 			RegularSelectedCount: regCount[o.OfferPeriodID],
 		})
-		if !verdict.Pickable() {
-			continue
-		}
-		avail = append(avail, AvailableEntry{
+		row := AvailableEntry{
 			Entry:      entryOf(o),
 			OfferID:    o.CategoryOfferID,
 			Verdict:    verdict,
 			Activation: ActivationKind(o.Activation),
-		})
+		}
+		if !verdict.Pickable() {
+			// The bank does count this code — in a category this period can
+			// no longer take. Shown apart, and deliberately NOT «covered»:
+			// the client's honest answer here stays its base row.
+			blocked = append(blocked, row)
+			continue
+		}
+		avail = append(avail, row)
 		covered[o.BankClientID] = true
 	}
 
@@ -1698,6 +1707,7 @@ func (s *Service) LookupByMCC(ctx context.Context, userID uuid.UUID, code int16,
 
 	board.Ranked = RankActiveSelections(onDate, entries).Ranked
 	board.Available = RankAvailable(avail)
+	board.Blocked = RankAvailable(blocked)
 
 	var allPurposesID *int64
 	if ap, err := s.Q.GetCanonicalCategoryBySlug(ctx, "all-purchases"); err == nil {
