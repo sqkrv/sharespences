@@ -37,14 +37,27 @@ function storedCatsSort(): CatsSort {
   return localStorage.getItem(CATS_SORT_KEY) === "percent" ? "percent" : "alpha";
 }
 
-// The row's displayed winner under the friend rule: the friend only when the
-// pref shows friends; otherwise the own best; the dashed available entry when
-// nothing is selected at all. Never nothing — the API drops empty groups.
+// Percent as a number for display ordering; unknown last. Nominal across
+// currencies — the same rule the боards use (2026-08-27): ordering is not
+// conversion.
+function pctNum(p?: string | null): number {
+  return p != null ? parseFloat(p) : -1;
+}
+
+// The row's displayed winner: the best rate the row can honestly show —
+// 9a's own rule, «передний логотип — банк с максимальным процентом, ему и
+// принадлежит цифра». A friend's 9% must not front a row that has a
+// still-pickable 10% below it (feedback 2026-08-28). Ties resolve by the
+// least action needed: an own selected card already pays, a friend's needs
+// asking, a «свободный слот» needs picking first.
 function winnerOf(g: CategoryGroup, friendsOn: boolean): { entry: LookupEntry; state: "friend" | "own" | "available" } | null {
-  if (friendsOn && g.friend_best) return { entry: g.friend_best, state: "friend" };
-  if (g.best) return { entry: g.best, state: "own" };
-  if (g.available) return { entry: g.available, state: "available" };
-  return null;
+  const candidates: { entry: LookupEntry; state: "friend" | "own" | "available"; prio: number }[] = [];
+  if (g.best) candidates.push({ entry: g.best, state: "own", prio: 0 });
+  if (friendsOn && g.friend_best) candidates.push({ entry: g.friend_best, state: "friend", prio: 1 });
+  if (g.available) candidates.push({ entry: g.available, state: "available", prio: 2 });
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => pctNum(b.entry.percent) - pctNum(a.entry.percent) || a.prio - b.prio);
+  return candidates[0];
 }
 
 // Gold mechanic chip for a winner row: the stacked барабан shows its parts
@@ -108,52 +121,49 @@ function ExpandedCategory({
 
   return (
     <div className="mt-2.5 ml-8 space-y-2 border-t border-brd/60 pt-2.5" data-sid="CB-01.f">
-      {ranked.map((e, i) => (
-        <button
-          key={`${e.bank_client_id}-${i}`}
-          type="button"
-          onClick={() => openEntry(e)}
-          className="flex w-full items-center gap-2 text-left"
-        >
-          <BankBadge name={e.bank_name} size={18} />
-          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-tx2">
-            {e.bank_name}
-            {e.holder_label ? ` · ${e.holder_label}` : e.friend_name || e.kind === "partner" ? "" : " · Я"}
-            {e.friend_name && <span className="ml-1.5"><Chip tone="friend">друг · {e.friend_name}</Chip></span>}
-            {e.kind === "partner" && (
-              <span className="ml-1.5">
-                <Chip tone="gold">партнёрка{e.partner_scope === "merchant" ? ` · только в «${e.raw_title}»` : ""}</Chip>
-              </span>
-            )}
-            {e.currency_kind === "points" && <span className="ml-1.5"><Chip tone="points">{e.points_label || "баллы"}</Chip></span>}
-            {!e.friend_name && e.kind !== "partner" && capNote(e) && <span className="font-medium text-tx4"> · {capNote(e)}</span>}
-          </span>
-          <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
-          <span className="flex-none text-[10px] text-tx4">›</span>
-        </button>
-      ))}
-      {/* Every served «можно выбрать» row is pickable — the API drops the
-          dead ends (slots_full/locked); picking happens in the bank menu. */}
-      {available.map((e) => (
-        <button
-          key={e.offer_id}
-          type="button"
-          onClick={() => openEntry(e)}
-          className="flex w-full items-center gap-2 text-left"
-        >
-          <BankBadge name={e.bank_name} size={18} />
-          <span className="min-w-0 flex-1 text-xs font-semibold text-tx2">
-            {e.bank_name}
-            {e.holder_label && ` · ${e.holder_label}`}
-            {verdictNote(e) && <span className="block text-[10px] font-medium text-tx4">{verdictNote(e)}</span>}
-          </span>
-          <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
-          <span className="flex-none text-[10px] text-tx4">›</span>
-        </button>
-      ))}
+      {/* One list, nominal percent descending (feedback 2026-08-28) — a
+          10% «свободный слот» must not hide under a 9% selected row. The
+          outlined dot + «свободный слот» is what tells the states apart;
+          every served available row is pickable (the API drops dead ends),
+          picking happens in the bank menu. */}
+      {[
+        ...ranked.map((e, i) => ({ key: `r-${e.bank_client_id}-${i}`, avail: false as const, e })),
+        ...available.map((e) => ({ key: `a-${e.offer_id}`, avail: true as const, e })),
+      ]
+        .sort((a, b) => pctNum(b.e.percent) - pctNum(a.e.percent))
+        .map(({ key, avail, e }) => (
+          <button key={key} type="button" onClick={() => openEntry(e)} className="flex w-full items-center gap-2 text-left">
+            <BankBadge name={e.bank_name} size={18} />
+            <span className="min-w-0 flex-1 truncate text-xs font-semibold text-tx2">
+              {e.bank_name}
+              {e.holder_label ? ` · ${e.holder_label}` : e.friend_name || e.kind === "partner" || avail ? "" : " · Я"}
+              {avail && (
+                <span className="ml-1.5 inline-flex items-baseline gap-1 text-[10px] font-semibold text-tx3">
+                  <span className="h-1.5 w-1.5 flex-none self-center rounded-full border-[1.5px] border-tx4" />
+                  свободный слот
+                </span>
+              )}
+              {avail && verdictNote(e as Schemas["AvailableEntryDTO"]) && (
+                <span className="ml-1 text-[10px] font-medium text-tx4">· {verdictNote(e as Schemas["AvailableEntryDTO"])}</span>
+              )}
+              {!avail && e.friend_name && <span className="ml-1.5"><Chip tone="friend">друг · {e.friend_name}</Chip></span>}
+              {!avail && e.kind === "partner" && (
+                <span className="ml-1.5">
+                  <Chip tone="gold">партнёрка{e.partner_scope === "merchant" ? ` · только в «${e.raw_title}»` : ""}</Chip>
+                </span>
+              )}
+              {e.currency_kind === "points" && <span className="ml-1.5"><Chip tone="points">{e.points_label || "баллы"}</Chip></span>}
+              {!avail && !e.friend_name && e.kind !== "partner" && capNote(e) && (
+                <span className="font-medium text-tx4"> · {capNote(e)}</span>
+              )}
+            </span>
+            <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
+            <span className="flex-none text-[10px] text-tx4">›</span>
+          </button>
+        ))}
       {currencies.has("points") && currencies.size > 1 && (
         <p className="text-[10px] leading-snug font-medium text-tx4">
-          Баллы не сравниваются с рублями напрямую — в строке рублёвый победитель, балльный здесь.
+          Баллы в рубли не пересчитываются — лиловый процент считается баллами.
         </p>
       )}
     </div>

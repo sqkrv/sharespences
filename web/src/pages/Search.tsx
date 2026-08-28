@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api, unwrap, type Schemas } from "../api/client";
@@ -36,42 +36,19 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 // phone, and a wrong query should cost one round trip, not fifty rows.
 const MERCHANT_PAGE = 20;
 
-// LoadMore is the bottom-of-list sentinel: it asks for the next page when it
-// scrolls into view, one page ahead of the last row (rootMargin) so the list
-// grows before the user reaches the end. It stays an observer rather than a
-// scroll listener — no throttling to tune, and it works inside whatever
-// scroll container the page ends up with. It is also a real button: the
-// observer never fires for a keyboard user who tabs to the end, nor in a
-// backgrounded tab, and a list that stops loading with no way to continue is
-// the bug this replaced.
-function LoadMore({ onVisible, busy }: { onVisible: () => void; busy: boolean }) {
-  const ref = useRef<HTMLButtonElement>(null);
-  // `busy` is a dependency on purpose: an IntersectionObserver only reports
-  // *changes*, so a sentinel that stays in view after a page lands never
-  // fires again and the list stops one page in. Re-observing once the fetch
-  // settles re-delivers the current state, which continues the scroll for as
-  // long as the sentinel is still on screen.
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || busy) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) onVisible();
-      },
-      { rootMargin: "300px" },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [onVisible, busy]);
+// LoadMore is an explicit button, not an infinite scroll (owner 2026-08-28):
+// the next batch loads when asked, so the list ends where the user stopped
+// asking — the license footer and the other groups stay reachable instead
+// of running away from the scroll.
+function LoadMore({ onVisible, busy, remaining }: { onVisible: () => void; busy: boolean; remaining: number }) {
   return (
     <button
-      ref={ref}
       type="button"
       onClick={onVisible}
       disabled={busy}
-      className="w-full py-2 text-center text-[10.5px] font-medium text-tx4"
+      className="w-full rounded-2xl border border-dashed border-dash py-2.5 text-center text-[12px] font-semibold text-tx3 disabled:opacity-50"
     >
-      {busy ? "Загрузка…" : "Ещё"}
+      {busy ? "Загрузка…" : `Показать ещё${remaining > 0 ? ` · ${remaining}` : ""}`}
     </button>
   );
 }
@@ -342,7 +319,7 @@ export default function Search() {
               {/* Load-more sentinel: crossing it pulls the next page, so the
                   list ends where the matches end rather than at the page size. */}
               {merchants.hasNextPage && (
-                <LoadMore onVisible={merchants.fetchNextPage} busy={merchants.isFetchingNextPage} />
+                <LoadMore onVisible={merchants.fetchNextPage} busy={merchants.isFetchingNextPage} remaining={merchantTotal - merchantRows.length} />
               )}
             </div>
           )}
