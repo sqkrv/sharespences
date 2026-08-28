@@ -19,36 +19,38 @@ const buildLabel = Number.isNaN(built.getTime())
   ? null
   : built.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
 
-// SYS-03.f (roles ≠ user only): the queue counter follows the design's
-// «Входящие · 2» group-label pattern, so a moderator sees from «Сервисы»
-// whether anything waits without opening MD-01. Query key shares the
-// ["moderation"] prefix — moderating invalidates the counter too.
+// SYS-03.f (design4 board 1a, roles ≠ user only): a compact accent row —
+// shield squircle, name, subtitle, and the queue-size badge. Moderators get
+// no notifications by design (in-app visibility only, как у друзей) — this
+// badge IS the whole push. Query key shares the ["moderation"] prefix, so
+// acting in MD-01 refreshes it.
 function ModerationCard() {
   const queue = useQuery({
     queryKey: ["moderation", "badge"],
     queryFn: async () =>
       unwrap(await api.GET("/api/v1/moderation/pos", { params: { query: { state: "pending", limit: 1 } } })),
-    staleTime: 60_000,
+    staleTime: 30_000,
   });
   const total = queue.data?.total ?? 0;
   return (
-    <Card className="p-4" data-sid="SYS-03.f">
-      <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Модерация</p>
-      <p className="mt-2 text-sm font-medium text-tx3">
-        Заявки на новые точки продаж: очередь на проверку и недавно опубликованные.
-      </p>
-      <div className="mt-3 flex items-center justify-between gap-2">
-        <Link to="/moderation" className="text-sm font-semibold text-accl">
-          Открыть модерацию →
-        </Link>
-        {queue.data &&
-          (total > 0 ? (
-            <span className="rounded-lg bg-acc/15 px-2 py-0.5 text-[11px] font-bold text-accl">в очереди · {total}</span>
-          ) : (
-            <span className="text-[11px] font-medium text-tx4">очередь пуста</span>
-          ))}
-      </div>
-    </Card>
+    <Link
+      to="/moderation"
+      className="flex items-center gap-3 rounded-2xl border border-acc bg-srf2 px-3.5 py-3 shadow-[0_10px_26px_-16px_rgba(139,111,255,.5)]"
+      data-sid="SYS-03.f"
+    >
+      <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[13px] bg-inset text-[17px]">
+        🛡️
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold">Модерация</span>
+        <span className="block text-[11px] font-medium text-tx3">точки продаж на проверке</span>
+      </span>
+      {total > 0 && (
+        <span className="flex h-6 min-w-6 flex-none items-center justify-center rounded-[9px] bg-acc px-1.5 text-xs font-extrabold text-bg">
+          {total}
+        </span>
+      )}
+    </Link>
   );
 }
 

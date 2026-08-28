@@ -15,7 +15,7 @@ import (
 const createUserPointOfSale = `-- name: CreateUserPointOfSale :one
 insert into point_of_sale (name, merchant_title, mcc_code, type, address, status, author_user_id, origin)
 values ($1, $2, $3, $4, $5, 'pending', $6, 'user_manual')
-returning id, name, merchant_title, mcc_code, type, address, confirmations, created_at, last_confirmed_at, location, status, author_user_id, origin, user_confirmations
+returning id, name, merchant_title, mcc_code, type, address, confirmations, created_at, last_confirmed_at, location, status, author_user_id, origin, user_confirmations, moderation_note, moderated_at
 `
 
 type CreateUserPointOfSaleParams struct {
@@ -52,6 +52,8 @@ func (q *Queries) CreateUserPointOfSale(ctx context.Context, arg CreateUserPoint
 		&i.AuthorUserID,
 		&i.Origin,
 		&i.UserConfirmations,
+		&i.ModerationNote,
+		&i.ModeratedAt,
 	)
 	return i, err
 }
@@ -328,7 +330,8 @@ func (q *Queries) ListMerchantsByCode(ctx context.Context, arg ListMerchantsByCo
 
 const moderationApprovePOS = `-- name: ModerationApprovePOS :execrows
 update point_of_sale
-set status = 'approved'
+set status       = 'approved',
+    moderated_at = now()
 where id = $1
   and status = 'pending'
 `
@@ -343,18 +346,20 @@ func (q *Queries) ModerationApprovePOS(ctx context.Context, id uuid.UUID) (int64
 
 const moderationListPendingPOS = `-- name: ModerationListPendingPOS :many
 
-select id,
-       name,
-       merchant_title,
-       mcc_code,
-       coalesce(type::text, '')::text as pos_type,
-       address,
-       origin::text                   as origin,
-       created_at,
-       count(*) over ()::bigint       as total
-from point_of_sale
-where status = 'pending'
-order by created_at, id
+select p.id,
+       p.name,
+       p.merchant_title,
+       p.mcc_code,
+       m.name as mcc_name,
+       coalesce(p.type::text, '')::text as pos_type,
+       p.address,
+       p.origin::text                   as origin,
+       p.created_at,
+       count(*) over ()::bigint         as total
+from point_of_sale p
+         left join mcc m on m.code = p.mcc_code
+where p.status = 'pending'
+order by p.created_at, p.id
 limit $2 offset $1
 `
 
@@ -368,6 +373,7 @@ type ModerationListPendingPOSRow struct {
 	Name          string
 	MerchantTitle *string
 	MccCode       *int16
+	MccName       *string
 	PosType       string
 	Address       *string
 	Origin        string
@@ -394,6 +400,7 @@ func (q *Queries) ModerationListPendingPOS(ctx context.Context, arg ModerationLi
 			&i.Name,
 			&i.MerchantTitle,
 			&i.MccCode,
+			&i.MccName,
 			&i.PosType,
 			&i.Address,
 			&i.Origin,
@@ -411,19 +418,22 @@ func (q *Queries) ModerationListPendingPOS(ctx context.Context, arg ModerationLi
 }
 
 const moderationListPublishedPOS = `-- name: ModerationListPublishedPOS :many
-select id,
-       name,
-       merchant_title,
-       mcc_code,
-       coalesce(type::text, '')::text as pos_type,
-       address,
-       origin::text                   as origin,
-       created_at,
-       count(*) over ()::bigint       as total
-from point_of_sale
-where status = 'approved'
-  and origin <> 'mcc_codes'
-order by created_at desc, id
+select p.id,
+       p.name,
+       p.merchant_title,
+       p.mcc_code,
+       m.name as mcc_name,
+       coalesce(p.type::text, '')::text as pos_type,
+       p.address,
+       p.origin::text                   as origin,
+       p.created_at,
+       p.moderated_at,
+       count(*) over ()::bigint         as total
+from point_of_sale p
+         left join mcc m on m.code = p.mcc_code
+where p.status = 'approved'
+  and p.origin <> 'mcc_codes'
+order by coalesce(p.moderated_at, p.created_at) desc, p.id
 limit $2 offset $1
 `
 
@@ -437,15 +447,19 @@ type ModerationListPublishedPOSRow struct {
 	Name          string
 	MerchantTitle *string
 	MccCode       *int16
+	MccName       *string
 	PosType       string
 	Address       *string
 	Origin        string
 	CreatedAt     time.Time
+	ModeratedAt   *time.Time
 	Total         int64
 }
 
 // The review stream: recently published non-scrape rows — what keeps the
-// instant-publish path (user_transaction) supervised after the fact.
+// instant-publish path (user_transaction) supervised after the fact. A
+// manual row's publish moment is its approval (moderated_at), not its
+// creation, so the order coalesces.
 func (q *Queries) ModerationListPublishedPOS(ctx context.Context, arg ModerationListPublishedPOSParams) ([]ModerationListPublishedPOSRow, error) {
 	rows, err := q.db.Query(ctx, moderationListPublishedPOS, arg.Skip, arg.MaxRows)
 	if err != nil {
@@ -460,10 +474,12 @@ func (q *Queries) ModerationListPublishedPOS(ctx context.Context, arg Moderation
 			&i.Name,
 			&i.MerchantTitle,
 			&i.MccCode,
+			&i.MccName,
 			&i.PosType,
 			&i.Address,
 			&i.Origin,
 			&i.CreatedAt,
+			&i.ModeratedAt,
 			&i.Total,
 		); err != nil {
 			return nil, err
@@ -478,16 +494,24 @@ func (q *Queries) ModerationListPublishedPOS(ctx context.Context, arg Moderation
 
 const moderationRejectPOS = `-- name: ModerationRejectPOS :execrows
 update point_of_sale
-set status = 'rejected'
+set status          = 'rejected',
+    moderated_at    = now(),
+    moderation_note = $2
 where id = $1
   and status in ('pending', 'approved')
   and origin <> 'mcc_codes'
 `
 
+type ModerationRejectPOSParams struct {
+	ID   uuid.UUID
+	Note *string
+}
+
 // Reject doubles as the review stream's prune: a published non-scrape row
-// can be pulled back. Rejected rows are kept for audit.
-func (q *Queries) ModerationRejectPOS(ctx context.Context, id uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, moderationRejectPOS, id)
+// can be pulled back. Rejected rows are kept for audit; the note is the
+// reviewer's reason FOR THE OPERATOR — it never travels to the author.
+func (q *Queries) ModerationRejectPOS(ctx context.Context, arg ModerationRejectPOSParams) (int64, error) {
+	result, err := q.db.Exec(ctx, moderationRejectPOS, arg.ID, arg.Note)
 	if err != nil {
 		return 0, err
 	}

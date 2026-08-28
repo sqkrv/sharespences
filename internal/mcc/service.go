@@ -200,12 +200,13 @@ func (s *Service) ModerationApprove(ctx context.Context, userID uuid.UUID, id uu
 
 // ModerationReject pulls a pending or published non-scrape row out of
 // circulation; the row is kept for audit and stays invisible to everyone,
-// its author included.
-func (s *Service) ModerationReject(ctx context.Context, userID uuid.UUID, id uuid.UUID) error {
+// its author included. The note is the reviewer's reason for the OPERATOR
+// (design 1c) — it is stored on the row and never returned to the author.
+func (s *Service) ModerationReject(ctx context.Context, userID uuid.UUID, id uuid.UUID, note *string) error {
 	if err := s.requireModerator(ctx, userID); err != nil {
 		return err
 	}
-	n, err := s.Q.ModerationRejectPOS(ctx, id)
+	n, err := s.Q.ModerationRejectPOS(ctx, db.ModerationRejectPOSParams{ID: id, Note: note})
 	if err != nil {
 		return err
 	}

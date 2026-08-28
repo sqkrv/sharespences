@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -116,10 +117,14 @@ type ModerationRowDTO struct {
 	Name          string  `json:"name"`
 	MerchantTitle *string `json:"merchant_title,omitempty"`
 	MCC           string  `json:"mcc,omitempty"` // zero-padded
+	MCCName       *string `json:"mcc_name,omitempty" doc:"словарное название кода — категория в свёрнутой строке"`
 	Type          *string `json:"type,omitempty" enum:"offline,online,app,other"`
 	Address       *string `json:"address,omitempty"`
 	Origin        string  `json:"origin" enum:"mcc_codes,user_manual,user_transaction,admin"`
 	CreatedAt     string  `json:"created_at"`
+	// ModeratedAt is the verdict moment — for a manual row also its publish
+	// moment («одобрена 10.08» in the review stream). Published rows only.
+	ModeratedAt *string `json:"moderated_at,omitempty"`
 }
 
 // RegisterHTTP mounts the MCC module's API (session-guarded like the rest
@@ -356,10 +361,10 @@ func RegisterHTTP(api huma.API, s *Service) {
 		Total int64              `json:"total"`
 		Items []ModerationRowDTO `json:"items"`
 	}
-	rowDTO := func(id uuid.UUID, name string, merchantTitle *string, mccCode *int16,
+	rowDTO := func(id uuid.UUID, name string, merchantTitle *string, mccCode *int16, mccName *string,
 		posType string, address *string, origin string, createdAt time.Time) ModerationRowDTO {
 		d := ModerationRowDTO{
-			ID: id.String(), Name: name, MerchantTitle: merchantTitle,
+			ID: id.String(), Name: name, MerchantTitle: merchantTitle, MCCName: mccName,
 			Address: address, Origin: origin,
 			CreatedAt: createdAt.Format("2006-01-02 15:04"),
 		}
@@ -390,8 +395,12 @@ func RegisterHTTP(api huma.API, s *Service) {
 			}
 			for _, r := range rows {
 				out.Body.Total = r.Total
-				out.Body.Items = append(out.Body.Items,
-					rowDTO(r.ID, r.Name, r.MerchantTitle, r.MccCode, r.PosType, r.Address, r.Origin, r.CreatedAt))
+				d := rowDTO(r.ID, r.Name, r.MerchantTitle, r.MccCode, r.MccName, r.PosType, r.Address, r.Origin, r.CreatedAt)
+				if r.ModeratedAt != nil {
+					m := r.ModeratedAt.Format("2006-01-02 15:04")
+					d.ModeratedAt = &m
+				}
+				out.Body.Items = append(out.Body.Items, d)
 			}
 			return out, nil
 		}
@@ -402,7 +411,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		for _, r := range rows {
 			out.Body.Total = r.Total
 			out.Body.Items = append(out.Body.Items,
-				rowDTO(r.ID, r.Name, r.MerchantTitle, r.MccCode, r.PosType, r.Address, r.Origin, r.CreatedAt))
+				rowDTO(r.ID, r.Name, r.MerchantTitle, r.MccCode, r.MccName, r.PosType, r.Address, r.Origin, r.CreatedAt))
 		}
 		return out, nil
 	})
@@ -426,8 +435,20 @@ func RegisterHTTP(api huma.API, s *Service) {
 		DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, in *struct {
 		ID uuid.UUID `path:"id"`
+		// Pointer = the body is optional (huma's contract). The reason stays
+		// with the operator (design 1c): stored on the row, shown in the
+		// sidecar, never returned to the author.
+		Body *struct {
+			Note string `json:"note,omitempty" maxLength:"500" doc:"заметка для оператора; автору не возвращается"`
+		}
 	}) (*struct{}, error) {
-		if err := s.ModerationReject(ctx, auth.UserID(ctx), in.ID); err != nil {
+		var note *string
+		if in.Body != nil {
+			if n := strings.TrimSpace(in.Body.Note); n != "" {
+				note = &n
+			}
+		}
+		if err := s.ModerationReject(ctx, auth.UserID(ctx), in.ID, note); err != nil {
 			return nil, httpErr(err)
 		}
 		return &struct{}{}, nil

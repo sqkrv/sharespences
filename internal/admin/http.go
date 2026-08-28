@@ -156,8 +156,9 @@ type POSDTO struct {
 	Confirmations   *int64    `json:"confirmations,omitempty"`
 	CreatedAt       string    `json:"created_at"`
 	LastConfirmedAt *string   `json:"last_confirmed_at,omitempty"`
-	Status          string    `json:"status" enum:"approved,pending"`
+	Status          string    `json:"status" enum:"approved,pending,rejected"`
 	Author          *string   `json:"author,omitempty" doc:"username подавшего (5e); null у импорта и админских строк"`
+	ModerationNote  *string   `json:"moderation_note,omitempty" doc:"причина отклонения от модератора (1c) — операторская заметка"`
 }
 
 type posBody struct {
@@ -652,7 +653,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				ID: p.ID, Name: p.Name, MerchantTitle: p.MerchantTitle,
 				MccCode: p.MccCode, Address: p.Address, Confirmations: p.Confirmations,
 				CreatedAt: p.CreatedAt.Format("2006-01-02"),
-				Status:    string(p.Status), Author: p.Author,
+				Status:    string(p.Status), Author: p.Author, ModerationNote: p.ModerationNote,
 			}
 			if p.Type.Valid {
 				t := string(p.Type.PointOfSaleType)

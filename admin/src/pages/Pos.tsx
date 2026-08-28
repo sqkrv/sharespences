@@ -166,12 +166,15 @@ export default function Pos() {
                       <Td className="text-tx3">{p.type ?? ""}</Td>
                       <Td className="max-w-72 truncate text-tx3">{p.address ?? ""}</Td>
                       <Td className="text-tx3">
-                        {p.status === "pending" ? (
+                        {p.status === "pending" && (
                           <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-500">
                             модерация{p.author ? ` · @${p.author}` : ""}
                           </span>
-                        ) : (
-                          ""
+                        )}
+                        {p.status === "rejected" && (
+                          <span title={p.moderation_note} className="rounded bg-inset px-1.5 py-0.5 text-xs font-semibold text-warn">
+                            отклонена{p.moderation_note ? ` · ${p.moderation_note}` : ""}
+                          </span>
                         )}
                       </Td>
                       <Td className="tabular-nums text-tx3">{p.confirmations ?? ""}</Td>

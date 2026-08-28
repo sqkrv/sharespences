@@ -1021,6 +1021,8 @@ type PointOfSale struct {
 	Origin PointOfSaleOrigin
 	// confirmations from this app's users (manual entry, opted-in transaction imports)
 	UserConfirmations int64
+	ModerationNote    *string
+	ModeratedAt       *time.Time
 }
 
 type ProgramTier struct {

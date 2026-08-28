@@ -163,6 +163,7 @@ select p.id,
        p.created_at,
        p.last_confirmed_at,
        p.status,
+       p.moderation_note,
        u.username               as author,
        count(*) over ()::bigint as total
 from point_of_sale p

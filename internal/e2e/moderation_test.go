@@ -188,9 +188,24 @@ func TestModerationE2E(t *testing.T) {
 	author.must("POST", "/api/v1/mcc/points-of-sale", map[string]any{
 		"mcc": "5411", "name": "Сомнительный ларёк", "type": "offline",
 	}, &second, 201)
-	mod.must("POST", "/api/v1/moderation/pos/"+second.ID+"/reject", nil, nil, 204)
+	// The 1c note travels to the OPERATOR: stored on the row, shown by the
+	// sidecar, never present in any author- or moderator-facing DTO.
+	mod.must("POST", "/api/v1/moderation/pos/"+second.ID+"/reject",
+		map[string]any{"note": "Опечатка в MCC"}, nil, 204)
 	if n := merchantHits(t, author, "Сомнительный ларёк"); n != 0 {
 		t.Fatalf("rejected row still visible to its author: %d hits", n)
+	}
+	var adminPos struct {
+		Items []struct {
+			Name           string  `json:"name"`
+			Status         string  `json:"status"`
+			ModerationNote *string `json:"moderation_note"`
+		} `json:"items"`
+	}
+	operator.must("GET", "/api/pos?query="+strings.ReplaceAll("Сомнительный ларёк", " ", "+"), nil, &adminPos, 200)
+	if len(adminPos.Items) != 1 || adminPos.Items[0].Status != "rejected" ||
+		adminPos.Items[0].ModerationNote == nil || *adminPos.Items[0].ModerationNote != "Опечатка в MCC" {
+		t.Fatalf("sidecar view of the rejected row: %+v", adminPos.Items)
 	}
 	if got := author.do("GET", "/api/v1/mcc/points-of-sale/"+second.ID, nil, nil); got != 404 {
 		t.Fatalf("author opening own REJECTED row by direct link: %d, want 404", got)

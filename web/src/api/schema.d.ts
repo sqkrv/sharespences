@@ -1995,6 +1995,16 @@ export interface components {
              */
             total: number;
         };
+        "Moderation-pos-rejectRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Moderation-pos-rejectRequest.json
+             */
+            readonly $schema?: string;
+            /** @description заметка для оператора; автору не возвращается */
+            note?: string;
+        };
         ModerationPage: {
             /**
              * Format: uri
@@ -2011,7 +2021,10 @@ export interface components {
             created_at: string;
             id: string;
             mcc?: string;
+            /** @description словарное название кода — категория в свёрнутой строке */
+            mcc_name?: string;
             merchant_title?: string;
+            moderated_at?: string;
             name: string;
             /** @enum {string} */
             origin: "mcc_codes" | "user_manual" | "user_transaction" | "admin";
@@ -4700,7 +4713,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Moderation-pos-rejectRequest"];
+            };
+        };
         responses: {
             /** @description No Content */
             204: {

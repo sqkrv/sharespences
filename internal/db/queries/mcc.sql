@@ -156,49 +156,60 @@ returning *;
 -- rows are the operator's domain (sidecar), not the moderators'.
 
 -- name: ModerationListPendingPOS :many
-select id,
-       name,
-       merchant_title,
-       mcc_code,
-       coalesce(type::text, '')::text as pos_type,
-       address,
-       origin::text                   as origin,
-       created_at,
-       count(*) over ()::bigint       as total
-from point_of_sale
-where status = 'pending'
-order by created_at, id
+select p.id,
+       p.name,
+       p.merchant_title,
+       p.mcc_code,
+       m.name as mcc_name,
+       coalesce(p.type::text, '')::text as pos_type,
+       p.address,
+       p.origin::text                   as origin,
+       p.created_at,
+       count(*) over ()::bigint         as total
+from point_of_sale p
+         left join mcc m on m.code = p.mcc_code
+where p.status = 'pending'
+order by p.created_at, p.id
 limit sqlc.arg(max_rows) offset sqlc.arg(skip);
 
 -- name: ModerationListPublishedPOS :many
 -- The review stream: recently published non-scrape rows — what keeps the
--- instant-publish path (user_transaction) supervised after the fact.
-select id,
-       name,
-       merchant_title,
-       mcc_code,
-       coalesce(type::text, '')::text as pos_type,
-       address,
-       origin::text                   as origin,
-       created_at,
-       count(*) over ()::bigint       as total
-from point_of_sale
-where status = 'approved'
-  and origin <> 'mcc_codes'
-order by created_at desc, id
+-- instant-publish path (user_transaction) supervised after the fact. A
+-- manual row's publish moment is its approval (moderated_at), not its
+-- creation, so the order coalesces.
+select p.id,
+       p.name,
+       p.merchant_title,
+       p.mcc_code,
+       m.name as mcc_name,
+       coalesce(p.type::text, '')::text as pos_type,
+       p.address,
+       p.origin::text                   as origin,
+       p.created_at,
+       p.moderated_at,
+       count(*) over ()::bigint         as total
+from point_of_sale p
+         left join mcc m on m.code = p.mcc_code
+where p.status = 'approved'
+  and p.origin <> 'mcc_codes'
+order by coalesce(p.moderated_at, p.created_at) desc, p.id
 limit sqlc.arg(max_rows) offset sqlc.arg(skip);
 
 -- name: ModerationApprovePOS :execrows
 update point_of_sale
-set status = 'approved'
+set status       = 'approved',
+    moderated_at = now()
 where id = $1
   and status = 'pending';
 
 -- name: ModerationRejectPOS :execrows
 -- Reject doubles as the review stream's prune: a published non-scrape row
--- can be pulled back. Rejected rows are kept for audit.
+-- can be pulled back. Rejected rows are kept for audit; the note is the
+-- reviewer's reason FOR THE OPERATOR — it never travels to the author.
 update point_of_sale
-set status = 'rejected'
+set status          = 'rejected',
+    moderated_at    = now(),
+    moderation_note = sqlc.narg(note)
 where id = $1
   and status in ('pending', 'approved')
   and origin <> 'mcc_codes';

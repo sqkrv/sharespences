@@ -577,6 +577,7 @@ select p.id,
        p.created_at,
        p.last_confirmed_at,
        p.status,
+       p.moderation_note,
        u.username               as author,
        count(*) over ()::bigint as total
 from point_of_sale p
@@ -607,6 +608,7 @@ type AdminSearchPOSRow struct {
 	CreatedAt       time.Time
 	LastConfirmedAt *time.Time
 	Status          PointOfSaleStatus
+	ModerationNote  *string
 	Author          *string
 	Total           int64
 }
@@ -637,6 +639,7 @@ func (q *Queries) AdminSearchPOS(ctx context.Context, arg AdminSearchPOSParams) 
 			&i.CreatedAt,
 			&i.LastConfirmedAt,
 			&i.Status,
+			&i.ModerationNote,
 			&i.Author,
 			&i.Total,
 		); err != nil {
