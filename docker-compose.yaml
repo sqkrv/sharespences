@@ -1,6 +1,9 @@
-# Local run/dev stack: `docker compose up --build` → migrated + seeded app on
-# http://localhost:8080. Throwaway dev credentials only —
-# this file is not a production deployment.
+# Run/dev stack AND the production deployment descriptor. `docker compose up
+# --build` gives a migrated + seeded app on http://localhost:8080; a server
+# deploys this same file with `git pull` + `docker compose up -d --build`.
+# ⚠️ Nothing here is dev-only by virtue of living here. A value added below
+# reaches production unless it is explicitly parameterized — which is why the
+# database password has no default at all and COOKIE_SECURE defaults to true.
 # ⚠️ Env lives HERE in the anchor, never under a service: `<<:` merge keys
 # are shallow, so an `environment:` on `app:` would replace this whole map
 # (dropping DATABASE_URL) instead of adding to it.
@@ -16,7 +19,17 @@ x-backend: &backend
       VERSION: ${VERSION:-dev}
   image: sharespences
   environment:
-    DATABASE_URL: postgres://sharespences:sharespences@db:5432/sharespences
+    # ⚠️ The password is REQUIRED, with no default, on purpose. This file is
+    # the production deployment descriptor, so any default here is a
+    # credential published in a public repository. Set it per deployment in
+    # .env (see .env.example); an unset variable then fails the command by
+    # name instead of silently starting on a value anyone can read.
+    # ⚠️ It is interpolated into a URL, so it must be URL-safe — a password
+    # containing @ : / ? # or % truncates or corrupts the DSN rather than
+    # failing loudly. `openssl rand -hex 24` is safe by construction.
+    # The user and database name are not secrets and keep defaults; they are
+    # shared with the `db` service below so the two can never drift apart.
+    DATABASE_URL: postgres://${POSTGRES_USER:-sharespences}:${POSTGRES_PASSWORD:?set it in .env, see .env.example}@db:5432/${POSTGRES_DB:-sharespences}
     # ⚠️ Defaults to TRUE, and must stay that way. This same file is the
     # production deployment descriptor (`git pull` + `docker compose up -d
     # --build`), so a `:-false` default here silently ships a session cookie
@@ -53,9 +66,15 @@ services:
     image: postgis/postgis:18-3.6 # same image as the e2e tests
     restart: unless-stopped
     environment:
-      POSTGRES_USER: sharespences
-      POSTGRES_PASSWORD: sharespences
-      POSTGRES_DB: sharespences
+      # Same variables as the DSN above — one source, so the role the cluster
+      # is created with and the role the app connects as cannot drift.
+      # ⚠️ These are read by the image at initdb ONLY. On an existing volume
+      # they are ignored, so changing the password here does not change it in
+      # the cluster — rotating it means an ALTER ROLE inside the cluster and
+      # a recreate of the services that hold the DSN.
+      POSTGRES_USER: ${POSTGRES_USER:-sharespences}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set it in .env, see .env.example}
+      POSTGRES_DB: ${POSTGRES_DB:-sharespences}
     # The DB host port is NOT published: app/migrate/seed reach it over the
     # internal network (db:5432), and publishing 5432 collides with any
     # Postgres already on the host (e.g. on the server). For host access

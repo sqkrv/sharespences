@@ -5,6 +5,20 @@ Sharespences is a comprehensive finance management app that tracks expenses, man
 
 ## Running with Docker
 
+The stack needs a database password before it will start. There is no
+default: this same file set is the production deployment descriptor, so a
+default would be a credential in a public repository. Once, in a fresh
+checkout:
+
+```sh
+printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
+```
+
+`.env.example` documents that variable and the optional ones. A missing or
+empty value fails the command by name rather than starting on a shared value.
+Keep it URL-safe — it is interpolated into the connection string, where `@ :
+/ ? #` and `%` corrupt the DSN instead of failing.
+
 ```sh
 docker compose up --build
 ```
@@ -35,7 +49,8 @@ publishes it on `127.0.0.1:5432` so you can point the binary at it:
 
 ```sh
 docker compose up -d db   # override publishes 127.0.0.1:5432 locally
-export DATABASE_URL=postgres://sharespences:sharespences@localhost:5432/sharespences
+set -a && . ./.env && set +a   # the password chosen above
+export DATABASE_URL=postgres://sharespences:$POSTGRES_PASSWORD@localhost:5432/sharespences
 go run ./cmd/sharespences migrate
 go run ./cmd/sharespences seed
 go run ./cmd/sharespences serve   # web/: npm run dev proxies to :8080
@@ -73,6 +88,12 @@ one escape hatch is `COOKIE_SECURE=false`, which `docker-compose.yaml` sets
 because that stack serves plain http on localhost (Safari refuses to store a
 Secure cookie there, and login would fail silently). A real deployment must
 not set it.
+
+A deployment supplies `POSTGRES_PASSWORD` through its own untracked `.env`,
+generated on the server and never committed. The database reads it when the
+volume is first initialized and ignores it afterwards, so changing it later
+means an `ALTER ROLE` inside the running cluster as well as an `.env` edit —
+the two have to move together or the app cannot authenticate.
 
 The stack keeps itself up. `db`, `app` and `admin` carry `restart:
 unless-stopped`, so they come back from a crash and after a host reboot,
