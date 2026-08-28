@@ -179,6 +179,19 @@ export default function Search() {
   const showCats = tab === "all" || tab === "cats";
   const showMcc = tab === "all" || tab === "mcc";
   const filteredOut = tab === "shops" && posType !== "" && merchantRows.length === 0 && !merchants.isPending;
+  // The empty state answers the tab the user is standing on. Adding a точка
+  // продаж is an answer to «магазин не нашёлся» and to nothing else — on
+  // «Категории» and «MCC» it is a non sequitur (report 2026-08-28), and on
+  // the MCC tab the old «введи MCC-код с чека» was circular advice. Both of
+  // those tabs are closed reference lists — a canonical set and a published
+  // dictionary — so the only honest offer there is to widen the search.
+  const emptyOnList = tab === "cats" || tab === "mcc";
+  const emptyText =
+    tab === "cats"
+      ? "Такой категории нет — список категорий закрытый. Поищи по названию магазина или по MCC."
+      : tab === "mcc"
+        ? "Такого кода нет в справочнике MCC — проверь цифры в чеке или поищи по названию."
+        : "Ничего не найдено — попробуй иначе или введи MCC-код с чека.";
   const nothingFound =
     active &&
     !codes.isPending &&
@@ -420,14 +433,24 @@ export default function Search() {
 
           {nothingFound && !filteredOut && (
             <Card className="space-y-2.5 p-4 text-center" data-sid="CB-04.e">
-              <p className="text-sm font-medium text-tx3">Ничего не найдено — попробуй иначе или введи MCC-код с чека.</p>
-              <button
-                type="button"
-                onClick={() => navigate(`/pos/new?query=${encodeURIComponent(q.trim())}`)}
-                className="w-full rounded-2xl border border-dashed border-dash py-2.5 text-sm font-semibold text-tx3"
-              >
-                + Добавить точку вручную
-              </button>
+              <p className="text-sm font-medium text-tx3">{emptyText}</p>
+              {emptyOnList ? (
+                <button
+                  type="button"
+                  onClick={() => setTab("all")}
+                  className="w-full rounded-2xl border border-dashed border-dash py-2.5 text-sm font-semibold text-tx3"
+                >
+                  Искать везде
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/pos/new?query=${encodeURIComponent(q.trim())}`)}
+                  className="w-full rounded-2xl border border-dashed border-dash py-2.5 text-sm font-semibold text-tx3"
+                >
+                  + Добавить точку вручную
+                </button>
+              )}
             </Card>
           )}
         </div>
