@@ -270,6 +270,7 @@ select co.id                     as category_offer_id,
        op.period_end,
        op.max_categories_override,
        cl.label                  as holder_label,
+       b.id                      as bank_id,
        b.name                    as bank_name,
        -- The row's icon (9a/12a): its catalog row's emoji, else the
        -- canonical's — resolved here so every reader shows the same icon.
@@ -326,6 +327,7 @@ select co.id                     as category_offer_id,
        op.period_end,
        op.max_categories_override,
        cl.label                  as holder_label,
+       b.id                      as bank_id,
        b.name                    as bank_name,
        -- The row's icon (9a/12a): its catalog row's emoji, else the
        -- canonical's — resolved here so every reader shows the same icon.

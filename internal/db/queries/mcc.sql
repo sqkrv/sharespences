@@ -29,6 +29,7 @@ select b.id     as bank_id,
        bc.kind,
        bc.emoji as bank_emoji,
        cc.emoji as canonical_emoji,
+       cc.id    as canonical_category_id,
        cc.slug  as canonical_slug,
        cc.title_ru as canonical_title,
        bcm.note

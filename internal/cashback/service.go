@@ -63,6 +63,10 @@ type Service struct {
 // mcc module hands across the seam.
 type MembershipRow struct {
 	BankCategoryID int64
+	// BankID and CanonicalCategoryID let the board match a menu row that was
+	// never linked to a catalog row — see LookupByMCC.
+	BankID              int32
+	CanonicalCategoryID *int64
 }
 
 // clientLabel names a bank client for display: «Альфа-Банк» for the account owner's
@@ -1574,9 +1578,39 @@ func (s *Service) LookupByMCC(ctx context.Context, userID uuid.UUID, code int16,
 	if err != nil {
 		return board, err
 	}
+	// Two ways a menu row can be «the bank's category for this code».
+	//
+	// Exact: the row was entered through the picker and points at the catalog
+	// row (bank_category_id) that carries the code. That is the strong form
+	// and stays the primary one.
+	//
+	// By canonical, WITHIN THE SAME BANK: a row entered by title — a custom
+	// category, a bank whose catalog the picker had to fall back from, an
+	// import — has no catalog link, and requiring one made it invisible here
+	// no matter how well it mapped (report 2026-08-28: «for every PoS it
+	// showed no cards»). If the bank counts 5411 in its «Продукты», and the
+	// user's selected row IS «Продукты» by canonical identity, the bank's
+	// answer for that code is known. Staying inside one bank is what keeps
+	// this honest: it never borrows another bank's category set.
 	matched := make(map[int64]bool, len(members))
+	matchedCanon := make(map[int32]map[int64]bool)
 	for _, m := range members {
 		matched[m.BankCategoryID] = true
+		if m.CanonicalCategoryID == nil {
+			continue
+		}
+		if matchedCanon[m.BankID] == nil {
+			matchedCanon[m.BankID] = make(map[int64]bool)
+		}
+		matchedCanon[m.BankID][*m.CanonicalCategoryID] = true
+	}
+	// countsForCode reports whether this menu row is the bank's category for
+	// the looked-up code, by either route.
+	countsForCode := func(bankID int32, bankCategoryID, canonicalID *int64) bool {
+		if bankCategoryID != nil && matched[*bankCategoryID] {
+			return true
+		}
+		return canonicalID != nil && matchedCanon[bankID][*canonicalID]
 	}
 
 	offers, err := s.Q.ListUserOffers(ctx, userID)
@@ -1594,7 +1628,7 @@ func (s *Service) LookupByMCC(ctx context.Context, userID uuid.UUID, code int16,
 	var avail []AvailableEntry
 	covered := make(map[int64]bool) // client ids answering above the base fold
 	for _, o := range offers {
-		if o.BankCategoryID == nil || !matched[*o.BankCategoryID] {
+		if !countsForCode(o.BankID, o.BankCategoryID, o.CanonicalCategoryID) {
 			continue
 		}
 		if !rowRange(o.PeriodStart, o.PeriodEnd).Contains(onDate) {
@@ -1644,7 +1678,7 @@ func (s *Service) LookupByMCC(ctx context.Context, userID uuid.UUID, code int16,
 			}
 		}
 		for _, r := range rows {
-			if !r.Selected || r.BankCategoryID == nil || !matched[*r.BankCategoryID] {
+			if !r.Selected || !countsForCode(r.BankID, r.BankCategoryID, r.CanonicalCategoryID) {
 				continue
 			}
 			if !rowRange(r.PeriodStart, r.PeriodEnd).Overlaps(window) {

@@ -527,6 +527,7 @@ select b.id     as bank_id,
        bc.kind,
        bc.emoji as bank_emoji,
        cc.emoji as canonical_emoji,
+       cc.id    as canonical_category_id,
        cc.slug  as canonical_slug,
        cc.title_ru as canonical_title,
        bcm.note
@@ -546,17 +547,18 @@ type ResolveMCCParams struct {
 }
 
 type ResolveMCCRow struct {
-	BankID         int32
-	BankName       string
-	ColorHex       *string
-	BankCategoryID int64
-	Title          string
-	Kind           CashbackOfferKind
-	BankEmoji      *string
-	CanonicalEmoji *string
-	CanonicalSlug  *string
-	CanonicalTitle *string
-	Note           *string
+	BankID              int32
+	BankName            string
+	ColorHex            *string
+	BankCategoryID      int64
+	Title               string
+	Kind                CashbackOfferKind
+	BankEmoji           *string
+	CanonicalEmoji      *string
+	CanonicalCategoryID *int64
+	CanonicalSlug       *string
+	CanonicalTitle      *string
+	Note                *string
 }
 
 func (q *Queries) ResolveMCC(ctx context.Context, arg ResolveMCCParams) ([]ResolveMCCRow, error) {
@@ -577,6 +579,7 @@ func (q *Queries) ResolveMCC(ctx context.Context, arg ResolveMCCParams) ([]Resol
 			&i.Kind,
 			&i.BankEmoji,
 			&i.CanonicalEmoji,
+			&i.CanonicalCategoryID,
 			&i.CanonicalSlug,
 			&i.CanonicalTitle,
 			&i.Note,

@@ -1024,6 +1024,7 @@ select co.id                     as category_offer_id,
        op.period_end,
        op.max_categories_override,
        cl.label                  as holder_label,
+       b.id                      as bank_id,
        b.name                    as bank_name,
        -- The row's icon (9a/12a): its catalog row's emoji, else the
        -- canonical's — resolved here so every reader shows the same icon.
@@ -1071,6 +1072,7 @@ type ListOffersForClientsRow struct {
 	PeriodEnd             time.Time
 	MaxCategoriesOverride *int32
 	HolderLabel           *string
+	BankID                int32
 	BankName              string
 	BankCategoryEmoji     *string
 	CanonicalEmoji        *string
@@ -1115,6 +1117,7 @@ func (q *Queries) ListOffersForClients(ctx context.Context, clientIds []int64) (
 			&i.PeriodEnd,
 			&i.MaxCategoriesOverride,
 			&i.HolderLabel,
+			&i.BankID,
 			&i.BankName,
 			&i.BankCategoryEmoji,
 			&i.CanonicalEmoji,
@@ -1456,6 +1459,7 @@ select co.id                     as category_offer_id,
        op.period_end,
        op.max_categories_override,
        cl.label                  as holder_label,
+       b.id                      as bank_id,
        b.name                    as bank_name,
        -- The row's icon (9a/12a): its catalog row's emoji, else the
        -- canonical's — resolved here so every reader shows the same icon.
@@ -1507,6 +1511,7 @@ type ListUserOffersRow struct {
 	PeriodEnd             time.Time
 	MaxCategoriesOverride *int32
 	HolderLabel           *string
+	BankID                int32
 	BankName              string
 	BankCategoryEmoji     *string
 	CanonicalEmoji        *string
@@ -1549,6 +1554,7 @@ func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListU
 			&i.PeriodEnd,
 			&i.MaxCategoriesOverride,
 			&i.HolderLabel,
+			&i.BankID,
 			&i.BankName,
 			&i.BankCategoryEmoji,
 			&i.CanonicalEmoji,

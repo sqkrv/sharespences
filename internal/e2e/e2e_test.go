@@ -1202,6 +1202,45 @@ func TestCashbackE2E(t *testing.T) {
 			t.Fatalf("5411 at %s = %q, want %s (all: %v)", bank, gotBanks[bank], want, gotBanks)
 		}
 	}
+	// CB-11's board for the same code: what the точка screen offers to pay
+	// with. The fixture's menu rows were entered by title with a canonical
+	// mapping and no bank_category_id — the shape the board used to drop
+	// entirely, which is why «for every PoS it showed no cards»
+	// (report 2026-08-28). A bank counts a code through its own catalog row;
+	// a selected row matching that row's canonical is the same answer.
+	var board struct {
+		Ranked []struct {
+			BankName string  `json:"bank_name"`
+			RawTitle string  `json:"raw_title"`
+			Percent  *string `json:"percent"`
+		} `json:"ranked"`
+		Base []struct {
+			BankName string `json:"bank_name"`
+		} `json:"base"`
+	}
+	owner.must("GET", "/api/v1/cashback/mcc-board?code=5411&date=2026-07-15", nil, &board, http.StatusOK)
+	rankedBanks := map[string]string{}
+	for _, r := range board.Ranked {
+		rankedBanks[r.BankName] = r.RawTitle
+	}
+	if len(board.Ranked) == 0 {
+		t.Fatalf("mcc-board 5411: nothing ranked — the fixture has selected supermarket rows at Альфа-Банк and Ozon Банк")
+	}
+	if _, ok := rankedBanks["Альфа-Банк"]; !ok {
+		t.Fatalf("mcc-board 5411 ranked %v, want Альфа-Банк among them", rankedBanks)
+	}
+	// A code no bank counts falls through to «Кешбек на всё» rather than
+	// ranking a category that does not cover it.
+	var boardOther struct {
+		Ranked []struct {
+			BankName string `json:"bank_name"`
+		} `json:"ranked"`
+	}
+	owner.must("GET", "/api/v1/cashback/mcc-board?code=7995&date=2026-07-15", nil, &boardOther, http.StatusOK)
+	for _, r := range boardOther.Ranked {
+		t.Fatalf("mcc-board 7995 ranked %s — no seeded catalog row holds that code", r.BankName)
+	}
+
 	haveSupermarkets := false
 	for _, c := range resolved.Canonicals {
 		if c.Slug == "supermarkets" {

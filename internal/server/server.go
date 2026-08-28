@@ -156,7 +156,9 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 		}
 		out := make([]cashback.MembershipRow, len(rows))
 		for i, r := range rows {
-			out[i] = cashback.MembershipRow{BankCategoryID: r.BankCategoryID}
+			out[i] = cashback.MembershipRow{
+				BankCategoryID: r.BankCategoryID, BankID: r.BankID, CanonicalCategoryID: r.CanonicalCategoryID,
+			}
 		}
 		return out, nil
 	}
