@@ -1,4 +1,4 @@
-// Migration test for 00030 (unique bank.name). Two paths matter and neither is
+// Migration test for 00031 (unique bank.name). Two paths matter and neither is
 // reachable on a fresh database: that the constraint actually rejects a second
 // row with the same name, and that a database which already holds duplicates is
 // refused with a message an operator can act on rather than being half-migrated.
@@ -41,7 +41,7 @@ func newPG(ctx context.Context, t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-func TestUp00030RejectsDuplicateBankName(t *testing.T) {
+func TestUp00031RejectsDuplicateBankName(t *testing.T) {
 	ctx := context.Background()
 	pool := newPG(ctx, t)
 
@@ -56,7 +56,7 @@ func TestUp00030RejectsDuplicateBankName(t *testing.T) {
 	}
 }
 
-func TestUp00030RefusesPreExistingDuplicates(t *testing.T) {
+func TestUp00031RefusesPreExistingDuplicates(t *testing.T) {
 	ctx := context.Background()
 	pool := newPG(ctx, t)
 
@@ -66,8 +66,10 @@ func TestUp00030RefusesPreExistingDuplicates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Stop before the constraint: the world as a database with duplicates sees it.
-	if _, err := provider.UpTo(ctx, 29); err != nil {
+	// Stop before the constraint: a database that already holds duplicates.
+	// (00024–00029 live on another branch; the version number still reads as
+	// «everything before this migration» whether or not they are present.)
+	if _, err := provider.UpTo(ctx, 30); err != nil {
 		t.Fatalf("up to 29: %v", err)
 	}
 	for range 2 {
@@ -76,9 +78,9 @@ func TestUp00030RefusesPreExistingDuplicates(t *testing.T) {
 		}
 	}
 
-	_, err = provider.UpTo(ctx, 30)
+	_, err = provider.UpTo(ctx, 31)
 	if err == nil {
-		t.Fatal("00030 applied over duplicate names; it must refuse instead")
+		t.Fatal("00031 applied over duplicate names; it must refuse instead")
 	}
 	// Specifically the deliberate guard (P0001 raise_exception), not Postgres's
 	// own 23505 from the ALTER — that one also happens to quote the name, so

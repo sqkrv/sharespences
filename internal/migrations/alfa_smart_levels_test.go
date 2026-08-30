@@ -1,7 +1,7 @@
-// Migration test for 00029 (Альфа-Смарт S/M split), covering the path a
+// Migration test for 00030 (Альфа-Смарт S/M split), covering the path a
 // fresh-database run never reaches: an existing database that already holds the
 // pre-split «Альфа-Смарт» tier with clients attached to it. On a fresh database
-// 00029 renames nothing — the seed simply inserts S and M — so only this test
+// 00030 renames nothing — the seed simply inserts S and M — so only this test
 // exercises what the migration is actually for: without it those clients keep
 // pointing at a tier whose name no longer appears in the seed, so nothing ever
 // refreshes it again.
@@ -18,7 +18,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-func TestUp00029RenamesInPlace(t *testing.T) {
+func TestUp00030RenamesInPlace(t *testing.T) {
 	ctx := context.Background()
 	pg, err := postgres.Run(ctx, "postgis/postgis:18-3.6",
 		postgres.WithDatabase("sharespences"),
@@ -47,8 +47,11 @@ func TestUp00029RenamesInPlace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Stop one short of the split: this is the world as it exists in production.
-	if _, err := provider.UpTo(ctx, 28); err != nil {
+	// Stop one short of the split: the world as production sees it. 00024–00029
+	// live on feat/cashback-v2 and are absent here, so this currently applies only
+	// up to 00023 — and still means «everything before this migration» once that
+	// branch merges underneath.
+	if _, err := provider.UpTo(ctx, 29); err != nil {
 		t.Fatalf("up to 28: %v", err)
 	}
 
@@ -105,7 +108,7 @@ func TestUp00029RenamesInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := provider.UpTo(ctx, 29); err != nil {
+	if _, err := provider.UpTo(ctx, 30); err != nil {
 		t.Fatalf("up to 29: %v", err)
 	}
 

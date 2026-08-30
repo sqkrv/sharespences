@@ -1,5 +1,5 @@
 -- Two name alignments, both from the banks' own documents, both needing a
--- migration for the same reason 00029 did: the seed inserts under a NOT EXISTS
+-- migration for the same reason 00030 did: the seed inserts under a NOT EXISTS
 -- guard, so a renamed literal adds a new row and leaves every existing
 -- reference on an orphan the seed no longer maintains.
 --
@@ -8,7 +8,7 @@
 --    a client actually meets. bank.name is the seed's lookup key for programs,
 --    tiers, catalogs, aliases, colors and the MCC membership CSV, so the
 --    literals move in the same commit — the 00012 precedent, now also backed by
---    the unique constraint added in 00030.
+--    the unique constraint added in 00031.
 --
 -- 2. ВТБ's tiers → the package names the loyalty rules actually use. The seed
 --    shipped «Стандартный» and «Привилегия», which are this project's own

@@ -1,4 +1,4 @@
-// Migration test for 00031. Both renames exist to keep existing rows attached,
+// Migration test for 00032. Both renames exist to keep existing rows attached,
 // which a fresh-database run never exercises: there the seed simply inserts the
 // new names and there is nothing to re-point.
 package migrations
@@ -11,7 +11,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-func TestUp00031KeepsReferencesAttached(t *testing.T) {
+func TestUp00032KeepsReferencesAttached(t *testing.T) {
 	ctx := context.Background()
 	pool := newPG(ctx, t)
 
@@ -21,7 +21,7 @@ func TestUp00031KeepsReferencesAttached(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.UpTo(ctx, 30); err != nil {
+	if _, err := provider.UpTo(ctx, 31); err != nil {
 		t.Fatalf("up to 30: %v", err)
 	}
 
@@ -69,7 +69,7 @@ func TestUp00031KeepsReferencesAttached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := provider.UpTo(ctx, 31); err != nil {
+	if _, err := provider.UpTo(ctx, 32); err != nil {
 		t.Fatalf("up to 31: %v", err)
 	}
 
@@ -105,7 +105,7 @@ func TestUp00031KeepsReferencesAttached(t *testing.T) {
 		t.Errorf("cap = %s, want 3000 unchanged by a rename", gotCap)
 	}
 
-	// A rename must not create a duplicate under 00030's constraint.
+	// A rename must not create a duplicate under 00031's constraint.
 	var banks int
 	if err := pool.QueryRow(ctx,
 		`select count(*) from bank where name in ('СберБанк', 'Сбербанк')`).Scan(&banks); err != nil {

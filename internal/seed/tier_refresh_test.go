@@ -113,7 +113,7 @@ func TestTierRefreshCorrectsExistingRows(t *testing.T) {
 
 // The fresh-database shape of the split: both tiers present with their own
 // caps and slot counts, and the pre-split name gone. The upgrade path — an
-// existing «Альфа-Смарт» row with clients on it — is 00029's job and is covered
+// existing «Альфа-Смарт» row with clients on it — is 00030's job and is covered
 // in internal/migrations/alfa_smart_levels_test.go.
 func TestAlfaSmartTiersSeedAsSAndM(t *testing.T) {
 	ctx := context.Background()

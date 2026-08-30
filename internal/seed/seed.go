@@ -86,7 +86,7 @@ var programs = []program{
 			// 499 ₽ семейный. Only the 15-privilege set carries the cashback
 			// privileges — the 4th slot, the extra барабан spin, and the
 			// 5000 → 7000 cap — so S is seeded at base-equivalent terms.
-			// Migration 00029 renames the pre-split row to M, which preserves
+			// Migration 00030 renames the pre-split row to M, which preserves
 			// the terms every existing subscriber already has.
 			{name: "Альфа-Смарт S", paid: true, capValue: "5000", capScope: "total", maxCategories: 3,
 				notes: alfaAsOf + "; набор из 9 привилегий (199 ₽/мес) — кэшбэк на базовых условиях"},
@@ -104,7 +104,7 @@ var programs = []program{
 		notes: vtbAsOf + "; Отчетный период = календарный месяц (п. 1.7); бонусные рубли зачисляются на счёт 1:1, баланс обнуляется в начале периода (пп. 2.13–2.14); дополнительные категории за хранение остатков — record-only",
 		tiers: []tier{
 			// Names are the packages the rules themselves use (Таблица 2);
-			// 00031 renames the project's earlier «Стандартный»/«Привилегия».
+			// 00032 renames the project's earlier «Стандартный»/«Привилегия».
 			// maxCategories is the STANDARD count — Таблица 3.1 adds slots for
 			// a client's Уровень (+1 Серебряный / +2 Золотой on Мультикарта;
 			// +2 for Изумруд/Сапфир/Рубин/Бриллиант on Привилегия-Мультикарта;
@@ -1078,7 +1078,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 func seedBank(ctx context.Context, pool *pgxpool.Pool, name string) error {
-	// bank.name is unique since 00030, so this is both race-free and the
+	// bank.name is unique since 00031, so this is both race-free and the
 	// database's own guarantee rather than this query's. The previous
 	// `where not exists` form let two concurrent seed runs both pass the check
 	// and both insert.
