@@ -32,6 +32,10 @@ const vtbAsOf = "as of 2026-08-26, официальные Условия ПЛ «
 // keyed on package/subscription/card, each with its own slot count and cap.
 const sberAsOf = "as of 2026-07-28, официальные Правила «СберСпасибо», Таблица 2"
 
+// Ozon Банк Ultra levels, from the bank's own pages (finance.ozon.ru/promo/ultra
+// and its blog explainer, published 2026-05-26, «действительна на май 2026»).
+const ozonUltraAsOf = "as of 2026-05, first-party finance.ozon.ru (промо Ultra + блог)"
+
 // Альфа-Банк's cap ladder is read off the bank's own MCCD appendix (2026-08),
 // which states it verbatim: cards outside the Alfa Only / Максимум packages get
 // 5000, or 7000 with an Альфа-Смарт subscription; cards inside them get 30 000.
@@ -127,6 +131,28 @@ var programs = []program{
 			{name: "Стандартный", capValue: "3000", capScope: "both", capPerCategory: "1500", maxCategories: 4, notes: asOf},
 			{name: "Ozon Premium", paid: true, capValue: "3000", capScope: "both", capPerCategory: "1500", maxCategories: 4,
 				notes: asOf + "; подписка добавляет выбираемые категории (Кафе и Рестораны 5%, Фастфуд 5%)"},
+			// Ozon Банк Ultra is premium SERVICE, a different product from the
+			// Ozon Premium subscription above — the bank's own FAQ has a
+			// question devoted to the difference, and they can coexist. Four
+			// levels, each raising the cashback cap and lifting the slot count
+			// to 5. Per-category cap deliberately left unset: the first-party
+			// pages state only the total, so cap_scope stays `total` here while
+			// the base card keeps `both` (the channel reports 10 000 ₽ per
+			// category, which no first-party source confirms).
+			//
+			// ⚠️ `paid` is true for all four, but that is only half the truth:
+			// a level is EITHER bought (Бронзовый, 2 990 ₽/мес) OR earned by
+			// holding a balance (2 / 3 / 6 / 12 млн ₽). is_paid_subscription is
+			// a property of the tier, and here it is a property of how a given
+			// client reached it — the same gap ОТП Premium and Газпромбанк have.
+			{name: "Ultra Бронзовый", paid: true, capValue: "20000", capScope: "total", maxCategories: 5,
+				notes: ozonUltraAsOf + "; 2 990 ₽/мес либо бесплатно от 2 млн ₽ на счетах; 2 бизнес-зала, компенсации до 1 000 ₽"},
+			{name: "Ultra Серебряный", paid: true, capValue: "30000", capScope: "total", maxCategories: 5,
+				notes: ozonUltraAsOf + "; от 3 млн ₽ на счетах; 4 бизнес-зала, компенсации до 1 500 ₽"},
+			{name: "Ultra Золотой", paid: true, capValue: "40000", capScope: "total", maxCategories: 5,
+				notes: ozonUltraAsOf + "; от 6 млн ₽ на счетах; 6 бизнес-залов, компенсации до 2 000 ₽, персональный менеджер"},
+			{name: "Ultra Платиновый", paid: true, capValue: "50000", capScope: "total", maxCategories: 5,
+				notes: ozonUltraAsOf + "; от 12 млн ₽ на счетах; безлимит бизнес-залов, компенсации до 2 500 ₽, персональный менеджер"},
 		},
 	},
 	{
