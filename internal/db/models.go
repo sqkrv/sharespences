@@ -493,6 +493,50 @@ func (ns NullPeriod) Value() (driver.Value, error) {
 	return string(ns.Period), nil
 }
 
+type PerkEventKind string
+
+const (
+	PerkEventKindUse    PerkEventKind = "use"
+	PerkEventKindGrant  PerkEventKind = "grant"
+	PerkEventKindResize PerkEventKind = "resize"
+	PerkEventKindAdjust PerkEventKind = "adjust"
+)
+
+func (e *PerkEventKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PerkEventKind(s)
+	case string:
+		*e = PerkEventKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PerkEventKind: %T", src)
+	}
+	return nil
+}
+
+type NullPerkEventKind struct {
+	PerkEventKind PerkEventKind
+	Valid         bool // Valid is true if PerkEventKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPerkEventKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.PerkEventKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PerkEventKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPerkEventKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PerkEventKind), nil
+}
+
 type PointOfSaleType string
 
 const (
@@ -819,6 +863,55 @@ type PartnerOffer struct {
 type PartnerOfferAttachment struct {
 	PartnerOfferID int64
 	AttachmentID   uuid.UUID
+}
+
+type Perk struct {
+	ID     int64
+	UserID uuid.UUID
+	Name   string
+	// the counted noun, singular: «поездка», «преференция», «проход» — rendered next to a number
+	Unit         string
+	Note         *string
+	CreatedAt    time.Time
+	BankClientID int64
+}
+
+type PerkEvent struct {
+	ID        int64
+	QuotaID   int64
+	Kind      PerkEventKind
+	Qty       int32
+	EventDate time.Time
+	Note      *string
+	CreatedAt time.Time
+}
+
+type PerkQuotum struct {
+	ID            int64
+	PerkID        int64
+	ParentQuotaID *int64
+	WindowStart   time.Time
+	WindowEnd     time.Time
+	Size          int32
+	Note          *string
+	CreatedAt     time.Time
+	IsChild       pgtype.Bool
+	ParentIsRoot  pgtype.Bool
+}
+
+type PerkSnapshot struct {
+	ID         int64
+	QuotaID    int64
+	ObservedOn time.Time
+	Remaining  int32
+	Note       *string
+	CreatedAt  time.Time
+}
+
+type PerkSplit struct {
+	PerkID       int64
+	BankClientID int64
+	N            int64
 }
 
 type PointOfSale struct {

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMe, useLogout } from "../auth";
 import { useTheme, type ThemeSetting } from "../theme";
 import { useInstallPrompt } from "../pwa";
@@ -15,6 +16,45 @@ const built = new Date(BUILD);
 const buildLabel = Number.isNaN(built.getTime())
   ? null
   : built.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+
+// SYS-03.f «Модули» (design4 «Perks - Module», board C). The spec asks for one
+// «Привилегии» item; the design widens it to a card, because Друзья is built
+// and has had no entry from this screen at all. Both rows use the accent-row
+// pattern the moderation card already established.
+//
+// The «нов» badge marks the first release of a module and comes off in the next
+// one — it is a hand-edited literal, not stored state.
+function ModuleRow({
+  to,
+  emoji,
+  title,
+  sub,
+  fresh,
+}: {
+  to: string;
+  emoji: string;
+  title: string;
+  sub: string;
+  fresh?: boolean;
+}) {
+  return (
+    <Link to={to} className="flex items-center gap-3 rounded-xl border border-brd bg-srf2 px-3 py-2.5">
+      <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[12px] bg-inset text-[16px]">
+        {emoji}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[13px] font-bold">{title}</span>
+          {fresh && (
+            <span className="flex-none rounded bg-acc/15 px-1 py-[1px] text-[9px] font-bold text-accl">нов</span>
+          )}
+        </span>
+        <span className="block truncate text-[10.5px] font-medium text-tx3">{sub}</span>
+      </span>
+      <span className="flex-none text-[13px] font-bold text-tx4">›</span>
+    </Link>
+  );
+}
 
 // «Сервисы» hosts what the design's shell has no other place for: profile, the
 // three-state theme control, install, docs, logout, dev mode, and the app's own
@@ -107,6 +147,20 @@ export default function Services() {
           )}
         </Card>
       )}
+
+      <Card className="p-4" data-sid="SYS-03.f">
+        <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Модули</p>
+        <div className="mt-2.5 space-y-1.5">
+          <ModuleRow
+            to="/perks"
+            emoji="🎟️"
+            title="Привилегии"
+            sub="Квоты банковских привилегий: такси, бизнес-залы, преференции"
+            fresh
+          />
+          <ModuleRow to="/friends/settings" emoji="👥" title="Друзья" sub="Обмен кешбек-выборами и заявки" />
+        </div>
+      </Card>
 
       <Card className="p-4" data-sid="SYS-03.d">
         <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Для разработчиков</p>

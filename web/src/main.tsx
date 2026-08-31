@@ -18,6 +18,8 @@ import Partners from "./pages/Partners";
 import Friends from "./pages/Friends";
 import FriendsSettings from "./pages/FriendsSettings";
 import FriendJoin from "./pages/FriendJoin";
+import Perks from "./pages/Perks";
+import Perk from "./pages/Perk";
 import Services from "./pages/Services";
 import Stub from "./pages/Stub";
 import "./index.css";
@@ -83,6 +85,8 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/friends" element={<Friends />} />
             <Route path="/friends/settings" element={<FriendsSettings />} />
             <Route path="/friends/join/:token" element={<FriendJoin />} />
+            <Route path="/perks" element={<Perks />} />
+            <Route path="/perks/:perkId" element={<Perk />} />
             <Route path="/services" element={<Services />} />
             <Route path="/home" element={<Stub title="Главная" />} />
             <Route path="/groups" element={<Stub title="Группы" />} />

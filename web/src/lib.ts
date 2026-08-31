@@ -212,3 +212,32 @@ export const FALLBACK_EMOJI = "🏷️";
 // third-party resources — an outbound link the user chooses to follow is not
 // one, a request the page makes on its own would be.
 export const STATUS_URL = "https://status.sharespences.com";
+
+// The unit is a noun the user typed, and Russian genitive plural has no rule
+// that survives arbitrary input — «поездка» loses its ending AND gains a fill
+// vowel (поездок), «преференция» does something else again. Guessing produced
+// «5 из 5 поездкок».
+//
+// So: the handful of nouns this domain actually uses are spelled out, and
+// anything else is left in the nominative rather than manufactured. A slightly
+// stiff «5 из 5 виза» beats a word that does not exist.
+const UNITS: Record<string, [string, string, string]> = {
+  поездка: ["поездка", "поездки", "поездок"],
+  преференция: ["преференция", "преференции", "преференций"],
+  проход: ["проход", "прохода", "проходов"],
+  балл: ["балл", "балла", "баллов"],
+  посещение: ["посещение", "посещения", "посещений"],
+  компенсация: ["компенсация", "компенсации", "компенсаций"],
+  билет: ["билет", "билета", "билетов"],
+  день: ["день", "дня", "дней"],
+};
+
+export function unitWord(unit: string, n: number): string {
+  const forms = UNITS[unit.trim().toLowerCase()];
+  if (!forms) return unit;
+  const t = n % 10;
+  const h = n % 100;
+  if (t === 1 && h !== 11) return forms[0];
+  if (t >= 2 && t <= 4 && (h < 12 || h > 14)) return forms[1];
+  return forms[2];
+}

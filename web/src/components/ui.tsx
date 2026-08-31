@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { STATUS_URL } from "../lib";
 
@@ -49,6 +50,52 @@ export function Btn({
       {children}
     </button>
   );
+}
+
+// Real «назад»: browser history when there is in-app history to return to
+// (CB-03 opened from «Банки» goes back to «Банки», not to a hardcoded
+// parent), the screen's natural parent otherwise (deep link, refreshed tab).
+// React Router keeps its position in history.state.idx — 0 means this entry
+// started the session, so there is nothing of ours behind it.
+export function useGoBack(fallback = "/") {
+  const navigate = useNavigate();
+  return () => {
+    if ((window.history.state as { idx?: number } | null)?.idx) navigate(-1);
+    else navigate(fallback, { replace: true });
+  };
+}
+
+// The header back chevron every screen shares. small = the compact 32px
+// variant (period screens); default is the 33px header icon.
+export function BackButton({ fallback = "/", small = false }: { fallback?: string; small?: boolean }) {
+  const goBack = useGoBack(fallback);
+  const box = small ? "h-8 w-8 rounded-[10px]" : "h-[33px] w-[33px] rounded-[11px]";
+  return (
+    <button
+      type="button"
+      aria-label="Назад"
+      onClick={goBack}
+      className={`flex ${box} flex-none items-center justify-center border border-brd bg-srf`}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--t-tx2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14.5 5 8 12l6.5 7" />
+      </svg>
+    </button>
+  );
+}
+
+// Tiny in-row marker chip (the redesign's second-line vocabulary): gold =
+// спец/барабан/партнёрка, friend = «друг · Кирилл», points = «Баллы Плюс»,
+// neutral = everything stateless. Smaller than Badge on purpose — it lives
+// inside a row's second line, not on a card.
+export function Chip({ children, tone = "neutral" }: { children: ReactNode; tone?: "gold" | "friend" | "points" | "neutral" }) {
+  const tones = {
+    gold: "bg-gold/15 text-gold",
+    friend: "bg-acc/20 text-accl",
+    points: "bg-accl/15 text-accl",
+    neutral: "bg-inset text-tx3",
+  }[tone];
+  return <span className={`inline-block flex-none rounded-[5px] px-1.5 py-px text-[9.5px] font-bold whitespace-nowrap ${tones}`}>{children}</span>;
 }
 
 // min-w-0: a Field is often a grid/flex item, and the default
