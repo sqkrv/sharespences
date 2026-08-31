@@ -36,6 +36,13 @@ const sberAsOf = "as of 2026-07-28, официальные Правила «Сб
 // and its blog explainer, published 2026-05-26, «действительна на май 2026»).
 const ozonUltraAsOf = "as of 2026-05, first-party finance.ozon.ru (промо Ultra + блог)"
 
+// МКБ's quarterly picker as the channel reported it in two independent
+// quarterly posts (#4155 for Q2 2026, #4554 for Q3 2026) — identical figures
+// both times, and the 3-slot count matches the 2025-09 picker screenshots.
+// ⚠️ Still channel-class: mkb.ru is behind ServicePipe and its ПЛ has never
+// been fetched.
+const mkbAsOf = "as of 2026-06"
+
 // Альфа-Банк's cap ladder is read off the bank's own MCCD appendix (2026-08),
 // which states it verbatim: cards outside the Alfa Only / Максимум packages get
 // 5000, or 7000 with an Альфа-Смарт subscription; cards inside them get 30 000.
@@ -184,12 +191,22 @@ var programs = []program{
 		bank: "МКБ", name: "Кэшбэк", periodType: "quarter", selectionMode: "atomic",
 		currencyKind: "points", pointsLabel: "баллы МКБ",
 		midPeriodAdd: "paid", activation: "next_day",
-		notes: asOf + "; баллы 1:1 в рубли с месячными лимитами перевода; платная смена категории посреди квартала, активация на следующий день",
+		notes: mkbAsOf + "; баллами возвращают стоимость покупок прошлого месяца от 1 ₽ (1 б = 1 ₽), выплата до 20 числа; бонусируются покупки от 300 ₽ (кроме соц. карты); платная смена категории посреди квартала, активация на следующий день; ⚠️ с 30.06.25 банк следит, чтобы на повышенные категории приходилось не более 70% всех покупок, иначе ПЛ урезают",
 		tiers: []tier{
-			{name: "Стандарт", capValue: "1500", capScope: "total", notes: asOf},
-			{name: "Выгодный", capValue: "3000", capScope: "total", notes: asOf},
-			{name: "Премиальный", capValue: "20000", capScope: "total", notes: asOf},
-			{name: "Эксклюзивный", capValue: "50000", capScope: "total", notes: asOf},
+			// Стандарт and Премиальный carry the 2026 figures, confirmed twice.
+			// Выгодный and Эксклюзивный are 2025-05 wiki-table rungs that no
+			// 2026 source mentions — the channel describes only two groups
+			// («обычные и соц. карты» vs «Премиум»). They are kept rather than
+			// deleted because bank_client rows may reference them, and their
+			// notes say plainly that the numbers are unverified.
+			{name: "Стандарт", capValue: "3000", capScope: "total", maxCategories: 3,
+				notes: mkbAsOf + "; обычные и соц. карты, 5% в 3 категориях (было 1 500 б по таблице 2025-05)"},
+			{name: "Выгодный", capValue: "3000", capScope: "total",
+				notes: asOf + "; ⚠️ ступень не упоминается ни в одном источнике 2026 года — лимит не перепроверен"},
+			{name: "Премиальный", capValue: "20000", capScope: "total", maxCategories: 4,
+				notes: mkbAsOf + "; 7% в 4 категориях"},
+			{name: "Эксклюзивный", capValue: "50000", capScope: "total",
+				notes: asOf + "; ⚠️ ступень не упоминается ни в одном источнике 2026 года — лимит не перепроверен"},
 		},
 	},
 	{
