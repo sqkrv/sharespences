@@ -31,6 +31,7 @@ import (
 	"github.com/sqkrv/sharespences/internal/friends"
 	"github.com/sqkrv/sharespences/internal/i18n"
 	"github.com/sqkrv/sharespences/internal/mcc"
+	"github.com/sqkrv/sharespences/internal/perks"
 	"github.com/sqkrv/sharespences/internal/vision"
 	"github.com/sqkrv/sharespences/internal/web"
 )
@@ -128,6 +129,9 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 	cbSvc := &cashback.Service{Q: q, RemoveAttachmentFile: store.Remove, ReadAttachmentFile: store.Open, Vision: cfg.Vision}
 	mccSvc := &mcc.Service{Q: q}
 	frSvc := &friends.Service{Q: q, Pool: cfg.Pool}
+	// Привилегии is self-contained: it reads bank and bank_client as reference
+	// data and owns everything else it touches, so it needs no seam wiring.
+	pvSvc := &perks.Service{Q: q}
 	// The one function value crossing the friends→cashback seam (ADR-0002:
 	// injected here at the composition root, never a package import).
 	cbSvc.ListSharedWithMe = func(ctx context.Context, viewerID uuid.UUID) ([]cashback.SharedFriend, error) {
@@ -152,6 +156,7 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 	cashback.RegisterHTTP(api, cbSvc)
 	mcc.RegisterHTTP(api, mccSvc)
 	friends.RegisterHTTP(api, frSvc)
+	perks.RegisterHTTP(api, pvSvc)
 
 	// Raw attachment bytes; outside the JSON API (and its OpenAPI doc).
 	r.Get("/api/v1/attachments/{id}/content", func(w http.ResponseWriter, req *http.Request) {
@@ -551,7 +556,7 @@ func registerBanks(api huma.API, q *db.Queries) {
 		n, err := q.DeleteBankClientForUser(ctx, db.DeleteBankClientForUserParams{ID: in.ID, UserID: auth.UserID(ctx)})
 		if err != nil {
 			if isPgCode(err, "23503") {
-				return nil, huma.Error409Conflict("у банка есть история КБ (периоды или партнёрские предложения) — сначала удали её")
+				return nil, huma.Error409Conflict("у банка есть история — периоды КБ, партнёрские предложения или периоды привилегий; сначала удали её")
 			}
 			return nil, err
 		}

@@ -7,8 +7,8 @@ Sharespences is a comprehensive finance management app that tracks expenses, man
 
 The stack needs a database password before it will start. There is no
 default: this same file set is the production deployment descriptor, so a
-default would be a credential in a public repository. Once, in a fresh
-checkout:
+default would be a credential in a public repository. For a **new** database
+— a fresh checkout, or a fresh server:
 
 ```sh
 printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
@@ -18,6 +18,11 @@ printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
 empty value fails the command by name rather than starting on a shared value.
 Keep it URL-safe — it is interpolated into the connection string, where `@ :
 / ? #` and `%` corrupt the DSN instead of failing.
+
+⚠️ On a database that **already exists** — a running deployment, or a checkout
+whose volume predates this — do not generate a new value here. PostgreSQL
+reads it at initdb only, so a new one never reaches the cluster; it just
+makes the app send a password the role does not have. See «Deploying».
 
 ```sh
 docker compose up --build
@@ -94,6 +99,30 @@ generated on the server and never committed. The database reads it when the
 volume is first initialized and ignores it afterwards, so changing it later
 means an `ALTER ROLE` inside the running cluster as well as an `.env` edit —
 the two have to move together or the app cannot authenticate.
+
+Adopting this on a deployment that is already running: the password the
+cluster already has is the one that belongs in `.env`. Read it off the
+running container rather than reconstructing it —
+
+```sh
+docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' <app container> \
+  | sed -n 's#^DATABASE_URL=postgres://[^:]*:\([^@]*\)@.*#\1#p'
+```
+
+— write that value to `.env`, and then confirm the file resolves to exactly
+the DSN the running container is already using, before recreating anything:
+
+```sh
+docker compose config | sed -n 's/^ *DATABASE_URL: //p' | head -1
+```
+
+If the two match, `docker compose up -d` changes no credentials and the
+adoption is a no-op. If this deployment had kept a non-default password by
+editing the compose file in place, that edit conflicts on the next `git
+pull` — take the incoming file and move the value into `.env`, which is what
+it exists for. Changing to a *different* password is a separate operation:
+the variable is initdb-only, so it needs an `ALTER ROLE` inside the running
+cluster as well as the `.env` edit.
 
 The stack keeps itself up. `db`, `app` and `admin` carry `restart:
 unless-stopped`, so they come back from a crash and after a host reboot,
