@@ -12,8 +12,14 @@ renders instead, so a partial set is fine.
 | `yandex-pay` | Яндекс Пэй | `#FC3F1D` |
 | `gazprombank` | Газпромбанк | `#10069F` |
 | `mkb` | МКБ | `#E31E24` |
-| `sber` | Сбербанк | `#21A038` |
+| `sber` | СберБанк | `#21A038` |
 | `tbank` | Т-Банк | `#FFDD2D` |
+| `sovcombank` | Совкомбанк | — |
+| `otp` | ОТП Банк | — |
+| `mts-dengi` | МТС Деньги | — |
+| `ubrr` | УБРиР | `#CC163F` ⚠️ sampled |
+| `pskb` | Примсоцбанк | `#008F4C` ⚠️ sampled |
+| `sinara` | Банк Синара | — |
 
 The slug ↔ bank-name mapping lives in `BANK_SLUG` (`web/src/components/ui.tsx`)
 and is keyed by the seeded `bank.name`; add banks there when the seed grows.

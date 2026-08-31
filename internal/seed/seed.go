@@ -41,6 +41,17 @@ const ozonUltraAsOf = "as of 2026-05, first-party finance.ozon.ru (промо Ul
 // both times, and the 3-slot count matches the 2025-09 picker screenshots.
 // ⚠️ Still channel-class: mkb.ru is behind ServicePipe and its ПЛ has never
 // been fetched.
+// The six banks promoted to Tier A on 2026-08-26 (docs/knowledge/banks/
+// ru-bank-landscape.md). ⚠️ None is in the owner's wallet, so NO screenshot
+// exists for any of them: titles below are document- or channel-class evidence,
+// never observed picker strings. Per-bank as-of constants say which.
+const otpAsOf = "as of 2026-09, официальная инструкция ОТП по МСС (матрица категорий × уровней привилегий)"
+const ubrrAsOf = "as of 2026-08-01, официальные Правила ПЛ «Моя жизнь» (пп. 3.2–3.12 + Приложение №1)"
+const sovcomAsOf = "as of 2026-04-21 (перекройка ПЛ и запуск подписки «Оптима»)"
+const mtsAsOf = "as of 2026-08"
+const pskbAsOf = "as of 2026-04"
+const sinaraAsOf = "as of 2026-03"
+
 const mkbAsOf = "as of 2026-06"
 
 // Альфа-Банк's cap ladder is read off the bank's own MCCD appendix (2026-08),
@@ -262,6 +273,96 @@ var programs = []program{
 			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
 			{name: "Pro", paid: true, capValue: "5000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
 			{name: "Premium", paid: true, capValue: "30000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
+		},
+	},
+	{
+		bank: "Совкомбанк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "rub",
+		midPeriodAdd: "unknown", activation: "unknown",
+		// ⚠️ periodType is «monthly cadence», NOT the calendar month: Совкомбанк
+		// accounts caps per расчетный период, which runs from each card's issue
+		// date. The start day belongs on bank_client.period_anchor_day (00033,
+		// ADR-0009 §2); this row only says how LONG a period is. The 2026-04
+		// switchover misfiring on the old РП (#4306) is the evidence the
+		// boundary is real.
+		notes: sovcomAsOf + "; ⚠️ расчетный период у каждого клиента свой (от даты выдачи карты) — день начала задаётся в bank_client.period_anchor_day, а не здесь; «Халва» — отдельный продукт со своей ПЛ, здесь не отражён",
+		tiers: []tier{
+			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 3,
+				notes: sovcomAsOf + "; до 15% в 3 категориях, либо 1,5% на всё — режимы взаимоисключающие"},
+			{name: "Подписка «Оптима»", paid: true, capValue: "5000", capScope: "total", maxCategories: 5,
+				notes: sovcomAsOf + "; 399 ₽/мес; до 30% в 5 категориях, либо 3% на всё"},
+		},
+	},
+	{
+		bank: "ОТП Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "points", pointsLabel: "баллы ОТП",
+		midPeriodAdd: "unknown", activation: "unknown",
+		// ⚠️ The offered set is RANDOM after a client's first two months — the
+		// catalog below is a POOL no client ever sees whole (ADR-0009 §1).
+		notes: otpAsOf + "; баллы 1:1 в рубли от 500 б, начисление по 10 числам; ⚠️ покупки округляются вниз до 100 ₽ — покупка за 99 ₽ не приносит ничего; ⚠️ после первых двух месяцев набор предлагаемых категорий случаен, каталог — это пул; лимит общий на все карты клиента, но дебетовая и кредитная не суммируются (в seed — дебетовые лимиты)",
+		tiers: []tier{
+			{name: "ОТП Карта", capValue: "3000", capScope: "total", maxCategories: 4,
+				notes: otpAsOf + "; кредитная карта того же уровня — 1 000 б"},
+			{name: "Зарплатный клиент", capValue: "5000", capScope: "total", maxCategories: 4,
+				notes: otpAsOf + "; статус подтверждается зачислением от 1 ₽ до 19 числа прошлого месяца; кредитная — 1 000 б"},
+			{name: "Premium Light", capValue: "5000", capScope: "total",
+				notes: otpAsOf + "; ⚠️ число категорий не указано в документе; кредитная — 1 000 б"},
+			{name: "Premium", paid: true, capValue: "20000", capScope: "total", maxCategories: 8,
+				notes: otpAsOf + "; ⚠️ отдельный набор категорий, а не расширенный — пять строк доступны только здесь, и восемнадцать базовых недоступны; какие именно предлагают, зависит от остатка (≥2 млн ₽ → Супермаркеты и Искусство); кредитная — 3 000 б"},
+			{name: "Private", paid: true, capValue: "100000", capScope: "total",
+				notes: otpAsOf + "; ⚠️ число категорий не указано в документе; в канале эта ступень не упоминается вовсе; кредитная — 3 000 б"},
+		},
+	},
+	{
+		bank: "МТС Деньги", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "points", pointsLabel: "баллы МТС",
+		midPeriodAdd: "unknown", activation: "unknown",
+		// ⚠️ Not МТС Банк — a different credit institution. The card is issued
+		// by Экси Банк, and it is Экси Банк that runs this picker.
+		notes: mtsAsOf + "; карту выпускает Экси Банк (не МТС Банк — это другая кредитная организация); ⚠️ баллы тратятся только в экосистеме МТС и только при активной подписке — для большинства клиентов они НЕ превращаются в рубли; части клиентов доступна компенсация покупок от 500 ₽ (1 б = 1 ₽), и это единственный путь обратно в деньги",
+		tiers: []tier{
+			{name: "Стандартный", capValue: "10000", capScope: "both", capPerCategory: "1000", maxCategories: 5,
+				notes: mtsAsOf + "; до 30% в сервисах МТС, до 20% в остальных категориях; подписка МТС Premium 99 ₽ первый месяц, далее 349 ₽/мес"},
+		},
+	},
+	{
+		bank: "УБРиР", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "rub", opensDay: 25,
+		midPeriodAdd: "locked_after_first", activation: "immediate",
+		// ⚠️ `activation: immediate` is an approximation the document does not
+		// quite support: chosen BEFORE the period → retroactive to the 1st;
+		// chosen DURING it → from the moment of confirmation (п. 3.4). Neither
+		// `immediate` nor `next_day` says that. ADR-0009 §5 keeps it as text.
+		notes: ubrrAsOf + "; карта «Моя Жизнь»; выбор открывается 25 числа, подтверждённые категории изменению не подлежат (п. 3.5), без выбора кешбэка нет вовсе кроме Транспорта и Онлайн-покупок (п. 3.11); ⚠️ активация: выбрано до начала месяца → с 1 числа, выбрано внутри месяца → с момента подтверждения; ⚠️ кешбэк только при обороте от 5 000 ₽/мес (ЖКХ в оборот не входит) и с покупок от 200 ₽; ⚠️ у части строк условие ежедневного остатка от 10 000 ₽ в течение 20 дней, а при нехватке остатка банк выбирает оплачиваемую категорию СЛУЧАЙНО (п. 3.12)",
+		tiers: []tier{
+			{name: "Базовый", capValue: "2100", capScope: "both", capPerCategory: "500", maxCategories: 3,
+				notes: ubrrAsOf + "; ⚠️ банк устанавливает 3 ИЛИ 4 категории на каждый расчетный месяц (пп. 3.2, 3.7) — здесь базовое значение, фактическое пишется в offer_period.max_categories_override"},
+			{name: "Подписка «Моя жизнь+»", paid: true, capValue: "4100", capScope: "both", capPerCategory: "500", maxCategories: 3,
+				notes: ubrrAsOf + "; 299 ₽/мес; открывает 10% на онлайн-покупки (до 600 ₽/мес) — эффективные 7,5% после вычета подписки"},
+		},
+	},
+	{
+		bank: "Примсоцбанк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "rub",
+		midPeriodAdd: "unknown", activation: "unknown",
+		notes: pskbAsOf + "; выплата до 15 числа, учёт по дате покупки; ⚠️ покупки округляются до 100 ₽ (кроме общественного транспорта); ⚠️ с 2026-05 весь кешбэк умножается на 0,8 — заявленная ставка не равна выплачиваемой; список категорий ОДИНАКОВ для всех клиентов, что среди банков wiki редкость",
+		tiers: []tier{
+			{name: "Стандартный", capValue: "2500", capScope: "both", capPerCategory: "1000", maxCategories: 4,
+				notes: pskbAsOf + "; ставки 3–10%; соцкарта получает повышение в отдельных категориях (аптеки, супермаркеты, книги), а не общий множитель; per-category лимит действует лишь на часть строк"},
+			{name: "Премиальный", paid: true, capValue: "7000", capScope: "both", capPerCategory: "1500", maxCategories: 4,
+				notes: pskbAsOf + "; тот же лимит у зарплатных клиентов; зарплатным ежемесячно дают ещё одну категорию до 10% сверх четырёх"},
+		},
+	},
+	{
+		bank: "Банк Синара", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "points", pointsLabel: "баллы Синары",
+		midPeriodAdd: "unknown", activation: "unknown",
+		notes: sinaraAsOf + "; карта «Та Самая», 4 категории из 11, список одинаков для всех клиентов; ⚠️ баллы меняются на рубли 1:1 ТОЛЬКО от 1 000 б — заработанное ниже порога нереализуемо; у кредитной карты своя ПЛ (1 категория с разбавлением 70/30, новые карты не выдают)",
+		tiers: []tier{
+			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 4,
+				notes: sinaraAsOf + "; до 15%; первые 3 месяца +5% по всем категориям в рамках продлеваемой акции"},
+			{name: "Опция «Можно больше»", paid: true, capValue: "5000", capScope: "total", maxCategories: 4,
+				notes: sinaraAsOf + "; 599 ₽/мес; ⚠️ покупает лимит, но не слоты — 4 категории на обеих ступенях"},
 		},
 	},
 }
@@ -611,6 +712,14 @@ var bankColors = map[string]string{
 	"МКБ":         "#E31E24",
 	"СберБанк":    "#21A038",
 	"Т-Банк":      "#FFDD2D",
+	// Tier A, promoted 2026-08-26. ⚠️ Both values are SAMPLED from the banks'
+	// served HTML (most frequent non-neutral hex, page title verified), not
+	// stated brandbook colors — good enough to tint a fallback chip, and to be
+	// replaced by a real value or an app screenshot. The other four banks'
+	// sites are JS-rendered and gave nothing; they render with no color until
+	// then, which is visible rather than silently wrong.
+	"УБРиР":       "#CC163F",
+	"Примсоцбанк": "#008F4C",
 }
 
 // Per-bank picker catalogs: the CURRENTLY selectable menu rows, from the
@@ -924,6 +1033,172 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "МКБ", title: "Видеоигры", slug: "digital-goods"},
 	{bank: "МКБ", title: "МКБ Travel", emoji: "✈️"},
 	{bank: "МКБ", title: "Бургер Кинг", emoji: "🍔"},
+
+	// ─── Tier A banks promoted 2026-08-26 ───────────────────────────────────
+	// ⚠️ No screenshot exists for any of these six. Titles below come from the
+	// banks' own documents where marked, and from channel paraphrase otherwise
+	// — the 2026-07-27 rule says a picker title must come from the app, so
+	// every row here is provisional and retires on the first sighting that
+	// disagrees. Seeded regardless on «prefer more rows over fewer»: a missing
+	// row blocks recording a month, a surplus one is an unused search hit.
+
+	// УБРиР — Приложение №1 to the ПЛ effective 2026-08-01. This is a POOL of
+	// ~45 rows; the bank offers a restricted subset (~12 observed) each month
+	// and the client picks 3–4 of those (п. 3.7). Seeding the pool is correct:
+	// seeding a month's offering would make eight months of rows look absent.
+	{bank: "УБРиР", title: "Оплата ЖКУ", slug: "utilities"},
+	{bank: "УБРиР", title: "Салоны красоты", slug: "beauty"},
+	{bank: "УБРиР", title: "Аптеки", slug: "pharmacies"},
+	{bank: "УБРиР", title: "Авиабилеты", slug: "avia-tickets"},
+	{bank: "УБРиР", title: "Прокат авто", slug: "car-rental"},
+	{bank: "УБРиР", title: "Автозапчасти и сервисы", slug: "auto-parts"},
+	{bank: "УБРиР", title: "Автомойки", slug: "auto-services"},
+	{bank: "УБРиР", title: "Бизнес услуги", slug: "household-services"},
+	{bank: "УБРиР", title: "Уход и уборка", slug: "household-services"},
+	{bank: "УБРиР", title: "Компьютеры и сервисы", slug: "electronics"},
+	{bank: "УБРиР", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "УБРиР", title: "Образование", slug: "education"},
+	{bank: "УБРиР", title: "Кино", slug: "cinema"},
+	{bank: "УБРиР", title: "Танцы", slug: "active-leisure"},
+	{bank: "УБРиР", title: "Театр", slug: "culture"},
+	{bank: "УБРиР", title: "Музыка", slug: "music"},
+	{bank: "УБРиР", title: "Цветы", slug: "flowers"},
+	{bank: "УБРиР", title: "АЗС и зарядные станции", slug: "gas-stations"},
+	{bank: "УБРиР", title: "Охрана и безопасность", slug: "household-services"},
+	{bank: "УБРиР", title: "Живопись и декор", slug: "culture"},
+	{bank: "УБРиР", title: "Книги", slug: "books"},
+	{bank: "УБРиР", title: "Подарки и Сувениры", slug: "souvenirs"},
+	{bank: "УБРиР", title: "Творчество", slug: "hobby"},
+	{bank: "УБРиР", title: "Фото", slug: "photo-video"},
+	{bank: "УБРиР", title: "Гостиницы", slug: "hotels"},
+	{bank: "УБРиР", title: "Украшения и аксессуары", slug: "jewelry"},
+	{bank: "УБРиР", title: "Аренда лодок и яхт", slug: "active-leisure"},
+	{bank: "УБРиР", title: "Медицина", slug: "medicine"},
+	{bank: "УБРиР", title: "Автоперевозки", slug: "transport"},
+	{bank: "УБРиР", title: "Домашние питомцы", slug: "pets"},
+	{bank: "УБРиР", title: "Антиквариат", slug: "culture"},
+	{bank: "УБРиР", title: "Спорттовары", slug: "sport-goods"},
+	{bank: "УБРиР", title: "Активный спорт", slug: "active-leisure"},
+	{bank: "УБРиР", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "УБРиР", title: "Платные дороги", slug: "toll-roads"},
+	{bank: "УБРиР", title: "Такси", slug: "taxi"},
+	{bank: "УБРиР", title: "Универсамы", slug: "supermarkets"},
+	{bank: "УБРиР", title: "Детские товары", slug: "kids"},
+	{bank: "УБРиР", title: "Магазины косметики", slug: "cosmetics"},
+	{bank: "УБРиР", title: "Остальные покупки", slug: "all-purchases"},
+	// The two rows Приложение №1 lists as «не требуется выбирать» — credited
+	// automatically, consuming no slot, and the only thing that still pays when
+	// a client picks nothing at all (п. 3.11). They are catalog rows because
+	// they appear in the appendix, not because they are pickable.
+	{bank: "УБРиР", title: "Транспорт (местный и пригородный)", slug: "transport"},
+	{bank: "УБРиР", title: "Онлайн-покупки", slug: "marketplaces"},
+	// Single-merchant rows: their MCC is defined as «коды, присвоенные
+	// <магазином>», so they are merchants, not categories — canonical-less by
+	// the 2026-07-27 rule, and they carry their own emoji since there is no
+	// canonical to inherit one from.
+	{bank: "УБРиР", title: "Библиотека ароматов онлайн", emoji: "🕯️"},
+	{bank: "УБРиР", title: "Бубль Гум онлайн", emoji: "🧸"},
+	{bank: "УБРиР", title: "Издательство «МИФ» онлайн", emoji: "📚"},
+	{bank: "УБРиР", title: "Мегафон онлайн", emoji: "📱"},
+	{bank: "УБРиР", title: "Билайн онлайн", emoji: "📱"},
+	{bank: "УБРиР", title: "Очкарик онлайн", emoji: "👓"},
+	{bank: "УБРиР", title: "Котофото онлайн", emoji: "📷"},
+
+	// ОТП Банк — the official MCC instruction's category × tier matrix
+	// (сентябрь 2026). ⚠️ A POOL: after a client's first two months the bank
+	// draws which rows they are offered.
+	{bank: "ОТП Банк", title: "Автоуслуги", slug: "auto-services"},
+	{bank: "ОТП Банк", title: "Запчасти и аксессуары", slug: "auto-parts"},
+	{bank: "ОТП Банк", title: "Прокат авто и каршеринг", slug: "car-rental"},
+	{bank: "ОТП Банк", title: "АЗС", slug: "gas-stations"},
+	{bank: "ОТП Банк", title: "Авиабилеты", slug: "avia-tickets"},
+	{bank: "ОТП Банк", title: "Аптеки", slug: "pharmacies"},
+	{bank: "ОТП Банк", title: "Детские товары", slug: "kids"},
+	{bank: "ОТП Банк", title: "Дом, ремонт", slug: "home-repair"},
+	{bank: "ОТП Банк", title: "ЖКХ", slug: "utilities"},
+	{bank: "ОТП Банк", title: "Животные", slug: "pets"},
+	{bank: "ОТП Банк", title: "Здоровье и медицина", slug: "medicine"},
+	{bank: "ОТП Банк", title: "Кафе и рестораны", slug: "restaurants"},
+	{bank: "ОТП Банк", title: "Книги", slug: "books"},
+	{bank: "ОТП Банк", title: "Творчество и хобби", slug: "hobby"},
+	{bank: "ОТП Банк", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "ОТП Банк", title: "Обучение и образование", slug: "education"},
+	{bank: "ОТП Банк", title: "Магазины одежды", slug: "clothes"},
+	{bank: "ОТП Банк", title: "Продуктовые магазины", slug: "supermarkets"},
+	{bank: "ОТП Банк", title: "Кино и развлечения", slug: "entertainment"},
+	{bank: "ОТП Банк", title: "Такси", slug: "taxi"},
+	{bank: "ОТП Банк", title: "Алкоголь", slug: "alcohol"},
+	{bank: "ОТП Банк", title: "Отдых и путешествия", slug: "travel"},
+	{bank: "ОТП Банк", title: "Транспорт", slug: "transport"},
+	{bank: "ОТП Банк", title: "Часы, ювелирные изделия", slug: "jewelry"},
+	{bank: "ОТП Банк", title: "Сувениры", slug: "souvenirs"},
+	{bank: "ОТП Банк", title: "Цветы", slug: "flowers"},
+	{bank: "ОТП Банк", title: "Фастфуд", slug: "fastfood"},
+	{bank: "ОТП Банк", title: "Красота", slug: "beauty"},
+	{bank: "ОТП Банк", title: "Все покупки", slug: "all-purchases"},
+	// ⚠️ Premium-only rows. They are NOT renamings of the base rows above —
+	// the matrix gives them different MCC sets, and the base card cannot pick
+	// them at all. Folding either pair together would erase that.
+	{bank: "ОТП Банк", title: "Искусство", slug: "culture"},
+	{bank: "ОТП Банк", title: "Рестораны, фастфуд", slug: "restaurants"},
+	{bank: "ОТП Банк", title: "Одежда и обувь", slug: "clothes"},
+	{bank: "ОТП Банк", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "ОТП Банк", title: "Такси и каршеринг", slug: "taxi"},
+	// A manufacturer, not a merchant and not a category — 10% at MCC 5722/5712.
+	{bank: "ОТП Банк", title: "Tefal", emoji: "🍳"},
+
+	// Примсоцбанк — ⚠️ channel paraphrase across 10 monthly posts, not picker
+	// strings. Several rows are plainly the same category worded differently
+	// between months; both spellings are kept rather than guessed at, since a
+	// wrong merge is harder to notice than a duplicate.
+	{bank: "Примсоцбанк", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "Примсоцбанк", title: "Аптеки", slug: "pharmacies"},
+	{bank: "Примсоцбанк", title: "Здоровье", slug: "health"},
+	{bank: "Примсоцбанк", title: "Красота", slug: "beauty"},
+	{bank: "Примсоцбанк", title: "Красота, парикмахерские, салоны", slug: "beauty"},
+	{bank: "Примсоцбанк", title: "Детские товары", slug: "kids"},
+	{bank: "Примсоцбанк", title: "Путешествия", slug: "travel"},
+	{bank: "Примсоцбанк", title: "Рестораны, кафе, закусочные, фастфуд", slug: "restaurants"},
+	{bank: "Примсоцбанк", title: "Рестораны и фастфуд", slug: "restaurants"},
+	{bank: "Примсоцбанк", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "Примсоцбанк", title: "Парки аттракционов, детские центры", slug: "entertainment"},
+	{bank: "Примсоцбанк", title: "Яндекс+АЗС", slug: "gas-stations"},
+	{bank: "Примсоцбанк", title: "Домашние животные", slug: "pets"},
+	{bank: "Примсоцбанк", title: "Одежда и обувь", slug: "clothes"},
+	{bank: "Примсоцбанк", title: "Образование", slug: "education"},
+	{bank: "Примсоцбанк", title: "Бытовые услуги", slug: "household-services"},
+	{bank: "Примсоцбанк", title: "Цветы, флористика", slug: "flowers"},
+	{bank: "Примсоцбанк", title: "Муз. инструменты", slug: "hobby"},
+	{bank: "Примсоцбанк", title: "Книги, канцелярия", slug: "books"},
+	{bank: "Примсоцбанк", title: "Техника", slug: "electronics"},
+	{bank: "Примсоцбанк", title: "Спорттовары, спорт", slug: "sport-goods"},
+	{bank: "Примсоцбанк", title: "Дом и ремонт", slug: "home-repair"},
+	{bank: "Примсоцбанк", title: "Развлечения, кинотеатры", slug: "entertainment"},
+	// ⚠️ Priced as a flat 4 ₽ per trip from 25 ₽, not as a percentage —
+	// category_offer stores a percent, so this row cannot be recorded honestly
+	// until that gap is addressed (ADR-0009 fact 11).
+	{bank: "Примсоцбанк", title: "Транспорт", slug: "transport"},
+
+	// МТС Деньги — ⚠️ 11 rows, nearly all from a single 2025-08 post; the
+	// thinnest catalog of the six and the most likely to be stale.
+	{bank: "МТС Деньги", title: "Связь МТС", emoji: "📱"},
+	{bank: "МТС Деньги", title: "Кино и развлечения", slug: "entertainment"},
+	{bank: "МТС Деньги", title: "Здоровье", slug: "health"},
+	{bank: "МТС Деньги", title: "Кафе и рестораны", slug: "restaurants"},
+	{bank: "МТС Деньги", title: "Топливо и АЗС", slug: "gas-stations"},
+	{bank: "МТС Деньги", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "МТС Деньги", title: "ЖКХ", slug: "utilities"},
+	{bank: "МТС Деньги", title: "Путешествия", slug: "travel"},
+	{bank: "МТС Деньги", title: "Одежда, обувь, юв. изделия и часы", slug: "clothes"},
+	{bank: "МТС Деньги", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "МТС Деньги", title: "Все остальное", slug: "all-purchases"},
+
+	// Банк Синара — ⚠️ NO catalog. The channel covers Синара monthly but has
+	// never published its menu (0 rows across 7 own picker posts); it only
+	// names four rows as «стабильно доступны». Seeding those four alone would
+	// imply the menu is four long. Left empty deliberately — the picker falls
+	// back to canonical categories for a bank without a catalog, which is the
+	// honest state until a screenshot or the ПЛ arrives.
 }
 
 // Run loads all seed data.

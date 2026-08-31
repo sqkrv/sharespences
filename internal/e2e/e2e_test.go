@@ -331,9 +331,12 @@ func TestCashbackE2E(t *testing.T) {
 	// Озон Стандартный: 4 slots, 1500/cat + 3000 total) ---
 	var programs []programJSON
 	owner.must("GET", "/api/v1/cashback/programs", nil, &programs, http.StatusOK)
-	// Альфа-Банк, ВТБ, Ozon Банк, Яндекс Пэй, Газпромбанк, МКБ, СберБанк, Т-Банк.
-	if len(programs) != 8 {
-		t.Fatalf("seeded programs = %d, want 8", len(programs))
+	// Tier A, as of 2026-08-31: the eight wallet-and-adjacent banks (Альфа-Банк,
+	// ВТБ, Ozon Банк, Яндекс Пэй, Газпромбанк, МКБ, СберБанк, Т-Банк) plus the
+	// six promoted on 2026-08-26 (Совкомбанк, ОТП Банк, МТС Деньги, УБРиР,
+	// Примсоцбанк, Банк Синара).
+	if len(programs) != 14 {
+		t.Fatalf("seeded programs = %d, want 14", len(programs))
 	}
 	findProgram := func(bank string) programJSON {
 		for _, p := range programs {

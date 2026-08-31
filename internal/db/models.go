@@ -680,6 +680,8 @@ type BankClient struct {
 	BankID        int32
 	Label         *string
 	ProgramTierID *int64
+	// Day of month the client's cashback period starts on. Null = follow cashback_program.period_type (the calendar). A pre-fill hint for new periods, never a constraint — see ADR-0009 §2.
+	PeriodAnchorDay *int16
 }
 
 type BankMcc struct {
