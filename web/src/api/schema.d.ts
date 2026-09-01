@@ -1398,7 +1398,7 @@ export interface components {
         };
         ChangeDTO: {
             /** @enum {string} */
-            action: "imported" | "added" | "removed" | "category_added" | "category_removed";
+            action: "imported" | "added" | "removed" | "category_added" | "category_removed" | "excluded_imported" | "excluded_added" | "excluded_removed";
             /** Format: int64 */
             bank_category_id?: number;
             /** Format: int32 */
