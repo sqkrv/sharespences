@@ -45,6 +45,13 @@ requirements narrow:
   - ⚠️ **`svgo` strips the `viewBox` by default.** `removeViewBox` is in `preset-default` and fires
     whenever the `viewBox` matches `width`/`height`, turning an optimisation pass into a file that
     cannot scale at all. Pass `--disable=removeViewBox`, then check the root tag by eye.
+- ⚠️ **No `<mask>`, and specifically never `mask-type: alpha`.** Quick Look ignores that property
+  and falls back to the default `mask-type: luminance`, where a mask path filled `#000` has zero
+  luminance and hides everything inside it — leaving just the background rect. The symptom is a file
+  that renders correctly in the app and as a **plain white tile in Finder**, which reads as a broken
+  export rather than a rendering gap. Figma emits exactly this shape when a frame is set to clip
+  contents. Use `<clipPath>` if a clip is genuinely needed; more often the mask is trimming nothing
+  and can go. (Hit on `gazprombank.svg`, 2026-09-01.)
 - No external references (`<image href="http…">`, web fonts),
   text converted to outlines. PNG fallback: **≥ 256×256**, transparent outside
   the mark.
