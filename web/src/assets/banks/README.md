@@ -14,9 +14,9 @@ renders instead, so a partial set is fine.
 | `mkb` | МКБ | `#E31E24` |
 | `sber` | СберБанк | `#21A038` |
 | `tbank` | Т-Банк | `#FFDD2D` |
-| `sovcombank` | Совкомбанк | — |
+| `sovkom` | Совкомбанк | — |
 | `otp` | ОТП Банк | — |
-| `mts-dengi` | МТС Деньги | — |
+| `mtsmoney` | МТС Деньги | — |
 | `ubrr` | УБРиР | `#CC163F` ⚠️ sampled |
 | `pskb` | Примсоцбанк | `#008F4C` ⚠️ sampled |
 | `sinara` | Банк Синара | — |

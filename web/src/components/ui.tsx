@@ -219,9 +219,9 @@ const BANK_SLUG: Record<string, string> = {
   // what the assets README prescribes for a partial set. The keys must exist
   // now regardless: they are keyed on the seeded bank.name, and a bank missing
   // here would never pick up its logo even once the file lands.
-  Совкомбанк: "sovcombank",
+  Совкомбанк: "sovkom",
   "ОТП Банк": "otp",
-  "МТС Деньги": "mts-dengi",
+  "МТС Деньги": "mtsmoney",
   УБРиР: "ubrr",
   Примсоцбанк: "pskb",
   "Банк Синара": "sinara",
