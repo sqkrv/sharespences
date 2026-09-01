@@ -225,7 +225,7 @@ const BANK_SLUG: Record<string, string> = {
   УБРиР: "ubrr",
   Примсоцбанк: "pskb",
   "Банк Синара": "sinara",
-  "Яндекс Про": "yandex-pro",
+  "Яндекс Про": "yandexpro",
 };
 
 export function bankLogo(name: string): string | undefined {

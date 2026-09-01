@@ -763,6 +763,7 @@ var bankColors = map[string]string{
 	// flat color — this is the midpoint of the two stops, not a value the brand
 	// states anywhere.
 	"МТС Деньги": "#F21630",
+	"Яндекс Про": "#FFC806",
 }
 
 // Per-bank picker catalogs: the CURRENTLY selectable menu rows, from the

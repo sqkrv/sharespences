@@ -20,6 +20,7 @@ renders instead, so a partial set is fine.
 | `ubrr` | УБРиР | `#CC163F` |
 | `pskb` | Примсоцбанк | `#BEA980` |
 | `sinara` | Банк Синара | `#E40134` |
+| `yandexpro` | Яндекс Про | `#FFC806` |
 
 **Where the brand color comes from.** Read it off the logo's own background —
 most files carry it on a `class="bg-logo"` element, the rest on a shape covering
