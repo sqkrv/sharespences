@@ -208,6 +208,12 @@ func seedMCC(ctx context.Context, pool *pgxpool.Pool) error {
 
 func readCSV(data []byte, fields int) ([][]string, error) {
 	r := csv.NewReader(bytes.NewReader(data))
+	// Semicolon-delimited, matching the utils/ pipeline these files come out of
+	// (category_mcc-constructor, mcc_dict-parser and mcc_dict_regen all read
+	// ';'). Russian descriptions are full of commas, so a comma separator quoted
+	// half the dictionary — 540 of 1078 rows, against 150 now. It also opens
+	// correctly in a ru-locale spreadsheet, where ';' is the field separator.
+	r.Comma = ';'
 	r.FieldsPerRecord = fields
 	recs, err := r.ReadAll()
 	if err != nil {
