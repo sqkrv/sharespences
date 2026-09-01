@@ -712,14 +712,21 @@ var bankColors = map[string]string{
 	"МКБ":         "#E31E24",
 	"СберБанк":    "#21A038",
 	"Т-Банк":      "#FFDD2D",
-	// Tier A, promoted 2026-08-26. ⚠️ Both values are SAMPLED from the banks'
-	// served HTML (most frequent non-neutral hex, page title verified), not
-	// stated brandbook colors — good enough to tint a fallback chip, and to be
-	// replaced by a real value or an app screenshot. The other four banks'
-	// sites are JS-rendered and gave nothing; they render with no color until
-	// then, which is visible rather than silently wrong.
+	// Tier A, promoted 2026-08-26. Read off the background of each bank's own
+	// logo in web/src/assets/banks — which is the right source rather than a
+	// convenient one: the color exists to tint the two-letter chip that stands
+	// in for that very logo, so matching the icon's own background is what
+	// makes the fallback look like a placeholder for the mark instead of an
+	// unrelated square.
+	"Совкомбанк":  "#213A8B",
+	"ОТП Банк":    "#C3FF0B",
 	"УБРиР":       "#CC163F",
-	"Примсоцбанк": "#008F4C",
+	"Примсоцбанк": "#BEA980",
+	"Банк Синара": "#E40134",
+	// МТС Деньги's icon is a gradient (#FD2D42 → #E8001F), and a chip takes one
+	// flat color — this is the midpoint of the two stops, not a value the brand
+	// states anywhere.
+	"МТС Деньги": "#F21630",
 }
 
 // Per-bank picker catalogs: the CURRENTLY selectable menu rows, from the

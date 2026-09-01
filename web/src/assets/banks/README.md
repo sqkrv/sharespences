@@ -14,12 +14,25 @@ renders instead, so a partial set is fine.
 | `mkb` | МКБ | `#E31E24` |
 | `sber` | СберБанк | `#21A038` |
 | `tbank` | Т-Банк | `#FFDD2D` |
-| `sovkom` | Совкомбанк | — |
-| `otp` | ОТП Банк | — |
-| `mtsmoney` | МТС Деньги | — |
-| `ubrr` | УБРиР | `#CC163F` ⚠️ sampled |
-| `pskb` | Примсоцбанк | `#008F4C` ⚠️ sampled |
-| `sinara` | Банк Синара | — |
+| `sovkom` | Совкомбанк | `#213A8B` |
+| `otp` | ОТП Банк | `#C3FF0B` |
+| `mtsmoney` | МТС Деньги | `#F21630` ⚠️ midpoint of a gradient |
+| `ubrr` | УБРиР | `#CC163F` |
+| `pskb` | Примсоцбанк | `#BEA980` |
+| `sinara` | Банк Синара | `#E40134` |
+
+**Where the brand color comes from.** Read it off the logo's own background —
+most files carry it on a `class="bg-logo"` element, the rest on a shape covering
+the whole viewBox. That is the right source rather than merely the convenient
+one: the color exists to tint the two-letter chip that *stands in for that
+logo*, so matching the icon's background is what makes the fallback read as a
+placeholder for the mark rather than an unrelated square.
+
+⚠️ It is **not** the same thing as the bank's marketing brand color, and several
+banks differ on the two — see the discrepancy list in
+`docs/knowledge/seed-reconciliation.md`. Do not sample a website for this; a
+homepage's most-frequent hex is a different question with a coincidentally
+similar answer.
 
 The slug ↔ bank-name mapping lives in `BANK_SLUG` (`web/src/components/ui.tsx`)
 and is keyed by the seeded `bank.name`; add banks there when the seed grows.
