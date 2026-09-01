@@ -38,7 +38,14 @@ requirements narrow:
 - **Symbol only, never the wordmark** — at 22 px a wordmark is a smudge.
 - **Square artwork** (1:1). Non-square is letterboxed, not cropped, so it will
   look smaller than its neighbours.
-- SVG: a `viewBox`, no external references (`<image href="http…">`, web fonts),
+- SVG: a `viewBox` and **no `width`/`height`** — an intrinsic size is what makes a file refuse to
+  scale. A 56×56 file carrying both keeps rendering at 56 px inside a larger frame, so the mark ends
+  up stranded in the corner of a mostly-empty tile in Finder and in any preview that does not force
+  a size. The files that behave (`alfabank`, `vtb`, `ubrr`, `sinara`) carry a `viewBox` alone.
+  - ⚠️ **`svgo` strips the `viewBox` by default.** `removeViewBox` is in `preset-default` and fires
+    whenever the `viewBox` matches `width`/`height`, turning an optimisation pass into a file that
+    cannot scale at all. Pass `--disable=removeViewBox`, then check the root tag by eye.
+- No external references (`<image href="http…">`, web fonts),
   text converted to outlines. PNG fallback: **≥ 256×256**, transparent outside
   the mark.
 - Optical sizing: the artwork should fill its square the way an app icon does.
