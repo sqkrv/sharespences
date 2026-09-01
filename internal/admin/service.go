@@ -22,16 +22,16 @@ import (
 // go through the knowledge-base → seed pipeline.
 var ErrSeedManaged = errors.New("строка управляется сидом — правки перезапишутся при деплое")
 
-// Service owns the sidecar's DB access. The coverage sets come from
-// seed.SeededMCCCodes / seed.SeededMembershipKeys at the composition root.
+// Service owns the sidecar's DB access. The coverage set comes from
+// seed.SeededMCCCodes at the composition root. Membership has no coverage
+// set any more: since the ADR-0004 import, bank_category_mcc is fed by
+// `mcc-import` snapshots, not by the seed — a panel edit stands until a
+// snapshot naming that category re-lands, and that revert is journaled.
 type Service struct {
 	Q    *db.Queries
 	Pool *pgxpool.Pool
 	// SeededMCC: dictionary codes the seed unconditionally upserts.
 	SeededMCC map[int16]bool
-	// SeededMembership: (bank name, category title) pairs whose link sets
-	// the seed refreshes by diff.
-	SeededMembership map[[2]string]bool
 }
 
 // TableCount is one pg_stat_user_tables estimate — good enough for a
@@ -88,18 +88,11 @@ func (s *Service) guardMCC(code int16) error {
 	return nil
 }
 
-// guardMembership rejects link writes under a category whose link set the
-// seed refreshes. The category is identified by (bank name, title) — the
-// same key the seed CSV uses.
-func (s *Service) guardMembership(ctx context.Context, bankCategoryID int64) (db.AdminGetBankCategoryWithBankRow, error) {
-	bc, err := s.Q.AdminGetBankCategoryWithBank(ctx, bankCategoryID)
-	if err != nil {
-		return bc, err // pgx.ErrNoRows → 404 at the HTTP layer
-	}
-	if s.SeededMembership[[2]string{bc.BankName, bc.Title}] {
-		return bc, ErrSeedManaged
-	}
-	return bc, nil
+// requireBankCategory distinguishes «not found» before a link write; there
+// is no membership write-guard any more (see the Service comment).
+func (s *Service) requireBankCategory(ctx context.Context, bankCategoryID int64) error {
+	_, err := s.Q.AdminGetBankCategoryWithBank(ctx, bankCategoryID)
+	return err // pgx.ErrNoRows → 404 at the HTTP layer
 }
 
 // guardBankCategory distinguishes «not found» from «seed-managed» for a

@@ -1074,8 +1074,23 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("homoglyph title suggestion = %+v, want restaurants", homoglyphSuggestion.Suggestion)
 	}
 
-	// --- MCC module (2026-07-21): embedded dictionary + membership seed,
+	// --- MCC module: embedded dictionary seed + snapshot import (membership
+	// left the seed with ADR-0004 — a deployment runs `mcc-import` per bank),
 	// search, per-bank resolve, change journal ---
+
+	for _, imp := range []struct{ bank, title string }{
+		{"Альфа-Банк", "Продукты"},
+		{"ВТБ", "Супермаркеты"},
+		{"Ozon Банк", "Супермаркеты"},
+	} {
+		snap := fmt.Sprintf(`{
+			"schema_version": 2, "bank": %q, "captured_at": "2026-09-01",
+			"source": {"file": "e2e.json", "sha256": "e2e0000000000000"},
+			"categories": [{"title": %q, "mcc": ["5411"]}]}`, imp.bank, imp.title)
+		if err := mcc.ImportSnapshot(ctx, pool, []byte(snap), false, nil); err != nil {
+			t.Fatalf("mcc-import %s: %v", imp.bank, err)
+		}
+	}
 
 	if got := anon.do("GET", "/api/v1/mcc/resolve?code=5411", nil, nil); got != http.StatusUnauthorized {
 		t.Fatalf("anonymous mcc resolve: %d, want 401", got)
@@ -1151,7 +1166,8 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("resolve unknown code: %d, want 404", got)
 	}
 
-	// The seed was the first import: journal is non-empty, all `imported`.
+	// The snapshot imports above were each category's first load: journal is
+	// non-empty, all `imported` (per-category baseline), never «added» noise.
 	var changes []struct {
 		Action string `json:"action"`
 		Source string `json:"source"`
