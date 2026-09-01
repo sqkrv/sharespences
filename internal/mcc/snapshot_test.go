@@ -28,6 +28,7 @@ func TestParseSnapshotValidation(t *testing.T) {
 		"empty title":            `{` + snapshotHead + `, "categories": [{"title": "", "mcc": ["5541"]}]}`,
 		"exclusions.mcc":         `{` + snapshotHead + `, "exclusions": {"mcc": ["48"]}}`,
 		"dictionary entry":       `{` + snapshotHead + `, "dictionary": [{"mcc": "5968", "name": ""}]}`,
+		"descriptors entry":      `{` + snapshotHead + `, "exclusions": {"descriptors": [{"note": "дата без значения"}]}}`,
 	}
 	for wantErr, doc := range cases {
 		if _, err := ParseSnapshot([]byte(doc)); err == nil || !strings.Contains(err.Error(), wantErr) {
@@ -40,6 +41,17 @@ func TestParseSnapshotValidation(t *testing.T) {
 	}
 	if FormatCode(742) != "0742" {
 		t.Fatalf("FormatCode(742) = %q", FormatCode(742))
+	}
+
+	// descriptors accept bare strings and {value, note} interchangeably
+	s = parseOK(t, `{`+snapshotHead+`, "exclusions": {"descriptors": ["QIWI", {"value": "GK SDEK", "note": "в списке с 01.01.2026"}]}}`)
+	want := []SnapshotDescriptor{{Value: "QIWI"}, {Value: "GK SDEK", Note: "в списке с 01.01.2026"}}
+	if got := *s.Exclusions.Descriptors; got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("descriptors parsed as %+v", got)
+	}
+	changes := descriptorsAsExclusions(s.Exclusions.Descriptors)
+	if changes[1].Note != "в списке с 01.01.2026" || changes[1].Value != "GK SDEK" {
+		t.Fatalf("descriptor note lost in exclusion change: %+v", changes[1])
 	}
 }
 

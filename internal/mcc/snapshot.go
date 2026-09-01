@@ -70,10 +70,27 @@ type SnapshotQualified struct {
 // JSON) is distinguishable from an explicitly empty one: only present kinds
 // are synced.
 type SnapshotExclusions struct {
-	MCC         *[]string            `json:"mcc,omitempty"`
-	Qualified   *[]SnapshotQualified `json:"qualified,omitempty"`
-	Classes     *[]string            `json:"classes,omitempty"`
-	Descriptors *[]string            `json:"descriptors,omitempty"`
+	MCC         *[]string             `json:"mcc,omitempty"`
+	Qualified   *[]SnapshotQualified  `json:"qualified,omitempty"`
+	Classes     *[]string             `json:"classes,omitempty"`
+	Descriptors *[]SnapshotDescriptor `json:"descriptors,omitempty"`
+}
+
+// SnapshotDescriptor is one card-statement descriptor. A bare JSON string is
+// accepted alongside {"value": …, "note": …} — the note carries provenance a
+// plain string cannot (ВТБ dates every blocklist entry). The value is the
+// verbatim matching string and must survive untouched.
+type SnapshotDescriptor struct {
+	Value string `json:"value"`
+	Note  string `json:"note,omitempty"`
+}
+
+func (d *SnapshotDescriptor) UnmarshalJSON(b []byte) error {
+	if len(b) > 0 && b[0] == '"' {
+		return json.Unmarshal(b, &d.Value)
+	}
+	type bare SnapshotDescriptor
+	return json.Unmarshal(b, (*bare)(d))
 }
 
 type SnapshotGloss struct {
@@ -128,6 +145,13 @@ func ParseSnapshot(data []byte) (*Snapshot, error) {
 			for _, q := range *e.Qualified {
 				if err := check(q.MCC, "exclusions.qualified"); err != nil {
 					return nil, err
+				}
+			}
+		}
+		if e.Descriptors != nil {
+			for _, d := range *e.Descriptors {
+				if d.Value == "" {
+					return nil, fmt.Errorf("snapshot: exclusions.descriptors entry with empty value")
 				}
 			}
 		}
@@ -341,7 +365,7 @@ func PlanImport(s *Snapshot, in PlanInput) (*Plan, error) {
 		planExclusions(plan, "mcc", codesAsExclusions(s.Exclusions.MCC), in)
 		planExclusions(plan, "mcc_qualified", qualifiedAsExclusions(s.Exclusions.Qualified), in)
 		planExclusions(plan, "class", textAsExclusions("class", s.Exclusions.Classes), in)
-		planExclusions(plan, "descriptor", textAsExclusions("descriptor", s.Exclusions.Descriptors), in)
+		planExclusions(plan, "descriptor", descriptorsAsExclusions(s.Exclusions.Descriptors), in)
 	}
 	return plan, nil
 }
@@ -384,6 +408,17 @@ func textAsExclusions(kind string, values *[]string) []ExclusionChange {
 	out := make([]ExclusionChange, 0, len(*values))
 	for _, v := range *values {
 		out = append(out, ExclusionChange{Kind: kind, Value: v})
+	}
+	return out
+}
+
+func descriptorsAsExclusions(descs *[]SnapshotDescriptor) []ExclusionChange {
+	if descs == nil {
+		return nil
+	}
+	out := make([]ExclusionChange, 0, len(*descs))
+	for _, d := range *descs {
+		out = append(out, ExclusionChange{Kind: "descriptor", Value: d.Value, Note: d.Note})
 	}
 	return out
 }
