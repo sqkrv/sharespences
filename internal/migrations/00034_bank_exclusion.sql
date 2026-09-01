@@ -15,20 +15,29 @@
 --                  «www.verkkokauppa.com»)
 -- value is text, not smallint: it holds codes for the mcc kinds (4-digit,
 -- zero-padded — sub-1000 codes like 0005 exist) and prose for the rest.
+-- source_id is the registry id of the document the row came from
+-- (utils/mcc_sources.tsv): a bank publishes several exclusion documents
+-- (Т-Банк's «Финансы» list and its cash-equivalent list both carry MCC
+-- rows, ВТБ's ПЛ and its ТСП blocklist both carry descriptors), and the
+-- import syncs each document against its own rows only — otherwise the
+-- second document's import removes everything the first one added. The
+-- same code listed by two documents is two attributable rows; resolve
+-- deduplicates.
 
 -- +goose Up
 create type bank_exclusion_kind as enum ('mcc', 'mcc_qualified', 'class', 'descriptor');
 
 create table bank_exclusion
 (
-    id      bigint generated always as identity primary key,
-    bank_id integer             not null references bank (id),
-    kind    bank_exclusion_kind not null,
-    value   text                not null,
-    note    text
+    id        bigint generated always as identity primary key,
+    bank_id   integer             not null references bank (id),
+    kind      bank_exclusion_kind not null,
+    value     text                not null,
+    note      text,
+    source_id text                not null
 );
 create unique index idx_bank_exclusion_identity
-    on bank_exclusion (bank_id, kind, value, coalesce(note, ''));
+    on bank_exclusion (bank_id, source_id, kind, value, coalesce(note, ''));
 
 -- Journal actions for exclusion movements. `excluded_imported` exists for
 -- the same reason `imported` does: the first load of a bank's exclusion

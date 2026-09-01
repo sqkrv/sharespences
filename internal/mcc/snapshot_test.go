@@ -17,12 +17,13 @@ func parseOK(t *testing.T, doc string) *Snapshot {
 }
 
 const snapshotHead = `"schema_version": 2, "bank": "Тестбанк", "captured_at": "2026-09-01",
-	"source": {"file": "t.pdf", "sha256": "abcdef0123456789"}`
+	"source": {"id": "test-doc", "file": "t.pdf", "sha256": "abcdef0123456789"}`
 
 func TestParseSnapshotValidation(t *testing.T) {
 	cases := map[string]string{
 		"schema_version 1":       `{"schema_version": 1, "bank": "Б", "captured_at": "д", "source": {"file": "f", "sha256": "s"}}`,
 		"bank, captured_at":      `{"schema_version": 2, "source": {"file": "f", "sha256": "s"}}`,
+		"source.id":              `{"schema_version": 2, "bank": "Б", "captured_at": "д", "source": {"file": "f", "sha256": "s"}}`,
 		"bad MCC":                `{` + snapshotHead + `, "categories": [{"title": "АЗС", "mcc": ["55A1"]}]}`,
 		"want 4 digits":          `{` + snapshotHead + `, "categories": [{"title": "АЗС", "mcc": ["742"]}]}`,
 		"empty title":            `{` + snapshotHead + `, "categories": [{"title": "", "mcc": ["5541"]}]}`,

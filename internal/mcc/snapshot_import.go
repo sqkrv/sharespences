@@ -44,7 +44,7 @@ func ImportSnapshot(ctx context.Context, pool *pgxpool.Pool, data []byte, dryRun
 		return fmt.Errorf("mcc-import: resolve bank: %w", err)
 	}
 
-	in, err := loadPlanInput(ctx, tx, bankID)
+	in, err := loadPlanInput(ctx, tx, bankID, snap.Source.ID)
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func ImportSnapshot(ctx context.Context, pool *pgxpool.Pool, data []byte, dryRun
 	if plan.Empty() {
 		return nil
 	}
-	if err := applyPlan(ctx, tx, bankID, plan); err != nil {
+	if err := applyPlan(ctx, tx, bankID, snap.Source.ID, plan); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -69,7 +69,10 @@ func ImportSnapshot(ctx context.Context, pool *pgxpool.Pool, data []byte, dryRun
 	return nil
 }
 
-func loadPlanInput(ctx context.Context, tx pgx.Tx, bankID int32) (PlanInput, error) {
+// loadPlanInput reads the bank's current state; exclusions are scoped to the
+// snapshot's source document, so sibling documents' rows are invisible to
+// the diff and survive it.
+func loadPlanInput(ctx context.Context, tx pgx.Tx, bankID int32, sourceID string) (PlanInput, error) {
 	in := PlanInput{
 		Membership:      map[int64]map[int16]string{},
 		KnownCodes:      map[int16]bool{},
@@ -135,7 +138,7 @@ func loadPlanInput(ctx context.Context, tx pgx.Tx, bankID int32) (PlanInput, err
 
 	rows, err = tx.Query(ctx, `
 		select kind::text, value, coalesce(note, '') from bank_exclusion
-		where bank_id = $1`, bankID)
+		where bank_id = $1 and source_id = $2`, bankID, sourceID)
 	if err != nil {
 		return in, fmt.Errorf("mcc-import: load exclusions: %w", err)
 	}
@@ -172,7 +175,7 @@ func loadPlanInput(ctx context.Context, tx pgx.Tx, bankID int32) (PlanInput, err
 	return in, nil
 }
 
-func applyPlan(ctx context.Context, tx pgx.Tx, bankID int32, plan *Plan) error {
+func applyPlan(ctx context.Context, tx pgx.Tx, bankID int32, sourceID string, plan *Plan) error {
 	journal := func(categoryID *int64, title string, code *int16, action, note string) error {
 		_, err := tx.Exec(ctx, `
 			insert into mcc_change (bank_id, bank_category_id, category_title, mcc_code, action, source, note)
@@ -230,9 +233,9 @@ func applyPlan(ctx context.Context, tx pgx.Tx, bankID int32, plan *Plan) error {
 
 	for _, e := range plan.ExclusionAdds {
 		if _, err := tx.Exec(ctx, `
-			insert into bank_exclusion (bank_id, kind, value, note)
-			values ($1, $2::bank_exclusion_kind, $3, nullif($4, ''))`,
-			bankID, e.Kind, e.Value, e.Note); err != nil {
+			insert into bank_exclusion (bank_id, kind, value, note, source_id)
+			values ($1, $2::bank_exclusion_kind, $3, nullif($4, ''), $5)`,
+			bankID, e.Kind, e.Value, e.Note, sourceID); err != nil {
 			return fmt.Errorf("mcc-import: exclusion add %s/%s: %w", e.Kind, e.Value, err)
 		}
 		action := "excluded_added"
@@ -247,7 +250,8 @@ func applyPlan(ctx context.Context, tx pgx.Tx, bankID int32, plan *Plan) error {
 		if _, err := tx.Exec(ctx, `
 			delete from bank_exclusion
 			where bank_id = $1 and kind = $2::bank_exclusion_kind and value = $3
-			  and coalesce(note, '') = $4`, bankID, e.Kind, e.Value, e.Note); err != nil {
+			  and coalesce(note, '') = $4 and source_id = $5`,
+			bankID, e.Kind, e.Value, e.Note, sourceID); err != nil {
 			return fmt.Errorf("mcc-import: exclusion remove %s/%s: %w", e.Kind, e.Value, err)
 		}
 		if err := journal(nil, "", exclusionCode(e), "excluded_removed", exclusionJournalNote(e)); err != nil {

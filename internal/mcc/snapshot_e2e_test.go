@@ -74,7 +74,7 @@ func TestImportSnapshotE2E(t *testing.T) {
 
 	first := `{
 		"schema_version": 2, "bank": "Тестбанк", "captured_at": "2026-09-01",
-		"source": {"file": "first.json", "sha256": "aaaa000000000000"},
+		"source": {"id": "test-pl", "file": "first.json", "sha256": "aaaa000000000000"},
 		"categories": [
 			{"title": "АЗС", "mcc": ["5541", "5542"]},
 			{"title": "Такси", "mcc": ["4121"],
@@ -141,6 +141,34 @@ func TestImportSnapshotE2E(t *testing.T) {
 	}
 	if n := count(`select count(*) from mcc_change where action = 'excluded_added' and mcc_code = 5933`); n != 1 {
 		t.Fatal("5933 exclusion add not journaled as excluded_added (kind had rows)")
+	}
+
+	// a second document of the same bank syncs only its own exclusion rows:
+	// its overlapping 4829 is a second attributable row, the first
+	// document's 5933 survives, and re-importing the first is still a no-op
+	other := `{
+		"schema_version": 2, "bank": "Тестбанк", "captured_at": "2026-09-01",
+		"source": {"id": "test-blocklist", "file": "other.json", "sha256": "cccc000000000000"},
+		"exclusions": {"mcc": ["4829", "6010"]}
+	}`
+	if err := ImportSnapshot(ctx, pool, []byte(other), false, t.Logf); err != nil {
+		t.Fatalf("other-source import: %v", err)
+	}
+	if n := count(`select count(*) from bank_exclusion where kind = 'mcc'`); n != 4 {
+		t.Fatalf("mcc exclusion rows across two sources = %d, want 4 (4829×2, 5933, 6010)", n)
+	}
+	if n := count(`select count(*) from mcc_change where action = 'excluded_imported' and mcc_code = 6010`); n != 1 {
+		t.Fatal("the other source's first load must journal excluded_imported (its own scope was empty)")
+	}
+	journalBefore = count(`select count(*) from mcc_change`)
+	if err := ImportSnapshot(ctx, pool, []byte(second), false, t.Logf); err != nil {
+		t.Fatalf("re-import after sibling source: %v", err)
+	}
+	if n := count(`select count(*) from bank_exclusion where kind = 'mcc'`); n != 4 {
+		t.Fatalf("sibling source's rows were touched: mcc rows = %d, want 4", n)
+	}
+	if n := count(`select count(*) from mcc_change`); n != journalBefore {
+		t.Fatalf("re-import after sibling source journaled %d rows", n-journalBefore)
 	}
 
 	// dry run over a changed state writes nothing

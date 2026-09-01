@@ -47,7 +47,12 @@ type Snapshot struct {
 	Dictionary    []SnapshotGloss     `json:"dictionary,omitempty"`
 }
 
+// SnapshotSource identifies the parsed document: id is the registry id of
+// the source (utils/mcc_sources.tsv) and scopes the exclusion sync — each
+// document's import touches only the exclusion rows it produced; file+sha
+// pin the exact edition for the journal.
 type SnapshotSource struct {
+	ID     string `json:"id"`
 	File   string `json:"file"`
 	SHA256 string `json:"sha256"`
 	URL    string `json:"url,omitempty"`
@@ -111,6 +116,9 @@ func ParseSnapshot(data []byte) (*Snapshot, error) {
 	}
 	if s.Bank == "" || s.Source.File == "" || s.Source.SHA256 == "" || s.CapturedAt == "" {
 		return nil, fmt.Errorf("snapshot: bank, captured_at and source file+sha256 are required")
+	}
+	if s.Source.ID == "" {
+		return nil, fmt.Errorf("snapshot: source.id (the registry source id) is required — it scopes the exclusion sync")
 	}
 	check := func(code, where string) error {
 		if !snapshotCode.MatchString(code) {
