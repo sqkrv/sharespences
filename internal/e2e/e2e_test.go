@@ -335,8 +335,11 @@ func TestCashbackE2E(t *testing.T) {
 	// ВТБ, Ozon Банк, Яндекс Пэй, Газпромбанк, МКБ, СберБанк, Т-Банк) plus the
 	// six promoted on 2026-08-26 (Совкомбанк, ОТП Банк, МТС Деньги, УБРиР,
 	// Примсоцбанк, Банк Синара).
-	if len(programs) != 14 {
-		t.Fatalf("seeded programs = %d, want 14", len(programs))
+	// …and Яндекс Про, which is its own bank row rather than a second programme
+	// under Яндекс Пэй — a different card, in a different app, with a separate
+	// cashback pool.
+	if len(programs) != 15 {
+		t.Fatalf("seeded programs = %d, want 15", len(programs))
 	}
 	findProgram := func(bank string) programJSON {
 		for _, p := range programs {

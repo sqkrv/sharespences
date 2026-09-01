@@ -52,6 +52,10 @@ const mtsAsOf = "as of 2026-08"
 const pskbAsOf = "as of 2026-04"
 const sinaraAsOf = "as of 2026-03"
 
+// Карта Яндекс Про, from Yandex's own partner knowledge base (2025-12-17) and
+// the ПЛ at yandex.ru/legal/card_and_pay_points.
+const yandexProAsOf = "as of 2025-12-17, first-party pro.yandex.ru (база знаний Яндекс Про)"
+
 const mkbAsOf = "as of 2026-06"
 
 // Альфа-Банк's cap ladder is read off the bank's own MCCD appendix (2026-08),
@@ -273,6 +277,38 @@ var programs = []program{
 			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
 			{name: "Pro", paid: true, capValue: "5000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
 			{name: "Premium", paid: true, capValue: "30000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
+		},
+	},
+	{
+		// A SEPARATE bank row, not a second programme under Яндекс Пэй. Both are
+		// products of Яндекс Банк, but `bank` here means the cashback surface a
+		// user actually deals with — which is why «Яндекс Пэй» was chosen over
+		// «Яндекс Банк» in the first place. Про lives in a different app, is
+		// issued to a different audience, and above all carries its OWN
+		// 10 000-балл pool: two separate pools only model correctly as two
+		// bank_clients with independent periods, which needs two banks.
+		//
+		// It also sidesteps a latent bug: the S3b policy lookup resolves
+		// mid_period_add/activation with `where cpb.bank_id = cl.bank_id limit 1`,
+		// unordered — a second programme under one bank would make it read an
+		// arbitrary row. Still worth fixing before anything else grows a second
+		// programme, but nothing here depends on it.
+		//
+		// ⚠️ NOT a retail card: only партнёры Яндекс Про (Такси / Доставка /
+		// Смена, RF citizenship) can hold it, and it doubles as their payout
+		// card. ⚠️ Its «уровни» (Начальный/Базовый/Продвинутый) are
+		// IDENTIFICATION tiers set by KYC depth and govern payment limits — the
+		// cashback terms are identical across all three, so they are
+		// deliberately not modelled as program_tier.
+		bank: "Яндекс Про", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "points", pointsLabel: "Баллы Плюса", opensDay: 28,
+		midPeriodAdd: "unknown", activation: "unknown",
+		notes: yandexProAsOf + "; карта для исполнителей Яндекс Про, она же карта для выплат; выбор категорий с 28 числа, период — полный календарный месяц; ⚠️ кешбэк начисляется ТОЛЬКО за покупки вне сервисов Яндекса; ⚠️ балл = 1 ₽ скидки внутри сервисов Яндекса, в рубли не выводится; уровни Начальный/Базовый/Продвинутый — это ступени идентификации (лимиты хранения и трат), на кешбэк не влияют",
+		tiers: []tier{
+			// One tier: the card has no cashback levels at all. «Стандартный» is
+			// this project's own label, as with Т-Банк's base level.
+			{name: "Стандартный", capValue: "10000", capScope: "total", maxCategories: 6,
+				notes: yandexProAsOf + "; до 30% в 6 категориях + постоянная строка «Все покупки»; баллы приходят в течение 21 дня, тратятся сразу"},
 		},
 	},
 	{
@@ -1199,6 +1235,12 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "МТС Деньги", title: "Одежда, обувь, юв. изделия и часы", slug: "clothes"},
 	{bank: "МТС Деньги", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "МТС Деньги", title: "Все остальное", slug: "all-purchases"},
+
+	// Яндекс Про — only one row is documented: «Все покупки» stands permanently
+	// alongside the six chosen categories. The six themselves are picked from a
+	// menu no first-party source lists, so the catalog stops here rather than
+	// borrowing Яндекс Пэй's — a different card in a different app.
+	{bank: "Яндекс Про", title: "Все покупки", slug: "all-purchases"},
 
 	// Банк Синара — ⚠️ NO catalog. The channel covers Синара monthly but has
 	// never published its menu (0 rows across 7 own picker posts); it only

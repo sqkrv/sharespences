@@ -225,6 +225,7 @@ const BANK_SLUG: Record<string, string> = {
   УБРиР: "ubrr",
   Примсоцбанк: "pskb",
   "Банк Синара": "sinara",
+  "Яндекс Про": "yandex-pro",
 };
 
 export function bankLogo(name: string): string | undefined {
@@ -282,6 +283,9 @@ const BANK_ABBREV: Record<string, string> = {
   УБРиР: "УБ",
   Примсоцбанк: "ПС",
   "Банк Синара": "СН",
+  // «ЯП» is already Яндекс Пэй's; the distinguishing word is what the chip
+  // has to carry, or the two banks are indistinguishable in the list.
+  "Яндекс Про": "ПР",
 };
 
 export function bankAbbrev(name: string): string {
