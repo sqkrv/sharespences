@@ -772,7 +772,10 @@ var bankColors = map[string]string{
 // still ordinary kind=regular (corrected 2026-07-21: special is for
 // granted bonus mechanics like Пятница/колесо, never catalog rows); emoji
 // "" = inherit the canonical's.
-var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
+var bankCategories = []struct {
+	bank, title, slug, kind, emoji string
+	inactive                       bool // seeded hidden; the insert-only active flag stays an operator control afterwards
+}{
 	// Альфа-Банк (as of 2026-01 PDF; menus 2025-01/02; «Продукты» verified live 2026-07-22)
 	{bank: "Альфа-Банк", title: "Продукты", slug: "supermarkets"},
 	{bank: "Альфа-Банк", title: "Кафе и рестораны", slug: "restaurants"},
@@ -822,6 +825,13 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Альфа-Банк", title: "Деливери", emoji: "🛵"},
 	{bank: "Альфа-Банк", title: "KASSIR.RU", emoji: "🎫"},
 	{bank: "Альфа-Банк", title: "Подели", emoji: "💳"},
+	// 2026-08 MCCD document rows (no screenshot yet — titles are the document's):
+	{bank: "Альфа-Банк", title: "Спорт и красота у партнера", emoji: "💪"}, // WellPass partner category, new in the 2026-08 issue
+	// The umbrella duplicate of Фастфуд + Кафе и рестораны: in the document
+	// (likely another card product's menu row) but never seen in a picker —
+	// seeded hidden so mcc-import can attach its codes while the picker and
+	// resolve keep showing only the two separate rows (2026-09-01).
+	{bank: "Альфа-Банк", title: "Фастфуд, кафе и рестораны", inactive: true},
 	// Ozon Банк (as of 2026-07 help page)
 	{bank: "Ozon Банк", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "Ozon Банк", title: "Рестораны", slug: "restaurants"},
@@ -1413,10 +1423,10 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 			kind = "regular"
 		}
 		if _, err := pool.Exec(ctx, `
-			insert into bank_category (bank_id, title, canonical_category_id, kind, emoji, is_custom, created_by)
+			insert into bank_category (bank_id, title, canonical_category_id, kind, emoji, is_custom, created_by, active)
 			select b.id, $2,
 			       (select cc.id from canonical_category cc where cc.slug = nullif($3, '')),
-			       $4::cashback_offer_kind, nullif($5, ''), false, null
+			       $4::cashback_offer_kind, nullif($5, ''), false, null, $6
 			from bank b
 			where b.name = $1
 			on conflict (bank_id, title, created_by) do update
@@ -1424,7 +1434,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 				    kind                  = excluded.kind,
 				    emoji                 = excluded.emoji
 			where not bank_category.is_custom`,
-			c.bank, c.title, c.slug, kind, c.emoji); err != nil {
+			c.bank, c.title, c.slug, kind, c.emoji, !c.inactive); err != nil {
 			return fmt.Errorf("seed bank category %s/%s: %w", c.bank, c.title, err)
 		}
 	}
