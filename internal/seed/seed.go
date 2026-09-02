@@ -1139,6 +1139,20 @@ var bankCategories = []struct {
 	{bank: "УБРиР", title: "Универсамы", slug: "supermarkets"},
 	{bank: "УБРиР", title: "Детские товары", slug: "kids"},
 	{bank: "УБРиР", title: "Магазины косметики", slug: "cosmetics"},
+	// The eleven pool rows the 2026-08-31 transcription dropped — every one of
+	// them wraps or carries a comma in the PDF's title cell (2026-09-02, found
+	// by the mcc-import title check against the parsed appendix).
+	{bank: "УБРиР", title: "Бытовая электроника и сервис", slug: "electronics"},
+	{bank: "УБРиР", title: "Аттракционы и видео игры", slug: "entertainment"},
+	{bank: "УБРиР", title: "Дом, Ремонт", slug: "home-repair"},
+	{bank: "УБРиР", title: "Магазин беспошлинной торговли (DUTY FREE)", slug: "duty-free"},
+	{bank: "УБРиР", title: "Одежда, обувь", slug: "clothes"},
+	{bank: "УБРиР", title: "Аренда оборудования и инструментов", emoji: "🛠️"},
+	{bank: "УБРиР", title: "Кафе, рестораны", slug: "restaurants"},
+	{bank: "УБРиР", title: "ТВ, связь", slug: "telecom"},
+	{bank: "УБРиР", title: "Туристические агентства и операторы", slug: "travel-agencies"},
+	{bank: "УБРиР", title: "Игровые и медиа платформы, программное обеспечение", slug: "digital-goods"},
+	{bank: "УБРиР", title: "Железнодорожный и водный транспорт", slug: "rail-tickets"},
 	{bank: "УБРиР", title: "Остальные покупки", slug: "all-purchases"},
 	// The two rows Приложение №1 lists as «не требуется выбирать» — credited
 	// automatically, consuming no slot, and the only thing that still pays when
