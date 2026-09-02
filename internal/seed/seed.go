@@ -1341,6 +1341,68 @@ var bankCategories = []struct {
 	// (2026-08-25); the title is the channel's wording, no screenshot.
 	{bank: "Газпромбанк", title: "1% на всё", slug: "all-purchases"},
 
+	// СберБанк — Правила «СберСпасибо», Таблица 1 (редакция 01.09.2026):
+	// document-class titles verbatim, no screenshot yet. The table is the
+	// pool; a client's rung (Таблица 2) fixes how many rows they may
+	// activate (2–6). Near-duplicate pairs («Такси» / «Такси и каршеринг»,
+	// «Рестораны» / «Кафе и рестораны», «Фитнес» / «Спорт и фитнес») are
+	// distinct rows with distinct MCC sets, kept apart. Seeded 2026-09-03 so
+	// the membership snapshot can import — catalog and MCC data ship in
+	// lockstep.
+	{bank: "СберБанк", title: "На все покупки", slug: "all-purchases"},
+	{bank: "СберБанк", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "СберБанк", title: "АЗС", slug: "gas-stations"},
+	{bank: "СберБанк", title: "Автозапчасти", slug: "auto-parts"},
+	{bank: "СберБанк", title: "Автоуслуги", slug: "auto-services"},
+	{bank: "СберБанк", title: "Штрафы ГИБДД", slug: "fines"},
+	// 5462 + 5811–5814: fast food inside, like ОТП's «Рестораны, фастфуд».
+	{bank: "СберБанк", title: "Кафе и рестораны", slug: "restaurants"},
+	{bank: "СберБанк", title: "Рестораны", slug: "restaurants"},
+	{bank: "СберБанк", title: "Фастфуд", slug: "fastfood"},
+	{bank: "СберБанк", title: "Одежда и обувь", slug: "clothes"},
+	{bank: "СберБанк", title: "Товары для дома", slug: "home-repair"},
+	{bank: "СберБанк", title: "Товары для детей", slug: "kids"},
+	{bank: "СберБанк", title: "Питомцы", slug: "pets"},
+	{bank: "СберБанк", title: "Такси и каршеринг", slug: "taxi"},
+	{bank: "СберБанк", title: "Такси", slug: "taxi"},
+	{bank: "СберБанк", title: "Аренда авто", slug: "car-rental"},
+	{bank: "СберБанк", title: "Транспорт", slug: "transport"},
+	{bank: "СберБанк", title: "Кино и театр", slug: "cinema"},
+	// The pure recreation row (cinema, theatre, bowling, attractions, parks).
+	{bank: "СберБанк", title: "Впечатления", slug: "entertainment"},
+	// Instruments, records, antiques, photo gear, boat rental, arcades — the
+	// hobby half dominates the mix.
+	{bank: "СберБанк", title: "Хобби и развлечения", slug: "hobby"},
+	{bank: "СберБанк", title: "Парфюмерия и косметика", slug: "cosmetics"},
+	{bank: "СберБанк", title: "Ювелирные изделия", slug: "jewelry"},
+	{bank: "СберБанк", title: "Цифровые товары", slug: "digital-goods"},
+	{bank: "СберБанк", title: "Цветы", slug: "flowers"},
+	{bank: "СберБанк", title: "Книги", slug: "books"},
+	{bank: "СберБанк", title: "Образование", slug: "education"},
+	{bank: "СберБанк", title: "Салоны красоты", slug: "beauty"},
+	{bank: "СберБанк", title: "Электроника и бытовая техника", slug: "electronics"},
+	{bank: "СберБанк", title: "Медицинские услуги", slug: "medicine"},
+	{bank: "СберБанк", title: "Аптеки", slug: "pharmacies"},
+	{bank: "СберБанк", title: "Спорт и фитнес", slug: "active-leisure"},
+	{bank: "СберБанк", title: "Фитнес", slug: "active-leisure"},
+	{bank: "СберБанк", title: "Спортивные товары", slug: "sport-goods"},
+	{bank: "СберБанк", title: "За оплату ЖКХ", slug: "utilities"},
+	{bank: "СберБанк", title: "Связь, Интернет и ТВ", slug: "telecom"},
+	// Channel-bound rows pay only inside «Сбербанк Онлайн» / the Тревел
+	// section / a payment rail — no canonical, or the lookup would promise the
+	// rate at any merchant of that kind (the «… в Городе» rule).
+	{bank: "СберБанк", title: "ЖКХ в Сбербанк Онлайн", emoji: "💡"},
+	{bank: "СберБанк", title: "Транспортные карты", emoji: "🚌"},
+	{bank: "СберБанк", title: "Маркетплейс ОСАГО", emoji: "🛡️"},
+	{bank: "СберБанк", title: "СпасибоТревел", emoji: "🧳"},
+	{bank: "СберБанк", title: "Авиа на СпасибоТревел", emoji: "✈️"},
+	{bank: "СберБанк", title: "ЖД на СпасибоТревел", emoji: "🚆"},
+	{bank: "СберБанк", title: "Отели на СпасибоТревел", emoji: "🏨"},
+	{bank: "СберБанк", title: "Туры на СпасибоТревел", emoji: "🗺️"},
+	{bank: "СберБанк", title: "На всё за оплату улыбкой", emoji: "😊"},
+	{bank: "СберБанк", title: "На всё по SberPay NFC", emoji: "📱"},
+	{bank: "СберБанк", title: "На всё за оплату Вжух", emoji: "💫"},
+
 	// Банк Синара — ⚠️ NO catalog. The channel covers Синара monthly but has
 	// never published its menu (0 rows across 7 own picker posts); it only
 	// names four rows as «стабильно доступны». Seeding those four alone would
