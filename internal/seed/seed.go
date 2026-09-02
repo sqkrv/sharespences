@@ -40,7 +40,8 @@ const ozonUltraAsOf = "as of 2026-05, first-party finance.ozon.ru (промо Ul
 // quarterly posts (#4155 for Q2 2026, #4554 for Q3 2026) — identical figures
 // both times, and the 3-slot count matches the 2025-09 picker screenshots.
 // ⚠️ Still channel-class: mkb.ru is behind ServicePipe and its ПЛ has never
-// been fetched.
+// been fetched. The quarterly category list is (via /file/<uuid>, 2026-09-02),
+// but it states no caps or slot counts — only the catalog rows below.
 // The six banks promoted to Tier A on 2026-08-26 (docs/knowledge/banks/
 // ru-bank-landscape.md). ⚠️ None is in the owner's wallet, so NO screenshot
 // exists for any of them: titles below are document- or channel-class evidence,
@@ -56,7 +57,7 @@ const sinaraAsOf = "as of 2026-03"
 // the ПЛ at yandex.ru/legal/card_and_pay_points.
 const yandexProAsOf = "as of 2025-12-17, first-party pro.yandex.ru (база знаний Яндекс Про)"
 
-const mkbAsOf = "as of 2026-06"
+const mkbAsOf = "as of 2026-06; квартальный список категорий (III кв. 2026) лимитов и слотов не содержит"
 
 // Альфа-Банк's cap ladder is read off the bank's own MCCD appendix (2026-08),
 // which states it verbatim: cards outside the Alfa Only / Максимум packages get
@@ -1085,8 +1086,26 @@ var bankCategories = []struct {
 	{bank: "МКБ", title: "Развлечения", slug: "entertainment"},
 	{bank: "МКБ", title: "Кино и театры", slug: "cinema"},
 	{bank: "МКБ", title: "Видеоигры", slug: "digital-goods"},
-	{bank: "МКБ", title: "МКБ Travel", emoji: "✈️"},
+	{bank: "МКБ", title: "МКБ Путешествия", emoji: "✈️"}, // «МКБ Travel» until 2026-Q2; the bank renamed the service
 	{bank: "МКБ", title: "Бургер Кинг", emoji: "🍔"},
+	// The catalog is re-cut every quarter, so rows accumulate across issues
+	// (a row absent this quarter is an unused search hit, a missing one
+	// blocks recording). III квартал 2026 («Список категорий на выбор»
+	// document, 2026-09-02): the base row carries its rate in the title;
+	// special rows are gated (pension card, mortgage, «Просто» subscription,
+	// Премиум / 5-й уровень, age 14–18) and their titles are the document's.
+	{bank: "МКБ", title: "1% на все покупки", slug: "all-purchases"},
+	{bank: "МКБ", title: "Фастфуд", slug: "fastfood"},
+	{bank: "МКБ", title: "Книги и канцтовары", slug: "books"},
+	{bank: "МКБ", title: "Цветы и подарки", slug: "flowers"},
+	{bank: "МКБ", title: "Салоны красоты", slug: "beauty"},
+	{bank: "МКБ", title: "Образование", slug: "education"},
+	{bank: "МКБ", title: "Золотое Яблоко", emoji: "🍏"},
+	{bank: "МКБ", title: "Аптеки и оптика", slug: "pharmacies"},
+	{bank: "МКБ", title: "Кафе и рестораны", slug: "restaurants"},
+	{bank: "МКБ", title: "ЦУМ", emoji: "🏬"},
+	{bank: "МКБ", title: "Дом и ремонт", slug: "home-repair"},
+	{bank: "МКБ", title: "АЗС в рамках подписки «Просто»", slug: "gas-stations"},
 
 	// ─── Tier A banks promoted 2026-08-26 ───────────────────────────────────
 	// ⚠️ No screenshot exists for any of these six. Titles below come from the
