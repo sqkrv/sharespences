@@ -847,7 +847,7 @@ var bankCategories = []struct {
 	{bank: "Ozon Банк", title: "Каршеринг", slug: "car-rental"},
 	{bank: "Ozon Банк", title: "Автоуслуги", slug: "auto-services"},
 	{bank: "Ozon Банк", title: "Дом и ремонт", slug: "home-repair"},
-	{bank: "Ozon Банк", title: "Ветклиники и зоомагазины", slug: "pets"},
+	{bank: "Ozon Банк", title: "Вет клиники и зоомагазины", slug: "pets"}, // two words, as both bank documents write it (2026-09-02)
 	{bank: "Ozon Банк", title: "Книги", slug: "books"},
 	{bank: "Ozon Банк", title: "Салоны красоты и СПА", slug: "beauty"},
 	{bank: "Ozon Банк", title: "Косметика", slug: "cosmetics"},
