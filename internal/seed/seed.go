@@ -1203,7 +1203,15 @@ var bankCategories = []struct {
 	{bank: "ОТП Банк", title: "Цветы", slug: "flowers"},
 	{bank: "ОТП Банк", title: "Фастфуд", slug: "fastfood"},
 	{bank: "ОТП Банк", title: "Красота", slug: "beauty"},
-	{bank: "ОТП Банк", title: "Все покупки", slug: "all-purchases"},
+	// The four base-tier rows and the paraphrased base row the 2026-08-31
+	// transcription dropped or renamed (2026-09-02, found by mcc-import's
+	// title check against the parsed matrix). «Спортивные товары» is
+	// credit-card-only per the matrix's footnote 1.
+	{bank: "ОТП Банк", title: "Спортивные товары", slug: "sport-goods"},
+	{bank: "ОТП Банк", title: "Duty Free", slug: "duty-free"},
+	{bank: "ОТП Банк", title: "Цифровые товары", slug: "digital-goods"},
+	{bank: "ОТП Банк", title: "Бытовая техника и электроника", slug: "electronics"},
+	{bank: "ОТП Банк", title: "На все покупки", slug: "all-purchases"},
 	// ⚠️ Premium-only rows. They are NOT renamings of the base rows above —
 	// the matrix gives them different MCC sets, and the base card cannot pick
 	// them at all. Folding either pair together would erase that.
@@ -1212,6 +1220,9 @@ var bankCategories = []struct {
 	{bank: "ОТП Банк", title: "Одежда и обувь", slug: "clothes"},
 	{bank: "ОТП Банк", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "ОТП Банк", title: "Такси и каршеринг", slug: "taxi"},
+	// Premium-only too; pharmacies plus the medical block in one row, which
+	// maps cleanly to neither canonical.
+	{bank: "ОТП Банк", title: "Аптеки и медицинские услуги", emoji: "💊"},
 	// A manufacturer, not a merchant and not a category — 10% at MCC 5722/5712.
 	{bank: "ОТП Банк", title: "Tefal", emoji: "🍳"},
 
