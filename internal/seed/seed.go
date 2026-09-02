@@ -1297,6 +1297,50 @@ var bankCategories = []struct {
 	// borrowing Яндекс Пэй's — a different card in a different app.
 	{bank: "Яндекс Про", title: "Все покупки", slug: "all-purchases"},
 
+	// Газпромбанк — the bank's own MCC appendix («Категории покупок и MCC»,
+	// in force 01.08.2026): document-class titles, no screenshot yet. The
+	// picker shows 5–10 of these per client, six of them «постоянные» (АЗС,
+	// ЖКХ, Транспорт и такси, Кафе и рестораны, Спортивные товары, and
+	// Маркетплейсы with a subscription). The 1/3/4/6 % rate is a property of
+	// the card balance, not of a row (ADR-0009). Seeded 2026-09-02 so the
+	// membership snapshot can import — catalog and MCC data ship in lockstep.
+	{bank: "Газпромбанк", title: "АЗС", slug: "gas-stations"},
+	{bank: "Газпромбанк", title: "ЖКХ", slug: "utilities"},
+	// Umbrella: 4111/4121/4131/4789/7512 — taxi and carsharing inside.
+	{bank: "Газпромбанк", title: "Транспорт и такси", slug: "transport"},
+	{bank: "Газпромбанк", title: "Кафе и рестораны", slug: "restaurants"},
+	{bank: "Газпромбанк", title: "Фастфуд", slug: "fastfood"},
+	{bank: "Газпромбанк", title: "Спортивные товары", slug: "sport-goods"},
+	{bank: "Газпромбанк", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "Газпромбанк", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "Газпромбанк", title: "Аптеки", slug: "pharmacies"},
+	{bank: "Газпромбанк", title: "Медицинские услуги", slug: "medicine"},
+	{bank: "Газпромбанк", title: "Автозапчасти", slug: "auto-parts"},
+	{bank: "Газпромбанк", title: "Автоуслуги", slug: "auto-services"},
+	{bank: "Газпромбанк", title: "Аренда авто", slug: "car-rental"},
+	{bank: "Газпромбанк", title: "Алкоголь", slug: "alcohol"},
+	{bank: "Газпромбанк", title: "Детские товары", slug: "kids"},
+	{bank: "Газпромбанк", title: "Дом и ремонт", slug: "home-repair"},
+	{bank: "Газпромбанк", title: "Домашние животные", slug: "pets"},
+	{bank: "Газпромбанк", title: "Книги", slug: "books"},
+	// Stationery has no canonical and does not map cleanly to books.
+	{bank: "Газпромбанк", title: "Канцтовары", emoji: "✏️"},
+	{bank: "Газпромбанк", title: "Косметика", slug: "cosmetics"},
+	{bank: "Газпромбанк", title: "Образование", slug: "education"},
+	{bank: "Газпромбанк", title: "Одежда и обувь", slug: "clothes"},
+	// Umbrella over avia/rail/hotels/tours (649 codes).
+	{bank: "Газпромбанк", title: "Путешествия", slug: "travel"},
+	{bank: "Газпромбанк", title: "Развлечения", slug: "entertainment"},
+	{bank: "Газпромбанк", title: "Салоны красоты", slug: "beauty"},
+	{bank: "Газпромбанк", title: "Техника и электроника", slug: "electronics"},
+	{bank: "Газпромбанк", title: "Фото и видео", slug: "photo-video"},
+	{bank: "Газпромбанк", title: "Цветы", slug: "flowers"},
+	{bank: "Газпромбанк", title: "Ювелирные изделия", slug: "jewelry"},
+	{bank: "Газпромбанк", title: "Дьюти-фри", slug: "duty-free"},
+	// Not in the appendix: offered to new clients alongside Супермаркеты
+	// (2026-08-25); the title is the channel's wording, no screenshot.
+	{bank: "Газпромбанк", title: "1% на всё", slug: "all-purchases"},
+
 	// Банк Синара — ⚠️ NO catalog. The channel covers Синара monthly but has
 	// never published its menu (0 rows across 7 own picker posts); it only
 	// names four rows as «стабильно доступны». Seeding those four alone would
