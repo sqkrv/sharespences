@@ -6,7 +6,7 @@ import { BackButton, Card, ErrMsg, Spinner } from "../components/ui";
 import { FALLBACK_EMOJI, POS_ORIGIN_MARK } from "../lib";
 import { Leaderboard } from "./Pos";
 
-// CB-13 «Экран кода» (13a) — where a tap on an MCC lands: the official code
+// CB-14 «Экран кода» (13a) — where a tap on an MCC lands: the official code
 // name, its canonical categories, «Этот код в ваших банках» (the same exact
 // per-bank board the точка продаж uses — each bank judged by its OWN
 // category for the code), and the known points carrying it.
@@ -52,7 +52,7 @@ export default function Mcc() {
       {resolve.isError && !unknownCode && <ErrMsg error={resolve.error} />}
 
       {resolve.data && (
-        <Card className="p-3.5" data-sid="CB-13.a">
+        <Card className="p-3.5" data-sid="CB-14.a">
           <div className="flex items-center gap-3">
             <span className="flex-none font-mono text-[22px] font-extrabold text-accl">{resolve.data.code.code}</span>
             <div className="min-w-0 flex-1">
@@ -73,10 +73,10 @@ export default function Mcc() {
 
       {board.isPending && <Spinner />}
       {board.isError && <ErrMsg error={board.error} />}
-      {board.data && <Leaderboard board={board.data} matches={[]} sid="CB-13.b" />}
+      {board.data && <Leaderboard board={board.data} matches={[]} sid="CB-14.b" />}
 
       {(merchants.data ?? []).length > 0 && (
-        <div className="space-y-1.5" data-sid="CB-13.c">
+        <div className="space-y-1.5" data-sid="CB-14.c">
           <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Точки с кодом {code}</p>
           {(merchants.data ?? []).map((m) => (
             <button
