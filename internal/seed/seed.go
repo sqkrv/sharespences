@@ -1015,6 +1015,8 @@ var bankCategories = []struct {
 	{bank: "Яндекс Пэй", title: "Товары для детей", slug: "kids"},
 	{bank: "Яндекс Пэй", title: "Ювелирные изделия", slug: "jewelry"},
 	{bank: "Яндекс Пэй", title: "Медицина", slug: "medicine"},
+	// In the rules' Приложение № 2 (2026-09-03); not yet seen in the picker corpus.
+	{bank: "Яндекс Пэй", title: "Развлечения", slug: "entertainment"},
 	{bank: "Яндекс Пэй", title: "Все покупки", slug: "all-purchases"},
 	// Own-service rows. Titles below carry the wording the app renders
 	// («Яндекс Маркет», not «Сервис «Яндекс Маркет»» as the rules PDF has
