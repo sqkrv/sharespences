@@ -867,6 +867,163 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/perks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the user's perk definitions */
+        get: operations["perks-list"];
+        put?: never;
+        /** Create a perk */
+        post: operations["perks-create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/perks/events/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Undo a ledger row */
+        delete: operations["perks-event-delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/perks/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Running perk quotas, by bank client (PV-01) */
+        get: operations["perks-overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/perks/quotas/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a window with its ledger and child windows */
+        delete: operations["perks-quota-delete"];
+        options?: never;
+        head?: never;
+        /** Edit a window's note (size only before it has history) */
+        patch: operations["perks-quota-update"];
+        trace?: never;
+    };
+    "/api/v1/perks/quotas/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a use, grant, resize or adjust */
+        post: operations["perks-event-create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/perks/quotas/{id}/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record what the bank's counter showed («Сверить») */
+        post: operations["perks-snapshot-create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/perks/snapshots/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a recorded reading */
+        delete: operations["perks-snapshot-delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/perks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a perk (409 while it has quota windows) */
+        delete: operations["perks-delete"];
+        options?: never;
+        head?: never;
+        /** Rename a perk or edit its note */
+        patch: operations["perks-update"];
+        trace?: never;
+    };
+    "/api/v1/perks/{id}/quotas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A perk's full window history with its ledger (PV-02) */
+        get: operations["perks-quota-list"];
+        put?: never;
+        /** Open a quota window (optionally inside a parent) */
+        post: operations["perks-quota-create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/version": {
         parameters: {
             query?: never;
@@ -1788,6 +1945,310 @@ export interface components {
             percent?: string;
             valid_from?: string;
             valid_to?: string;
+        };
+        PerkClientDTO: {
+            /** Format: int64 */
+            bank_client_id: number;
+            /** Format: int32 */
+            bank_id: number;
+            bank_name: string;
+            /** @description держатель («Мама», «Юля»); null — сам владелец аккаунта */
+            label?: string;
+            perks: components["schemas"]["PerkOverviewDTO"][] | null;
+        };
+        PerkDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PerkDTO.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            bank_client_id: number;
+            /** Format: int32 */
+            bank_id: number;
+            bank_name?: string;
+            /** @description держатель («Мама»); null — сам владелец аккаунта */
+            client_label?: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+            note?: string;
+            /** @description счётная единица в единственном числе: «поездка», «преференция», «проход» */
+            unit: string;
+        };
+        PerkDiscrepancyDTO: {
+            /** Format: int64 */
+            bank: number;
+            /** Format: int64 */
+            computed: number;
+            /**
+             * Format: int64
+             * @description счётчик банка минус вычисленный остаток; минус — банк уже списал то, чего нет в журнале
+             */
+            delta: number;
+            /** Format: date */
+            observed_on: string;
+            /**
+             * Format: int64
+             * @description сверка, которая разошлась — последняя по этому периоду
+             */
+            snapshot_id: number;
+        };
+        PerkEventDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PerkEventDTO.json
+             */
+            readonly $schema?: string;
+            /** Format: date */
+            event_date: string;
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            kind: "use" | "grant" | "resize" | "adjust";
+            note?: string;
+            /** Format: int64 */
+            qty: number;
+            /** Format: int64 */
+            quota_id: number;
+        };
+        PerkHistoryQuotaDTO: {
+            /** @description период идёт прямо сейчас */
+            active: boolean;
+            bank_name: string;
+            /** @description месячные подпериоды внутри годового пула */
+            children?: components["schemas"]["PerkQuotaDTO"][] | null;
+            client_label?: string;
+            discrepancy?: components["schemas"]["PerkDiscrepancyDTO"];
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description размер, с которым период открылся; дальше его двигают события
+             */
+            initial_size: number;
+            /**
+             * Format: date
+             * @description дата последней сверки со счётчиком банка
+             */
+            last_seen_on?: string;
+            note?: string;
+            /** Format: int64 */
+            parent_quota_id?: number;
+            /**
+             * Format: int64
+             * @description может быть отрицательным — это расхождение, а не ошибка
+             */
+            remaining: number;
+            /**
+             * Format: int64
+             * @description действующий размер: последний resize плюс grant'ы и adjust'ы
+             */
+            size: number;
+            /**
+             * Format: int64
+             * @description для годового пула включает списания месячных периодов внутри него
+             */
+            used: number;
+            /** Format: date */
+            window_end: string;
+            /** Format: date */
+            window_start: string;
+        };
+        PerkOverviewDTO: {
+            name: string;
+            note?: string;
+            /** Format: int64 */
+            perk_id: number;
+            quotas: components["schemas"]["PerkQuotaDTO"][] | null;
+            unit: string;
+        };
+        PerkQuotaDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PerkQuotaDTO.json
+             */
+            readonly $schema?: string;
+            /** @description месячные подпериоды внутри годового пула */
+            children?: components["schemas"]["PerkQuotaDTO"][] | null;
+            discrepancy?: components["schemas"]["PerkDiscrepancyDTO"];
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description размер, с которым период открылся; дальше его двигают события
+             */
+            initial_size: number;
+            /**
+             * Format: date
+             * @description дата последней сверки со счётчиком банка
+             */
+            last_seen_on?: string;
+            note?: string;
+            /** Format: int64 */
+            parent_quota_id?: number;
+            /**
+             * Format: int64
+             * @description может быть отрицательным — это расхождение, а не ошибка
+             */
+            remaining: number;
+            /**
+             * Format: int64
+             * @description действующий размер: последний resize плюс grant'ы и adjust'ы
+             */
+            size: number;
+            /**
+             * Format: int64
+             * @description для годового пула включает списания месячных периодов внутри него
+             */
+            used: number;
+            /** Format: date */
+            window_end: string;
+            /** Format: date */
+            window_start: string;
+        };
+        PerkSnapshotDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PerkSnapshotDTO.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description остаток по журналу на дату этой сверки — каждая судится своим днём
+             */
+            computed?: number;
+            /** Format: int64 */
+            id: number;
+            note?: string;
+            /** Format: date */
+            observed_on: string;
+            /** Format: int64 */
+            quota_id: number;
+            /** Format: int64 */
+            remaining: number;
+        };
+        "Perks-createRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Perks-createRequest.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description держатель, которому принадлежит привилегия
+             */
+            bank_client_id: number;
+            name: string;
+            /** @description свободный текст: лимиты на поездку, как заявить, ссылка на тариф */
+            note?: string;
+            /** @description счётная единица: «поездка», «преференция», «проход» */
+            unit: string;
+        };
+        "Perks-event-createRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Perks-event-createRequest.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: date
+             * @description по умолчанию сегодня
+             */
+            event_date?: string;
+            /**
+             * @description use — списание (жжёт и месяц, и годовой пул); grant — внеплановая выдача; resize — новый АБСОЛЮТНЫЙ размер; adjust — знаковая сверка
+             * @enum {string}
+             */
+            kind: "use" | "grant" | "resize" | "adjust";
+            note?: string;
+            /** Format: int64 */
+            qty: number;
+        };
+        "Perks-quota-createRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Perks-quota-createRequest.json
+             */
+            readonly $schema?: string;
+            note?: string;
+            /**
+             * Format: int64
+             * @description годовой пул, внутрь которого кладётся месячный период
+             */
+            parent_quota_id?: number;
+            /**
+             * Format: int64
+             * @description размер, с которым период открывается; дальше — события resize
+             */
+            size: number;
+            /** Format: date */
+            window_end: string;
+            /** Format: date */
+            window_start: string;
+        };
+        "Perks-quota-listResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Perks-quota-listResponse.json
+             */
+            readonly $schema?: string;
+            events: components["schemas"]["PerkEventDTO"][] | null;
+            perk: components["schemas"]["PerkDTO"];
+            quotas: components["schemas"]["PerkHistoryQuotaDTO"][] | null;
+            snapshots: components["schemas"]["PerkSnapshotDTO"][] | null;
+        };
+        "Perks-quota-updateRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Perks-quota-updateRequest.json
+             */
+            readonly $schema?: string;
+            note?: string;
+            set_note?: boolean;
+            /**
+             * Format: int64
+             * @description поправка опечатки; после первого события или сверки — 422, размер меняется событием «resize»
+             */
+            size?: number;
+        };
+        "Perks-snapshot-createRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Perks-snapshot-createRequest.json
+             */
+            readonly $schema?: string;
+            note?: string;
+            /**
+             * Format: date
+             * @description по умолчанию сегодня
+             */
+            observed_on?: string;
+            /** Format: int64 */
+            remaining: number;
+        };
+        "Perks-updateRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Perks-updateRequest.json
+             */
+            readonly $schema?: string;
+            name?: string;
+            note?: string;
+            /** @description true — записать note как есть (в том числе пустой, чтобы очистить) */
+            set_note?: boolean;
+            unit?: string;
         };
         ProgramDTO: {
             /** @enum {string} */
@@ -3907,6 +4368,425 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Mcc-resolveResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerkDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Perks-createRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerkDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-event-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-overview": {
+        parameters: {
+            query?: {
+                /** @description дата, на которую считать остатки; по умолчанию сегодня */
+                on?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerkClientDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-quota-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-quota-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Perks-quota-updateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerkQuotaDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-event-create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Perks-event-createRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerkEventDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-snapshot-create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Perks-snapshot-createRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerkSnapshotDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-snapshot-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Perks-updateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerkDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-quota-list": {
+        parameters: {
+            query?: {
+                /** @description дата, на которую считать остатки; по умолчанию сегодня */
+                on?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Perks-quota-listResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "perks-quota-create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Perks-quota-createRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerkQuotaDTO"];
                 };
             };
             /** @description Error */

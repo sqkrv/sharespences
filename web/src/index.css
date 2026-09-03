@@ -13,6 +13,9 @@
  * (docs/claude-design/Sharespences-design.zip). Dark IS the design;
  * light is a derived variant so the System/Light/Dark toggle survives.
  * Semantics: mint = кешбек рублями, lilac (accl) = баллами, gold = спец.
+ * `ok` is the привилегии module's own green — «сверено с банком». Deliberately
+ * not mint: reconciling a quota counter says nothing about a currency, and
+ * reusing mint would read as «кешбек рублями».
  */
 :root {
   --t-bg: #f2f0f8;
@@ -30,6 +33,7 @@
   --t-acc2: #5b3fe0;
   --t-accl: #6f4fe0;
   --t-mint: #0c9f78;
+  --t-ok: #1f7a4d;
   --t-gold: #a8821b;
   --t-warn: #c25454;
   --t-glow: radial-gradient(120% 78% at 50% -12%, #ece7fa 0%, #f2f0f8 58%);
@@ -51,6 +55,7 @@
   --t-acc2: #5b3fe0;
   --t-accl: #bcb4ff;
   --t-mint: #6fe9c0;
+  --t-ok: #7fd996;
   --t-gold: #e7ce86;
   --t-warn: #e29b9b;
   --t-glow: radial-gradient(120% 78% at 50% -12%, #241c3e 0%, #0f0b1c 58%);
@@ -74,6 +79,7 @@
   --color-acc2: var(--t-acc2);
   --color-accl: var(--t-accl);
   --color-mint: var(--t-mint);
+  --color-ok: var(--t-ok);
   --color-gold: var(--t-gold);
   --color-warn: var(--t-warn);
 }
