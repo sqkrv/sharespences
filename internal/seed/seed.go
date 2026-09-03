@@ -1279,19 +1279,101 @@ var bankCategories = []struct {
 	// until that gap is addressed (ADR-0009 fact 11).
 	{bank: "Примсоцбанк", title: "Транспорт", slug: "transport"},
 
-	// МТС Деньги — ⚠️ 11 rows, nearly all from a single 2025-08 post; the
-	// thinnest catalog of the six and the most likely to be stale.
-	{bank: "МТС Деньги", title: "Связь МТС", emoji: "📱"},
-	{bank: "МТС Деньги", title: "Кино и развлечения", slug: "entertainment"},
-	{bank: "МТС Деньги", title: "Здоровье", slug: "health"},
-	{bank: "МТС Деньги", title: "Кафе и рестораны", slug: "restaurants"},
-	{bank: "МТС Деньги", title: "Топливо и АЗС", slug: "gas-stations"},
-	{bank: "МТС Деньги", title: "Маркетплейсы", slug: "marketplaces"},
+	// МТС Деньги — the full pool of «Условия программы лояльности „МТС
+	// Cashback"» Приложение №1 (редакция 31.08.2026): document-class titles,
+	// no screenshot. 84 rows of three kinds: MCC categories, own-service and
+	// merchant rows (no MCC), and QR-channel rows that pay only through the
+	// bank's own apps. The 2025-08 channel paraphrases this block carried
+	// before (2026-09-03: «Кино и развлечения», «Все остальное», «Связь МТС»…)
+	// had no artifact behind them and are replaced by the document's wording.
+	// A client picks 5; the rate is set per row each month.
+	{bank: "МТС Деньги", title: "Duty Free", slug: "duty-free"},
+	{bank: "МТС Деньги", title: "Авиабилеты", slug: "avia-tickets"},
+	{bank: "МТС Деньги", title: "Автомобильные услуги", slug: "auto-services"},
+	{bank: "МТС Деньги", title: "Аптеки", slug: "pharmacies"},
+	{bank: "МТС Деньги", title: "Аренда автомобилей", slug: "car-rental"},
+	{bank: "МТС Деньги", title: "Выставки и музеи", slug: "culture"},
+	{bank: "МТС Деньги", title: "Дача, сад", slug: "home-repair"},
+	{bank: "МТС Деньги", title: "Детские товары", slug: "kids"},
+	{bank: "МТС Деньги", title: "Дом и ремонт", slug: "home-repair"},
+	{bank: "МТС Деньги", title: "Железнодорожные билеты", slug: "rail-tickets"},
 	{bank: "МТС Деньги", title: "ЖКХ", slug: "utilities"},
+	{bank: "МТС Деньги", title: "Здоровье", slug: "health"},
+	{bank: "МТС Деньги", title: "Зоотовары", slug: "pets"},
+	{bank: "МТС Деньги", title: "Искусство", slug: "culture"},
+	{bank: "МТС Деньги", title: "Каршеринг", slug: "car-rental"},
+	{bank: "МТС Деньги", title: "Фастфуд и рестораны", slug: "restaurants"},
+	{bank: "МТС Деньги", title: "Кино", slug: "cinema"},
+	{bank: "МТС Деньги", title: "Книги", slug: "books"},
+	{bank: "МТС Деньги", title: "Косметика и парфюмерия", slug: "cosmetics"},
+	{bank: "МТС Деньги", title: "Красота", slug: "beauty"},
+	{bank: "МТС Деньги", title: "Круизы", slug: "travel"},
+	{bank: "МТС Деньги", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "МТС Деньги", title: "Медицинские услуги", slug: "medicine"},
+	{bank: "МТС Деньги", title: "Музыка", slug: "music"},
+	{bank: "МТС Деньги", title: "Образование", slug: "education"},
+	{bank: "МТС Деньги", title: "Одежда и обувь", slug: "clothes"},
+	{bank: "МТС Деньги", title: "Одежда, Обувь, Ювелирные изделия и часы", slug: "clothes"},
+	{bank: "МТС Деньги", title: "Отели", slug: "hotels"},
+	{bank: "МТС Деньги", title: "Платные дороги", slug: "toll-roads"},
 	{bank: "МТС Деньги", title: "Путешествия", slug: "travel"},
-	{bank: "МТС Деньги", title: "Одежда, обувь, юв. изделия и часы", slug: "clothes"},
+	{bank: "МТС Деньги", title: "Развлечения и Кино", slug: "entertainment"},
+	{bank: "МТС Деньги", title: "Рестораны", slug: "restaurants"},
+	{bank: "МТС Деньги", title: "Спортивные товары", slug: "sport-goods"},
+	{bank: "МТС Деньги", title: "Стоматология", slug: "medicine"},
 	{bank: "МТС Деньги", title: "Супермаркеты", slug: "supermarkets"},
-	{bank: "МТС Деньги", title: "Все остальное", slug: "all-purchases"},
+	{bank: "МТС Деньги", title: "Такси", slug: "taxi"},
+	{bank: "МТС Деньги", title: "Такси, каршеринг и аренда авто", slug: "taxi"},
+	{bank: "МТС Деньги", title: "Техника, электроника", slug: "electronics"},
+	{bank: "МТС Деньги", title: "Топливо и АЗС", slug: "gas-stations"},
+	{bank: "МТС Деньги", title: "Транспорт", slug: "transport"},
+	{bank: "МТС Деньги", title: "Турагентства", slug: "travel-agencies"},
+	{bank: "МТС Деньги", title: "Фастфуд", slug: "fastfood"},
+	{bank: "МТС Деньги", title: "Фитнес", slug: "active-leisure"},
+	{bank: "МТС Деньги", title: "Фото, Видео", slug: "photo-video"},
+	{bank: "МТС Деньги", title: "Цветы", slug: "flowers"},
+	{bank: "МТС Деньги", title: "Часы и украшения", slug: "jewelry"},
+	{bank: "МТС Деньги", title: "На все!", slug: "all-purchases"},
+	// Canonical-less: umbrella mixes, ecosystem codes, own services, merchants
+	// and QR-channel rows — a canonical would make the lookup promise their
+	// rate at an ordinary merchant.
+	{bank: "МТС Деньги", title: "Бренды из-за рубежа", emoji: "📦"},
+	{bank: "МТС Деньги", title: "Канцтовары", emoji: "✏️"},
+	{bank: "МТС Деньги", title: "Сувениры", emoji: "🎁"},
+	{bank: "МТС Деньги", title: "Шик-блеск-красота", emoji: "✨"},
+	{bank: "МТС Деньги", title: "Сбер", emoji: "🟢"},
+	{bank: "МТС Деньги", title: "Экосистема", emoji: "🔗"},
+	{bank: "МТС Деньги", title: "Яндекс", emoji: "🟡"},
+	{bank: "МТС Деньги", title: "Билеты в кино на МТС Live", emoji: "🎟️"},
+	{bank: "МТС Деньги", title: "Гемотест", emoji: "🧪"},
+	{bank: "МТС Деньги", title: "Дринкит", emoji: "☕"},
+	{bank: "МТС Деньги", title: "Магазины напитков", emoji: "🍷"},
+	{bank: "МТС Деньги", title: "Пополнение App Store из России", emoji: "🍎"},
+	{bank: "МТС Деньги", title: "Самокат", emoji: "🛒"},
+	{bank: "МТС Деньги", title: "Супермаркеты по QR", emoji: "🔳"},
+	{bank: "МТС Деньги", title: "Фастфуд и рестораны по QR", emoji: "🔳"},
+	{bank: "МТС Деньги", title: "Транспорт по QR", emoji: "🔳"},
+	{bank: "МТС Деньги", title: "Wildberries", emoji: "🛍️"},
+	{bank: "МТС Деньги", title: "KION", emoji: "🎬"},
+	{bank: "МТС Деньги", title: "МТС Music", emoji: "🎵"},
+	{bank: "МТС Деньги", title: "МТС Live", emoji: "🎟️"},
+	{bank: "МТС Деньги", title: "Ticketland", emoji: "🎫"},
+	{bank: "МТС Деньги", title: "МТС Юрент", emoji: "🛴"},
+	{bank: "МТС Деньги", title: "МТС Premium", emoji: "⭐"},
+	{bank: "МТС Деньги", title: "МТС Junior", emoji: "🧒"},
+	{bank: "МТС Деньги", title: "МТС Строки", emoji: "📖"},
+	{bank: "МТС Деньги", title: "МТС Fog Play", emoji: "🎮"},
+	{bank: "МТС Деньги", title: "МТС Оплата", emoji: "🎮"},
+	{bank: "МТС Деньги", title: "МТС Все страховки", emoji: "🛡️"},
+	{bank: "МТС Деньги", title: "Оплата мобильной связи МТС", emoji: "📱"},
+	{bank: "МТС Деньги", title: "Оплата интернета МТС", emoji: "🌐"},
+	{bank: "МТС Деньги", title: "Спутниковое ТВ МТС", emoji: "📡"},
+	{bank: "МТС Деньги", title: "Магазины МТС", emoji: "🏪"},
+	{bank: "МТС Деньги", title: "Shop.mts.ru", emoji: "🏪"},
+	{bank: "МТС Деньги", title: "MTC Pay", emoji: "📲"},
+	{bank: "МТС Деньги", title: "Оплата по QR", emoji: "🔳"},
+	{bank: "МТС Деньги", title: "Экосистема МТС", emoji: "🔴"},
+	{bank: "МТС Деньги", title: "Оплата по QR за рубежом в Мой МТС", emoji: "🌍"},
 
 	// Яндекс Про — only one row is documented: «Все покупки» stands permanently
 	// alongside the six chosen categories. The six themselves are picked from a
@@ -1404,6 +1486,33 @@ var bankCategories = []struct {
 	{bank: "СберБанк", title: "На всё за оплату улыбкой", emoji: "😊"},
 	{bank: "СберБанк", title: "На всё по SberPay NFC", emoji: "📱"},
 	{bank: "СберБанк", title: "На всё за оплату Вжух", emoji: "💫"},
+
+	// Совкомбанк — Приложение №1 of the «Дебетовая карта с кешбэком на
+	// категории» rules (версия 8.0, с 21.04.2026): document-class titles, no
+	// screenshot. The app deals 8 rows per отчётный период (one boosted, seven
+	// generated) and the client picks 3 or 5 by «Оптима». Two umbrellas:
+	// «Авиа и Ж/Д билеты» → avia-tickets (rail inside), «Транспорт» → transport
+	// (the car-rental block, taxi and auto services inside).
+	{bank: "Совкомбанк", title: "Рестораны и кафе", slug: "restaurants"},
+	{bank: "Совкомбанк", title: "Дом, ремонт", slug: "home-repair"},
+	{bank: "Совкомбанк", title: "Одежда и обувь", slug: "clothes"},
+	{bank: "Совкомбанк", title: "Авиа и Ж/Д билеты", slug: "avia-tickets"},
+	{bank: "Совкомбанк", title: "Путешествия", slug: "travel"},
+	{bank: "Совкомбанк", title: "Электроника", slug: "electronics"},
+	{bank: "Совкомбанк", title: "Аптеки", slug: "pharmacies"},
+	{bank: "Совкомбанк", title: "Медицина", slug: "medicine"},
+	{bank: "Совкомбанк", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "Совкомбанк", title: "Топливо", slug: "gas-stations"},
+	{bank: "Совкомбанк", title: "Транспорт", slug: "transport"},
+	{bank: "Совкомбанк", title: "Цветы", slug: "flowers"},
+	{bank: "Совкомбанк", title: "Ювелирные изделия", slug: "jewelry"},
+	{bank: "Совкомбанк", title: "Красота", slug: "beauty"},
+	{bank: "Совкомбанк", title: "Фото, Видео", slug: "photo-video"},
+	{bank: "Совкомбанк", title: "Детские товары", slug: "kids"},
+	{bank: "Совкомбанк", title: "Животные", slug: "pets"},
+	{bank: "Совкомбанк", title: "Образование", slug: "education"},
+	{bank: "Совкомбанк", title: "Развлечения", slug: "entertainment"},
+	{bank: "Совкомбанк", title: "Спорттовары", slug: "sport-goods"},
 
 	// Банк Синара — ⚠️ NO catalog. The channel covers Синара monthly but has
 	// never published its menu (0 rows across 7 own picker posts); it only
