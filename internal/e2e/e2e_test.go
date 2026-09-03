@@ -1085,7 +1085,7 @@ func TestCashbackE2E(t *testing.T) {
 	} {
 		snap := fmt.Sprintf(`{
 			"schema_version": 2, "bank": %q, "captured_at": "2026-09-01",
-			"source": {"file": "e2e.json", "sha256": "e2e0000000000000"},
+			"source": {"id": "e2e-doc", "file": "e2e.json", "sha256": "e2e0000000000000"},
 			"categories": [{"title": %q, "mcc": ["5411"]}]}`, imp.bank, imp.title)
 		if err := mcc.ImportSnapshot(ctx, pool, []byte(snap), false, nil); err != nil {
 			t.Fatalf("mcc-import %s: %v", imp.bank, err)
