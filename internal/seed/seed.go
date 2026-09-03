@@ -1525,12 +1525,34 @@ var bankCategories = []struct {
 	{bank: "Совкомбанк", title: "Развлечения", slug: "entertainment"},
 	{bank: "Совкомбанк", title: "Спорттовары", slug: "sport-goods"},
 
-	// Банк Синара — ⚠️ NO catalog. The channel covers Синара monthly but has
-	// never published its menu (0 rows across 7 own picker posts); it only
-	// names four rows as «стабильно доступны». Seeding those four alone would
-	// imply the menu is four long. Left empty deliberately — the picker falls
-	// back to canonical categories for a bank without a catalog, which is the
-	// honest state until a screenshot or the ПЛ arrives.
+	// Банк Синара — Приложение №1 of «Условия бонусной программы «БОНУС КЛУБ»»
+	// (the «Та Самая» debit card, версия 5.6): document-class titles, no
+	// screenshot; the whole list, from which the app offers 11 a month and the
+	// client picks 4 (2026-09-03). «Город» is an umbrella (transit, taxi,
+	// carsharing, toll roads); «Маркетплейсы» is defined by merchant names;
+	// «На все» is the base row.
+	{bank: "Банк Синара", title: "АЗС, в том числе для электромобилей", slug: "gas-stations"},
+	{bank: "Банк Синара", title: "Аптеки", slug: "pharmacies"},
+	{bank: "Банк Синара", title: "Город", slug: "transport"},
+	{bank: "Банк Синара", title: "Детские товары", slug: "kids"},
+	{bank: "Банк Синара", title: "Дом, ремонт", slug: "home-repair"},
+	{bank: "Банк Синара", title: "Досуг и развлечения", slug: "entertainment"},
+	{bank: "Банк Синара", title: "Животные", slug: "pets"},
+	{bank: "Банк Синара", title: "Книги", slug: "books"},
+	{bank: "Банк Синара", title: "Красота и здоровье", slug: "beauty"},
+	{bank: "Банк Синара", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "Банк Синара", title: "Музыка", slug: "music"},
+	{bank: "Банк Синара", title: "Одежда и обувь", slug: "clothes"},
+	{bank: "Банк Синара", title: "Рестораны", slug: "restaurants"},
+	{bank: "Банк Синара", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "Банк Синара", title: "Фастфуд", slug: "fastfood"},
+	{bank: "Банк Синара", title: "Цветы и подарки", slug: "flowers"},
+	{bank: "Банк Синара", title: "Часы и ювелирные изделия", slug: "jewelry"},
+	{bank: "Банк Синара", title: "Электроника и техника для дома", slug: "electronics"},
+	{bank: "Банк Синара", title: "Магазины беспошлинной торговли (Duty Free)", slug: "duty-free"},
+	{bank: "Банк Синара", title: "На все", slug: "all-purchases"},
+	// Department and variety stores (5310/5311/5331) map cleanly to nothing.
+	{bank: "Банк Синара", title: "Универмаги и универсамы", emoji: "🏬"},
 }
 
 // Run loads all seed data.
