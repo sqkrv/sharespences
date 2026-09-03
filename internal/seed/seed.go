@@ -1247,37 +1247,48 @@ var bankCategories = []struct {
 	// A manufacturer, not a merchant and not a category — 10% at MCC 5722/5712.
 	{bank: "ОТП Банк", title: "Tefal", emoji: "🍳"},
 
-	// Примсоцбанк — ⚠️ channel paraphrase across 10 monthly posts, not picker
-	// strings. Several rows are plainly the same category worded differently
-	// between months; both spellings are kept rather than guessed at, since a
-	// wrong merge is harder to notice than a duplicate.
-	{bank: "Примсоцбанк", title: "Супермаркеты", slug: "supermarkets"},
-	{bank: "Примсоцбанк", title: "Аптеки", slug: "pharmacies"},
-	{bank: "Примсоцбанк", title: "Здоровье", slug: "health"},
-	{bank: "Примсоцбанк", title: "Красота", slug: "beauty"},
-	{bank: "Примсоцбанк", title: "Красота, парикмахерские, салоны", slug: "beauty"},
-	{bank: "Примсоцбанк", title: "Детские товары", slug: "kids"},
-	{bank: "Примсоцбанк", title: "Путешествия", slug: "travel"},
-	{bank: "Примсоцбанк", title: "Рестораны, кафе, закусочные, фастфуд", slug: "restaurants"},
-	{bank: "Примсоцбанк", title: "Рестораны и фастфуд", slug: "restaurants"},
+	// Примсоцбанк — Приложение 1 of the bank's own rules («Полный перечень
+	// категорий покупок и МСС», ред. 09.06.2026): document-class titles, no
+	// screenshot; 35 rows, the ones the channel had paraphrased replaced by the
+	// document's wording (2026-09-03). The picker offers this whole list to
+	// every client, who picks 4. «Весь кешбэк» is the base row (all MCC except
+	// Приложение 2 and the chosen categories).
+	{bank: "Примсоцбанк", title: "Общественный транспорт", slug: "transport"},
 	{bank: "Примсоцбанк", title: "Маркетплейсы", slug: "marketplaces"},
-	{bank: "Примсоцбанк", title: "Парки аттракционов, детские центры", slug: "entertainment"},
-	{bank: "Примсоцбанк", title: "Яндекс+АЗС", slug: "gas-stations"},
-	{bank: "Примсоцбанк", title: "Домашние животные", slug: "pets"},
-	{bank: "Примсоцбанк", title: "Одежда и обувь", slug: "clothes"},
-	{bank: "Примсоцбанк", title: "Образование", slug: "education"},
-	{bank: "Примсоцбанк", title: "Бытовые услуги", slug: "household-services"},
-	{bank: "Примсоцбанк", title: "Цветы, флористика", slug: "flowers"},
-	{bank: "Примсоцбанк", title: "Муз. инструменты", slug: "hobby"},
-	{bank: "Примсоцбанк", title: "Книги, канцелярия", slug: "books"},
-	{bank: "Примсоцбанк", title: "Техника", slug: "electronics"},
-	{bank: "Примсоцбанк", title: "Спорттовары, спорт", slug: "sport-goods"},
-	{bank: "Примсоцбанк", title: "Дом и ремонт", slug: "home-repair"},
+	{bank: "Примсоцбанк", title: "Путешествия", slug: "travel"},
+	{bank: "Примсоцбанк", title: "Красота, парикмахерские, салоны красоты", slug: "beauty"},
 	{bank: "Примсоцбанк", title: "Развлечения, кинотеатры", slug: "entertainment"},
-	// ⚠️ Priced as a flat 4 ₽ per trip from 25 ₽, not as a percentage —
-	// category_offer stores a percent, so this row cannot be recorded honestly
-	// until that gap is addressed (ADR-0009 fact 11).
-	{bank: "Примсоцбанк", title: "Транспорт", slug: "transport"},
+	{bank: "Примсоцбанк", title: "Одежда, обувь", slug: "clothes"},
+	{bank: "Примсоцбанк", title: "Рестораны, кафе, закусочные, фастфуд", slug: "restaurants"},
+	{bank: "Примсоцбанк", title: "Алкомаркеты", slug: "alcohol"},
+	{bank: "Примсоцбанк", title: "Цветы, флористика", slug: "flowers"},
+	{bank: "Примсоцбанк", title: "Косметика", slug: "cosmetics"},
+	{bank: "Примсоцбанк", title: "Спорттовары, спорт", slug: "sport-goods"},
+	{bank: "Примсоцбанк", title: "Товары для дома и ремонта", slug: "home-repair"},
+	{bank: "Примсоцбанк", title: "Яндекс+АЗС", slug: "gas-stations"},
+	{bank: "Примсоцбанк", title: "Ювелирные украшения и часы", slug: "jewelry"},
+	{bank: "Примсоцбанк", title: "Аптеки", slug: "pharmacies"},
+	{bank: "Примсоцбанк", title: "Подарки, товары для творчества", slug: "hobby"},
+	{bank: "Примсоцбанк", title: "Супермаркеты и универсамы", slug: "supermarkets"},
+	{bank: "Примсоцбанк", title: "Такси", slug: "taxi"},
+	{bank: "Примсоцбанк", title: "Образование", slug: "education"},
+	{bank: "Примсоцбанк", title: "Техника", slug: "electronics"},
+	{bank: "Примсоцбанк", title: "Здоровье", slug: "health"},
+	{bank: "Примсоцбанк", title: "Бытовые услуги", slug: "household-services"},
+	{bank: "Примсоцбанк", title: "Детские товары", slug: "kids"},
+	{bank: "Примсоцбанк", title: "Цифровые товары", slug: "digital-goods"},
+	{bank: "Примсоцбанк", title: "Домашние животные", slug: "pets"},
+	{bank: "Примсоцбанк", title: "Аренда авто", slug: "car-rental"},
+	{bank: "Примсоцбанк", title: "Искусство, коллекция", slug: "culture"},
+	{bank: "Примсоцбанк", title: "Музыкальные инструменты, магазины", slug: "music"},
+	{bank: "Примсоцбанк", title: "Аксессуары, галантерея", slug: "accessories"},
+	{bank: "Примсоцбанк", title: "Книги, канцелярия", slug: "books"},
+	{bank: "Примсоцбанк", title: "Фото, видео", slug: "photo-video"},
+	{bank: "Примсоцбанк", title: "Весь кешбэк", slug: "all-purchases"},
+	{bank: "Примсоцбанк", title: "Автоуслуги", slug: "auto-services"},
+	// Business-service and logistics rows map cleanly to nothing.
+	{bank: "Примсоцбанк", title: "Транспортировка, хранение, доставка", emoji: "📦"},
+	{bank: "Примсоцбанк", title: "Агентства, бизнес-услуги", emoji: "🧾"},
 
 	// МТС Деньги — the full pool of «Условия программы лояльности „МТС
 	// Cashback"» Приложение №1 (редакция 31.08.2026): document-class titles,
