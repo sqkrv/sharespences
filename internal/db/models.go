@@ -776,11 +776,12 @@ type BankClient struct {
 }
 
 type BankExclusion struct {
-	ID     int64
-	BankID int32
-	Kind   BankExclusionKind
-	Value  string
-	Note   *string
+	ID       int64
+	BankID   int32
+	Kind     BankExclusionKind
+	Value    string
+	Note     *string
+	SourceID string
 }
 
 type BankMcc struct {
