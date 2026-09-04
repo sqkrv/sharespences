@@ -119,9 +119,9 @@ export function MonthPicker({
                     onChange(midMonthISO(year, m));
                     setOpen(false);
                   }}
-                  className={`flex w-full items-center gap-2.5 rounded-[13px] px-3 py-2.5 text-left disabled:opacity-35 ${cls}`}
+                  className={`flex w-full flex-wrap items-center gap-2.5 rounded-[13px] px-3 py-2.5 text-left disabled:opacity-35 ${cls}`}
                 >
-                  <span className="min-w-0 flex-1 text-[13.5px] font-semibold text-tx2 capitalize">
+                  <span className="flex-none text-[13.5px] font-semibold text-tx2 capitalize">
                     {name}
                     {key === currentKey && (
                       <span className="ml-1.5 align-[2px]">
@@ -137,7 +137,11 @@ export function MonthPicker({
                     )}
                   </span>
                   {roster.length > 0 && !isFuture && (
-                    <span className="flex gap-1.5">
+                    // The strip takes the slack and wraps inside it. A roster
+                    // of sixteen клиентов is wider than any phone, and while
+                    // the name was the flexible half the logos ran straight
+                    // over it (the name has nothing to truncate into).
+                    <span className="flex min-w-0 flex-1 flex-wrap justify-end gap-1.5">
                       {roster.map((c, i) => (
                         <span key={c.id} className={`relative ${fills[i] ? "" : "opacity-25 saturate-[.3]"}`}>
                           <BankBadge name={c.bank_name ?? ""} size={16} />
@@ -151,7 +155,7 @@ export function MonthPicker({
                     </span>
                   )}
                   {roster.length > 0 && !isFuture && !(isNext && filledCount === 0) && (
-                    <span className="text-[10.5px] font-semibold text-tx4">
+                    <span className="ml-auto flex-none text-[10.5px] font-semibold text-tx4">
                       {filledCount} из {roster.length}
                     </span>
                   )}
