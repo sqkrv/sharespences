@@ -12,17 +12,16 @@ import (
 const (
 	// PerCallTimeout bounds one backend completion. Hitting it kills the
 	// whole job: askJSON returns the deadline error rather than advancing
-	// the ladder, so this is a hard stop and not a retry trigger.
+	// the ladder, so this is a hard stop and not a retry trigger. That is
+	// why it is set off a measured WORST case and not off the mean.
 	//
-	// The value was chosen against qwen3-vl:4b at 149 s/image with a 259 s
-	// worst case (run 5). After the 2026-09 server rebuild the same model
-	// reads a screenshot in ~30 s, so the bound is now roughly ten times
-	// the observed cost — but that figure is an observation, not a harness
-	// run, and the failure modes are not symmetric: too tight loses a real
-	// read, too loose only holds the one-job-per-user lock longer. It stays
-	// until docs/research/recognizer-eval/bench.py measures a worst case on
-	// the new hardware.
-	PerCallTimeout = 5 * time.Minute
+	// Harness run 7 (2026-09-04, 13 images, qwen3-vl:4b): min 9.0 s, median
+	// 17.1 s, max 21.0 s per image, every one on the first rung. The old
+	// 5 min came from run 5's 259 s worst case on the same card, before the
+	// server rebuild made the same weights 9× faster. Two minutes is ~6× the
+	// worst case now measured, which also covers a cold load of the 3.3 GB
+	// model after ollama's keep-alive has expired.
+	PerCallTimeout = 2 * time.Minute
 	// LadderRungs is the escalation ladder length (askJSON below).
 	LadderRungs = 3
 	// MaxCallsPerImage derives the per-image call bound FROM the ladder
