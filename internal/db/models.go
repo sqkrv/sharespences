@@ -414,6 +414,7 @@ const (
 	MccChangeActionExcludedImported MccChangeAction = "excluded_imported"
 	MccChangeActionExcludedAdded    MccChangeAction = "excluded_added"
 	MccChangeActionExcludedRemoved  MccChangeAction = "excluded_removed"
+	MccChangeActionCodeUnknown      MccChangeAction = "code_unknown"
 )
 
 func (e *MccChangeAction) Scan(src interface{}) error {

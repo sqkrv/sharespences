@@ -195,11 +195,14 @@ type CatalogEntry struct {
 // PlanInput is the current DB state the planner diffs against, already
 // restricted to the snapshot's bank (catalog: global rows only).
 type PlanInput struct {
-	Catalog        []CatalogEntry
-	Membership     map[int64]map[int16]string // category id → code → note ("" = null)
-	KnownCodes     map[int16]bool             // mcc dictionary
-	Exclusions     map[string]map[string]string // kind → identity key → note
-	JournaledTitles map[string]bool           // normalized titles already journaled category_added
+	Catalog         []CatalogEntry
+	Membership      map[int64]map[int16]string   // category id → code → note ("" = null)
+	KnownCodes      map[int16]bool               // mcc dictionary
+	Exclusions      map[string]map[string]string // kind → identity key → note
+	JournaledTitles map[string]bool              // normalized titles already journaled category_added
+	// JournaledUnknown: codes already journaled code_unknown for this bank —
+	// a re-import of an unchanged document must not journal them again.
+	JournaledUnknown map[int16]bool
 }
 
 // ExclusionIdentity keys a bank_exclusion row within a kind: the note is
@@ -242,6 +245,13 @@ type Plan struct {
 	// SkippedCodes: title → codes absent from the dictionary even after
 	// DictionaryAdds; counted, not imported.
 	SkippedCodes map[string][]string
+	// UnknownCodes: the subset of SkippedCodes this bank has never had
+	// journaled — written once as code_unknown so a code that appears in a
+	// new issue surfaces in the ritual instead of scrolling past in a log.
+	// Codes inside a long unbroken run are left out: a bank writing «4011-4112»
+	// covers the unassigned gap between the two, and 99 journal rows for one
+	// range would bury the isolated code this exists to surface.
+	UnknownCodes []MembershipChange
 
 	ExclusionAdds    []ExclusionChange
 	ExclusionRemoves []ExclusionChange
@@ -253,7 +263,7 @@ type Plan struct {
 // Empty reports whether applying the plan would write nothing.
 func (p *Plan) Empty() bool {
 	return len(p.DictionaryAdds) == 0 && len(p.Adds) == 0 && len(p.Removes) == 0 &&
-		len(p.NoteUpdates) == 0 && len(p.NewTitles) == 0 &&
+		len(p.NoteUpdates) == 0 && len(p.NewTitles) == 0 && len(p.UnknownCodes) == 0 &&
 		len(p.ExclusionAdds) == 0 && len(p.ExclusionRemoves) == 0
 }
 
@@ -266,6 +276,27 @@ func qualifiedNote(q SnapshotQualified) string {
 		parts = append(parts, q.When)
 	}
 	return strings.Join(parts, " — ")
+}
+
+// bandRun is how many consecutive unknown codes read as a band the bank wrote
+// as a range rather than as codes it actually names.
+const bandRun = 10
+
+// isolated drops codes that sit inside an unbroken run of bandRun or more.
+func isolated(codes []int16) []int16 {
+	sort.Slice(codes, func(i, j int) bool { return codes[i] < codes[j] })
+	var out []int16
+	for i := 0; i < len(codes); {
+		j := i + 1
+		for j < len(codes) && codes[j] == codes[j-1]+1 {
+			j++
+		}
+		if j-i < bandRun {
+			out = append(out, codes[i:j]...)
+		}
+		i = j
+	}
+	return out
 }
 
 func mustCode(s string) int16 {
@@ -305,6 +336,7 @@ func PlanImport(s *Snapshot, in PlanInput) (*Plan, error) {
 	})
 
 	var unresolved, ambiguous []string
+	unknownSeen := map[int16]bool{} // one journal row per (bank, code), not per category
 	for _, cat := range s.Categories {
 		matches := byNorm[cashback.NormalizeTitle(cat.Title)]
 		hasCodes := len(cat.MCC) > 0 || len(cat.Qualified) > 0
@@ -330,13 +362,21 @@ func PlanImport(s *Snapshot, in PlanInput) (*Plan, error) {
 		for _, q := range cat.Qualified { // a qualified entry wins over a plain duplicate
 			want[mustCode(q.MCC)] = qualifiedNote(q)
 		}
+		var unknown []int16
 		for code := range want {
 			if !known[code] {
 				plan.SkippedCodes[cat.Title] = append(plan.SkippedCodes[cat.Title], FormatCode(code))
+				unknown = append(unknown, code)
 				delete(want, code)
 			}
 		}
 		sort.Strings(plan.SkippedCodes[cat.Title])
+		for _, code := range isolated(unknown) {
+			if !in.JournaledUnknown[code] && !unknownSeen[code] {
+				unknownSeen[code] = true
+				plan.UnknownCodes = append(plan.UnknownCodes, MembershipChange{Category: row, Code: code})
+			}
+		}
 
 		have := in.Membership[row.ID]
 		if len(have) == 0 && len(want) > 0 {
@@ -525,6 +565,14 @@ func (p *Plan) Render(bank string, logf func(format string, args ...any)) {
 	}
 	for _, t := range sortedKeys(p.SkippedCodes) {
 		logf("«%s»: skipped, not in dictionary: %s", t, strings.Join(p.SkippedCodes[t], ", "))
+	}
+	if len(p.UnknownCodes) > 0 {
+		codes := make([]string, 0, len(p.UnknownCodes))
+		for _, u := range p.UnknownCodes {
+			codes = append(codes, FormatCode(u.Code))
+		}
+		sort.Strings(codes)
+		logf("journaled as code_unknown (first time this bank names them): %s", strings.Join(codes, ", "))
 	}
 	if p.Empty() {
 		logf("no changes — snapshot already applied")

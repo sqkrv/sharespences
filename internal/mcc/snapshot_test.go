@@ -21,15 +21,15 @@ const snapshotHead = `"schema_version": 2, "bank": "Тестбанк", "captured
 
 func TestParseSnapshotValidation(t *testing.T) {
 	cases := map[string]string{
-		"schema_version 1":       `{"schema_version": 1, "bank": "Б", "captured_at": "д", "source": {"file": "f", "sha256": "s"}}`,
-		"bank, captured_at":      `{"schema_version": 2, "source": {"file": "f", "sha256": "s"}}`,
-		"source.id":              `{"schema_version": 2, "bank": "Б", "captured_at": "д", "source": {"file": "f", "sha256": "s"}}`,
-		"bad MCC":                `{` + snapshotHead + `, "categories": [{"title": "АЗС", "mcc": ["55A1"]}]}`,
-		"want 4 digits":          `{` + snapshotHead + `, "categories": [{"title": "АЗС", "mcc": ["742"]}]}`,
-		"empty title":            `{` + snapshotHead + `, "categories": [{"title": "", "mcc": ["5541"]}]}`,
-		"exclusions.mcc":         `{` + snapshotHead + `, "exclusions": {"mcc": ["48"]}}`,
-		"dictionary entry":       `{` + snapshotHead + `, "dictionary": [{"mcc": "5968", "name": ""}]}`,
-		"descriptors entry":      `{` + snapshotHead + `, "exclusions": {"descriptors": [{"note": "дата без значения"}]}}`,
+		"schema_version 1":  `{"schema_version": 1, "bank": "Б", "captured_at": "д", "source": {"file": "f", "sha256": "s"}}`,
+		"bank, captured_at": `{"schema_version": 2, "source": {"file": "f", "sha256": "s"}}`,
+		"source.id":         `{"schema_version": 2, "bank": "Б", "captured_at": "д", "source": {"file": "f", "sha256": "s"}}`,
+		"bad MCC":           `{` + snapshotHead + `, "categories": [{"title": "АЗС", "mcc": ["55A1"]}]}`,
+		"want 4 digits":     `{` + snapshotHead + `, "categories": [{"title": "АЗС", "mcc": ["742"]}]}`,
+		"empty title":       `{` + snapshotHead + `, "categories": [{"title": "", "mcc": ["5541"]}]}`,
+		"exclusions.mcc":    `{` + snapshotHead + `, "exclusions": {"mcc": ["48"]}}`,
+		"dictionary entry":  `{` + snapshotHead + `, "dictionary": [{"mcc": "5968", "name": ""}]}`,
+		"descriptors entry": `{` + snapshotHead + `, "exclusions": {"descriptors": [{"note": "дата без значения"}]}}`,
 	}
 	for wantErr, doc := range cases {
 		if _, err := ParseSnapshot([]byte(doc)); err == nil || !strings.Contains(err.Error(), wantErr) {
@@ -225,5 +225,25 @@ func TestPlanExclusionsPerKindPresence(t *testing.T) {
 	}
 	if len(plan.ExclusionAdds) != 0 || len(plan.ExclusionRemoves) != 0 {
 		t.Fatalf("re-import must be a no-op: +%v −%v", plan.ExclusionAdds, plan.ExclusionRemoves)
+	}
+}
+
+func TestIsolatedDropsBandRuns(t *testing.T) {
+	// Альфа's «Транспорт» prints «4011-4112»: the expansion covers the
+	// unassigned gap, and those 99 codes must not each become a journal row.
+	band := make([]int16, 0, 99)
+	for c := int16(4012); c <= 4110; c++ {
+		band = append(band, c)
+	}
+	in := append([]int16{3070, 3074, 3271, 3272, 3273}, band...)
+	got := isolated(in)
+	want := []int16{3070, 3074, 3271, 3272, 3273}
+	if len(got) != len(want) {
+		t.Fatalf("isolated = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("isolated = %v, want %v", got, want)
+		}
 	}
 }

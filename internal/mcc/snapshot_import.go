@@ -74,10 +74,11 @@ func ImportSnapshot(ctx context.Context, pool *pgxpool.Pool, data []byte, dryRun
 // the diff and survive it.
 func loadPlanInput(ctx context.Context, tx pgx.Tx, bankID int32, sourceID string) (PlanInput, error) {
 	in := PlanInput{
-		Membership:      map[int64]map[int16]string{},
-		KnownCodes:      map[int16]bool{},
-		Exclusions:      map[string]map[string]string{},
-		JournaledTitles: map[string]bool{},
+		Membership:       map[int64]map[int16]string{},
+		KnownCodes:       map[int16]bool{},
+		Exclusions:       map[string]map[string]string{},
+		JournaledTitles:  map[string]bool{},
+		JournaledUnknown: map[int16]bool{},
 	}
 
 	rows, err := tx.Query(ctx, `
@@ -172,6 +173,23 @@ func loadPlanInput(ctx context.Context, tx pgx.Tx, bankID int32, sourceID string
 	if err := rows.Err(); err != nil {
 		return in, fmt.Errorf("mcc-import: journal rows: %w", err)
 	}
+
+	rows, err = tx.Query(ctx, `
+		select distinct mcc_code from mcc_change
+		where bank_id = $1 and action = 'code_unknown' and mcc_code is not null`, bankID)
+	if err != nil {
+		return in, fmt.Errorf("mcc-import: load unknown-code journal: %w", err)
+	}
+	for rows.Next() {
+		var code int16
+		if err := rows.Scan(&code); err != nil {
+			return in, fmt.Errorf("mcc-import: scan unknown-code journal: %w", err)
+		}
+		in.JournaledUnknown[code] = true
+	}
+	if err := rows.Err(); err != nil {
+		return in, fmt.Errorf("mcc-import: unknown-code journal rows: %w", err)
+	}
 	return in, nil
 }
 
@@ -206,6 +224,16 @@ func applyPlan(ctx context.Context, tx pgx.Tx, bankID int32, sourceID string, pl
 			return fmt.Errorf("mcc-import: journal add: %w", err)
 		}
 	}
+	// Codes the document names that the dictionary cannot hold. Nothing is
+	// written to bank_category_mcc — the FK is what filters parser artefacts —
+	// but the fact that this bank named the code is recorded once.
+	for _, u := range plan.UnknownCodes {
+		if err := journal(&u.Category.ID, u.Category.Title, &u.Code, "code_unknown",
+			"код есть в документе банка, но отсутствует в справочнике MCC"); err != nil {
+			return fmt.Errorf("mcc-import: journal unknown code %s: %w", FormatCode(u.Code), err)
+		}
+	}
+
 	for _, m := range plan.Removes {
 		if _, err := tx.Exec(ctx, `
 			delete from bank_category_mcc where bank_category_id = $1 and mcc_code = $2`,

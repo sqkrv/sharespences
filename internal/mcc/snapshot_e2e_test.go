@@ -171,6 +171,35 @@ func TestImportSnapshotE2E(t *testing.T) {
 		t.Fatalf("re-import after sibling source journaled %d rows", n-journalBefore)
 	}
 
+	// a code the document names but the dictionary lacks: nothing lands in
+	// membership (the FK is the parser-artefact filter), but the bank having
+	// named it is journaled once — and only once, however often it re-imports
+	unknown := `{
+		"schema_version": 2, "bank": "Тестбанк", "captured_at": "2026-09-02",
+		"source": {"id": "test-unknown", "file": "unknown.json", "sha256": "dddd000000000000"},
+		"categories": [{"title": "АЗС", "mcc": ["5541", "9998"]}]
+	}`
+	membershipBefore := count(`select count(*) from bank_category_mcc`)
+	if err := ImportSnapshot(ctx, pool, []byte(unknown), false, t.Logf); err != nil {
+		t.Fatalf("unknown-code import: %v", err)
+	}
+	if n := count(`select count(*) from mcc where code = 9998`); n != 0 {
+		t.Fatal("an unknown code must not be invented in the dictionary")
+	}
+	if n := count(`select count(*) from mcc_change where action = 'code_unknown' and mcc_code = 9998`); n != 1 {
+		t.Fatalf("code_unknown rows for 9998 = %d, want 1", n)
+	}
+	journalBefore = count(`select count(*) from mcc_change`)
+	if err := ImportSnapshot(ctx, pool, []byte(unknown), false, t.Logf); err != nil {
+		t.Fatalf("unknown-code re-import: %v", err)
+	}
+	if n := count(`select count(*) from mcc_change`); n != journalBefore {
+		t.Fatalf("re-import journaled %d more rows — code_unknown must be recorded once", n-journalBefore)
+	}
+	if n := count(`select count(*) from bank_category_mcc`); n != membershipBefore {
+		t.Fatalf("membership = %d, want %d — 9998 must never attach", n, membershipBefore)
+	}
+
 	// dry run over a changed state writes nothing
 	if err := ImportSnapshot(ctx, pool, []byte(first), true, t.Logf); err != nil {
 		t.Fatalf("dry run: %v", err)
