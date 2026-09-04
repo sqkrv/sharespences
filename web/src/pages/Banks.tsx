@@ -33,6 +33,9 @@ function useOverview(date: string) {
   });
 }
 
+// Where a roster stops being readable at a glance.
+const FILTER_FROM = 6;
+
 function last4(n: number): string {
   return String(n).padStart(4, "0");
 }
@@ -443,6 +446,7 @@ export default function Banks() {
   };
   const [grouping, setGroupingState] = useState<BanksGrouping>(storedGrouping);
   const [addingCard, setAddingCard] = useState(false);
+  const [filter, setFilter] = useState("");
   const [editingClientID, setEditingClientID] = useState<number | null>(null);
   const [partnerID, setPartnerID] = useState<number | null>(null);
   const overview = useOverview(monthDate);
@@ -461,6 +465,21 @@ export default function Banks() {
   const data = overview.data;
   const clients = data.clients ?? [];
   const bankColor = new Map((banks.data ?? []).map((b) => [b.id, b.color_hex]));
+
+  // Word-by-word in any order, the same rule the точки-продаж search follows:
+  // «альфа юля» has to find the client that «юля альфа» finds. One haystack
+  // per client — банк, держатель, тариф, and the plastics by their last four,
+  // so «4417» lands on the card the user is holding.
+  const words = filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const shown =
+    words.length === 0
+      ? clients
+      : clients.filter((c) => {
+          const hay = [c.bank_name, c.holder_label ?? "", c.tier_name ?? "", ...(c.cards ?? []).map((cc) => last4(cc.last_4_digits))]
+            .join(" ")
+            .toLowerCase();
+          return words.every((w) => hay.includes(w));
+        });
 
   const clientCard = (c: OverviewClient, titleMode: "bank" | "holder") => (
     <ClientCard
@@ -484,6 +503,18 @@ export default function Banks() {
       </div>
 
       <div data-sid="CB-09.b" className="space-y-2.5">
+        {/* One user keeps three bank clients, another sixteen. The field
+            appears only for the second: on a short roster it is furniture,
+            on a long one there is no other way to reach the card in hand. */}
+        {clients.length > FILTER_FROM && (
+          <Input
+            type="search"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Банк, держатель или ··1234"
+            data-sid="CB-09.e"
+          />
+        )}
         {/* A quiet one-liner, not a banner (2e) — the ритуал hint repeats
             monthly and had the visual weight of a warning. */}
         {data.selection_opens_day != null && isCurrentMonth && (
@@ -519,11 +550,12 @@ export default function Banks() {
         )}
 
         {clients.length === 0 && <Empty>Пока нет банков — начните с «+ Банк».</Empty>}
+        {clients.length > 0 && shown.length === 0 && <Empty>Ничего не нашлось — попробуй другое слово.</Empty>}
 
         {grouping === "holder"
           ? /* Family fleet: bank clients grouped by держатель (2026-07-09);
                one row per client — its plastics share the selection. */
-            groupByHolder(clients).map(([holder, group]) => (
+            groupByHolder(shown).map(([holder, group]) => (
               <div key={holder || "_own"} className="space-y-2.5">
                 {holder !== "" && <p className="mx-0.5 pt-1 text-[11px] font-bold text-tx2">{holder}</p>}
                 {group.map((c) => (
@@ -540,7 +572,7 @@ export default function Banks() {
             ))
           : /* No per-section «+ держатель»/«+ карта» (2e): the case is rare
                and the bottom buttons cover it. */
-            groupByBank(clients).map(([bankID, group]) => (
+            groupByBank(shown).map(([bankID, group]) => (
               <div key={bankID} className="space-y-2.5">
                 <div className="mx-0.5 flex items-center gap-2 pt-1">
                   <BankBadge name={group[0].bank_name} size={22} color={bankColor.get(bankID)} />
