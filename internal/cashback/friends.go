@@ -233,3 +233,79 @@ func (s *Service) sharedRows(ctx context.Context, viewerID uuid.UUID) ([]SharedF
 	}
 	return friends, rows, nil
 }
+
+// friendAvailableByCategory buckets friends' UNSELECTED, canonical-mapped menu
+// rows by category — «в меню, но не выбрано» on somebody else's card.
+//
+// Display only, and that is what separates it from the viewer's own S3b rows:
+// the entry carries no OfferID, because picking is the owner's action and the
+// viewer has no way to take it. Only pickable rows are kept — a row the
+// friend's period can no longer take is a dead end for them and news the
+// viewer can do nothing with, so it never reaches the feed.
+//
+// The boundaries of friendEntriesByCategory hold unchanged: caps cleared
+// (invariant 4), the shared window from server time (invariant 8), and rows
+// active on the viewed date, matching how own available rows are chosen.
+func (s *Service) friendAvailableByCategory(ctx context.Context, viewerID uuid.UUID, onDate time.Time) (map[int64][]AvailableEntry, error) {
+	friends, rows, err := s.sharedRows(ctx, viewerID)
+	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	window := FriendShareWindow(time.Now())
+	owner := make(map[int64]*SharedFriend)
+	for i := range friends {
+		for _, id := range friends[i].BankClientIDs {
+			owner[id] = &friends[i]
+		}
+	}
+	// Slot arithmetic is the friend's own: their selections in their period
+	// decide whether one more row still fits.
+	regCount := make(map[int64]int)
+	for _, r := range rows {
+		if r.Selected && OfferKind(r.Kind) == OfferRegular {
+			regCount[r.OfferPeriodID]++
+		}
+	}
+	byCat := make(map[int64][]AvailableEntry)
+	for _, r := range rows {
+		if r.Selected || r.CanonicalCategoryID == nil {
+			continue
+		}
+		kind := OfferKind(r.Kind)
+		if kind == OfferSpecial {
+			continue
+		}
+		period := rowRange(r.PeriodStart, r.PeriodEnd)
+		if !period.Overlaps(window) || !period.Contains(onDate) {
+			continue
+		}
+		f := owner[r.BankClientID]
+		if f == nil {
+			continue
+		}
+		max := r.MaxCategoriesOverride
+		if max == nil {
+			max = r.MaxCategories
+		}
+		verdict := AssessAvailability(AvailabilityCheck{
+			Kind:                 kind,
+			Policy:               MidPeriodAddPolicy(r.MidPeriodAdd),
+			HasRegularSelection:  regCount[r.OfferPeriodID] > 0,
+			MaxCategories:        max,
+			RegularSelectedCount: regCount[r.OfferPeriodID],
+		})
+		if !verdict.Pickable() {
+			continue
+		}
+		e := entryOf(db.ListUserOffersRow(r))
+		e.CapValue, e.CapPerCategory, e.OfferCapValue, e.CapScope = nil, nil, nil, ""
+		e.FriendName = f.DisplayName
+		e.FriendUsername = f.Username
+		byCat[*r.CanonicalCategoryID] = append(byCat[*r.CanonicalCategoryID], AvailableEntry{
+			Entry:      e,
+			Verdict:    verdict,
+			Activation: ActivationKind(r.Activation),
+		})
+	}
+	return byCat, nil
+}

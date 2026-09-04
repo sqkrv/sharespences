@@ -37,6 +37,7 @@ type MccBoard = {
   ranked?: LookupEntry[] | null;
   available?: Schemas["AvailableEntryDTO"][] | null;
   blocked?: Schemas["AvailableEntryDTO"][] | null;
+  friend_available?: Schemas["AvailableEntryDTO"][] | null;
   base?: LookupEntry[] | null;
 };
 
@@ -201,9 +202,9 @@ function pctOf(p?: string | null): number {
 // board looked broken without — «у этого банка эта категория есть, просто не
 // выбрана». The client's real answer for this point stays in the base fold
 // below. A tap opens the bank's menu, where next period is picked.
-function BlockedRows({ rows }: { rows: Schemas["AvailableEntryDTO"][] }) {
+function BlockedRows({ rows, friendRows = [] }: { rows: Schemas["AvailableEntryDTO"][]; friendRows?: Schemas["AvailableEntryDTO"][] }) {
   const { openClient } = useOpenEntry();
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && friendRows.length === 0) return null;
   return (
     <>
       <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">В меню, но не выбрано</p>
@@ -232,6 +233,32 @@ function BlockedRows({ rows }: { rows: Schemas["AvailableEntryDTO"][] }) {
             <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
             {CHEVRON}
           </button>
+        ))}
+        {/* A friend's shared row holding this code that they have not picked.
+            Not a dead end like the rows above — they can still pick it — so it
+            carries the friend's name and no chevron: the action is asking, and
+            it is not the viewer's to take. */}
+        {friendRows.map((e, i) => (
+          <div
+            key={`f-${i}-${e.bank_name}-${e.raw_title}`}
+            className="flex w-full items-center gap-2.5 rounded-2xl border border-dashed border-accl/45 bg-srf/45 px-3 py-2.5 text-left"
+          >
+            <BankBadge name={e.bank_name} size={26} />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13.5px] font-bold">
+                {e.bank_name}
+                <span className="font-semibold text-accl"> · {e.friend_name}</span>
+              </p>
+              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] font-medium">
+                <span className="h-1.5 w-1.5 flex-none rounded-full bg-accl" />
+                <span className="font-semibold text-accl">можно попросить выбрать</span>
+                <span className="text-tx4">
+                  {e.emoji && `${e.emoji} `}«{e.raw_title}»
+                </span>
+              </p>
+            </div>
+            <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
+          </div>
         ))}
       </div>
     </>
@@ -263,6 +290,7 @@ export function Leaderboard({ board, matches, sid }: { board: MccBoard; matches:
   ].sort((x, y) => pctOf(y.percent) - pctOf(x.percent));
   const base = board.base ?? [];
   const blocked = board.blocked ?? [];
+  const friendAvailable = board.friend_available ?? [];
 
   if (rows.length === 0 && base.length === 0 && blocked.length === 0) {
     return (
@@ -394,7 +422,7 @@ export function Leaderboard({ board, matches, sid }: { board: MccBoard; matches:
         })}
       </div>
 
-      <BlockedRows rows={blocked} />
+      <BlockedRows rows={blocked} friendRows={friendAvailable} />
 
       {/* Everything without an exact answer — incl. every bank whose MCC
           memberships are not ingested yet — answers with its base row. */}

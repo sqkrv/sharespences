@@ -50,12 +50,19 @@ function pctNum(p?: string | null): number {
 // still-pickable 10% below it (feedback 2026-08-28). Ties resolve by the
 // least action needed: an own selected card already pays, a friend's needs
 // asking, a «свободный слот» needs picking first.
-function winnerOf(g: CategoryGroup, friendsOn: boolean): { entry: LookupEntry; state: "friend" | "own" | "available" } | null {
+function winnerOf(g: CategoryGroup, friendsOn: boolean): { entry: LookupEntry; state: "friend" | "own" | "available" | "friend-available" } | null {
   const candidates: { entry: LookupEntry; state: "friend" | "own" | "available"; prio: number }[] = [];
   if (g.best) candidates.push({ entry: g.best, state: "own", prio: 0 });
   if (friendsOn && g.friend_best) candidates.push({ entry: g.friend_best, state: "friend", prio: 1 });
   if (g.available) candidates.push({ entry: g.available, state: "available", prio: 2 });
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) {
+    // Nothing of the viewer's own, and no friend has picked here — but a
+    // friend still holds the category unpicked. It fronts the row rather than
+    // dropping it, and only here: a rate nobody has taken must never outrank
+    // a card that already pays.
+    if (friendsOn && g.friend_available) return { entry: g.friend_available, state: "friend-available" };
+    return null;
+  }
   candidates.sort((a, b) => pctNum(b.entry.percent) - pctNum(a.entry.percent) || a.prio - b.prio);
   return candidates[0];
 }
@@ -189,9 +196,19 @@ function FeedRow({
   const w = winnerOf(g, friendsOn);
   if (!w) return null;
   const { entry: e, state } = w;
-  const variant = state === "friend" ? "friend" : state === "available" ? "dashed" : "solid";
+  const variant = state === "friend" ? "friend" : state === "available" || state === "friend-available" ? "dashed" : "solid";
   const stackBanks = (g.bank_stack ?? []).filter((b) => friendsOn || !b.friend).map((b) => b.bank_name);
-  const availChip = state === "available" ? verdictNote(g.available!) || "свободен слот" : "";
+  const availChip =
+    state === "available"
+      ? verdictNote(g.available!) || "свободен слот"
+      : state === "friend-available"
+        ? "у друга не выбрано"
+        : "";
+  // Shown even when the row is fronted by something else: CB-01 is the
+  // inventory of what cashback exists, and «друг может это выбрать» is part
+  // of it. Suppressed when the friend row IS the winner — the chip above
+  // already says so.
+  const friendAvail = friendsOn && g.friend_available && state !== "friend-available" ? g.friend_available : null;
   return (
     <ListRow
       emoji={g.emoji || FALLBACK_EMOJI}
@@ -202,6 +219,13 @@ function FeedRow({
           {g.title_ru}
           {mechanicChip(e) && <span className="ml-1.5 align-[1px]">{mechanicChip(e)}</span>}
           {availChip && <span className="ml-1.5 align-[1px]"><Chip tone="friend">{availChip}</Chip></span>}
+          {friendAvail && (
+            <span className="ml-1.5 align-[1px]">
+              <Chip tone="friend">
+                {friendAvail.friend_name} · {friendAvail.percent ?? "?"}% не выбрано
+              </Chip>
+            </span>
+          )}
         </>
       }
       right={
@@ -210,7 +234,7 @@ function FeedRow({
             <BankStack banks={stackBanks} winner={e.bank_name} />
             <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
           </span>
-          {state === "friend" ? (
+          {state === "friend" || state === "friend-available" ? (
             <span className="text-[10px] font-bold text-accl">друг · {e.friend_name}</span>
           ) : (
             e.holder_label && <span className="text-[10px] font-semibold text-tx4">{e.holder_label}</span>

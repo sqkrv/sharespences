@@ -539,15 +539,16 @@ type BankCategoryDTO struct {
 // own one or fills such a hole — the row falls back to best when friends
 // are hidden, it never vanishes (redesign 2026-08-06).
 type OverviewCategoryDTO struct {
-	CategoryID  int64              `json:"category_id"`
-	Slug        string             `json:"slug"`
-	TitleRu     string             `json:"title_ru"`
-	Emoji       string             `json:"emoji,omitempty" doc:"canonical category icon for the list"`
-	Best        *LookupEntryDTO    `json:"best,omitempty" doc:"the viewer's own best card; absent when only a friend covers the category"`
-	FriendBest  *LookupEntryDTO    `json:"friend_best,omitempty" doc:"a friend's card that wins the ranking or fills a hole"`
-	Available   *AvailableEntryDTO `json:"available,omitempty" doc:"best «можно выбрать» row while nothing is selected for the category — the feed's dashed state"`
-	OthersCount int                `json:"others_count" doc:"other own cards beyond best; friends are not counted"`
-	BankStack   []BankStackDTO     `json:"bank_stack,omitempty" doc:"every bank where the category exists this month, rank order — the row's overlap logos"`
+	CategoryID      int64              `json:"category_id"`
+	Slug            string             `json:"slug"`
+	TitleRu         string             `json:"title_ru"`
+	Emoji           string             `json:"emoji,omitempty" doc:"canonical category icon for the list"`
+	Best            *LookupEntryDTO    `json:"best,omitempty" doc:"the viewer's own best card; absent when only a friend covers the category"`
+	FriendBest      *LookupEntryDTO    `json:"friend_best,omitempty" doc:"a friend's card that wins the ranking or fills a hole"`
+	Available       *AvailableEntryDTO `json:"available,omitempty" doc:"best «можно выбрать» row while nothing is selected for the category — the feed's dashed state"`
+	FriendAvailable *AvailableEntryDTO `json:"friend_available,omitempty" doc:"a friend's shared menu row they have not picked and still have room for — display only: offer_id is 0, picking is the owner's action"`
+	OthersCount     int                `json:"others_count" doc:"other own cards beyond best; friends are not counted"`
+	BankStack       []BankStackDTO     `json:"bank_stack,omitempty" doc:"every bank where the category exists this month, rank order — the row's overlap logos"`
 }
 
 // PartnerFeedDTO is one партнёрка feed row (v2): its rankable entry plus
@@ -1253,9 +1254,10 @@ func RegisterHTTP(api huma.API, s *Service) {
 			out.Body.Categories[i] = OverviewCategoryDTO{
 				CategoryID: g.CategoryID, Slug: g.Slug, TitleRu: g.TitleRu, Emoji: g.Emoji,
 				Best: lookupEntryDTOPtr(g.Best), FriendBest: lookupEntryDTOPtr(g.FriendBest),
-				Available:   availableEntryDTOPtr(g.Available),
-				OthersCount: g.OthersCount,
-				BankStack:   bankStackDTO(g.BankStack),
+				Available:       availableEntryDTOPtr(g.Available),
+				FriendAvailable: availableEntryDTOPtr(g.FriendAvailable),
+				OthersCount:     g.OthersCount,
+				BankStack:       bankStackDTO(g.BankStack),
 			}
 		}
 		for _, e := range res.SingleBank {
@@ -1324,10 +1326,11 @@ func RegisterHTTP(api huma.API, s *Service) {
 		Date string `query:"date" doc:"YYYY-MM-DD; defaults to today"`
 	}) (*struct {
 		Body struct {
-			Ranked    []LookupEntryDTO    `json:"ranked,omitempty" doc:"selected rows whose bank counts this code in that category (bank_category_mcc) — own + friends'"`
-			Available []AvailableEntryDTO `json:"available,omitempty" doc:"exact-matched menu rows still pickable («свободный слот»)"`
-			Blocked   []AvailableEntryDTO `json:"blocked,omitempty" doc:"exact-matched menu rows this period can no longer take (slots_full/locked) — shown apart, the client still answers with its base row"`
-			Base      []LookupEntryDTO    `json:"base,omitempty" doc:"«Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships"`
+			Ranked          []LookupEntryDTO    `json:"ranked,omitempty" doc:"selected rows whose bank counts this code in that category (bank_category_mcc) — own + friends'"`
+			Available       []AvailableEntryDTO `json:"available,omitempty" doc:"exact-matched menu rows still pickable («свободный слот»)"`
+			Blocked         []AvailableEntryDTO `json:"blocked,omitempty" doc:"exact-matched menu rows this period can no longer take (slots_full/locked) — shown apart, the client still answers with its base row"`
+			FriendAvailable []AvailableEntryDTO `json:"friend_available,omitempty" doc:"a friend's shared menu row holding this code that they have not picked and still can — display only, offer_id is 0: the action is asking them"`
+			Base            []LookupEntryDTO    `json:"base,omitempty" doc:"«Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships"`
 		}
 	}, error) {
 		onDate := time.Now()
@@ -1343,10 +1346,11 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		out := &struct {
 			Body struct {
-				Ranked    []LookupEntryDTO    `json:"ranked,omitempty" doc:"selected rows whose bank counts this code in that category (bank_category_mcc) — own + friends'"`
-				Available []AvailableEntryDTO `json:"available,omitempty" doc:"exact-matched menu rows still pickable («свободный слот»)"`
-				Blocked   []AvailableEntryDTO `json:"blocked,omitempty" doc:"exact-matched menu rows this period can no longer take (slots_full/locked) — shown apart, the client still answers with its base row"`
-				Base      []LookupEntryDTO    `json:"base,omitempty" doc:"«Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships"`
+				Ranked          []LookupEntryDTO    `json:"ranked,omitempty" doc:"selected rows whose bank counts this code in that category (bank_category_mcc) — own + friends'"`
+				Available       []AvailableEntryDTO `json:"available,omitempty" doc:"exact-matched menu rows still pickable («свободный слот»)"`
+				Blocked         []AvailableEntryDTO `json:"blocked,omitempty" doc:"exact-matched menu rows this period can no longer take (slots_full/locked) — shown apart, the client still answers with its base row"`
+				FriendAvailable []AvailableEntryDTO `json:"friend_available,omitempty" doc:"a friend's shared menu row holding this code that they have not picked and still can — display only, offer_id is 0: the action is asking them"`
+				Base            []LookupEntryDTO    `json:"base,omitempty" doc:"«Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships"`
 			}
 		}{}
 		for _, e := range board.Ranked {
@@ -1357,6 +1361,9 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		for _, a := range board.Blocked {
 			out.Body.Blocked = append(out.Body.Blocked, availableEntryDTO(a))
+		}
+		for _, a := range board.FriendAvailable {
+			out.Body.FriendAvailable = append(out.Body.FriendAvailable, availableEntryDTO(a))
 		}
 		for _, e := range board.Base {
 			out.Body.Base = append(out.Body.Base, lookupEntryDTO(e))

@@ -1558,6 +1558,8 @@ export interface components {
             base?: components["schemas"]["LookupEntryDTO"][] | null;
             /** @description exact-matched menu rows this period can no longer take (slots_full/locked) — shown apart, the client still answers with its base row */
             blocked?: components["schemas"]["AvailableEntryDTO"][] | null;
+            /** @description a friend's shared menu row holding this code that they have not picked and still can — display only, offer_id is 0: the action is asking them */
+            friend_available?: components["schemas"]["AvailableEntryDTO"][] | null;
             /** @description selected rows whose bank counts this code in that category (bank_category_mcc) — own + friends' */
             ranked?: components["schemas"]["LookupEntryDTO"][] | null;
         };
@@ -2250,6 +2252,8 @@ export interface components {
             category_id: number;
             /** @description canonical category icon for the list */
             emoji?: string;
+            /** @description a friend's shared menu row they have not picked and still have room for — display only: offer_id is 0, picking is the owner's action */
+            friend_available?: components["schemas"]["AvailableEntryDTO"];
             /** @description a friend's card that wins the ranking or fills a hole */
             friend_best?: components["schemas"]["LookupEntryDTO"];
             /**

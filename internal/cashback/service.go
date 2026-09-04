@@ -819,8 +819,14 @@ type OverviewCategoryGroup struct {
 	// the viewer has no own selection for the category — the feed's dashed
 	// state («только то, что есть или реально доступно»); once something is
 	// selected the fuller available list stays a lookup concern.
-	Available   *AvailableEntry
-	OthersCount int // other OWN cards beyond Best; friends never counted
+	Available *AvailableEntry
+	// FriendAvailable is the same dashed state on a friend's shared card: a
+	// menu row they have not picked and still have room for. Display only —
+	// it carries no offer id, because picking is the owner's action. Kept
+	// apart from Available for the reason Best/FriendBest are kept apart:
+	// a row the viewer cannot act on must never displace one they can.
+	FriendAvailable *AvailableEntry
+	OthersCount     int // other OWN cards beyond Best; friends never counted
 	// BankStack: every bank where the category exists this month, rank
 	// order — the feed row's overlap logos (9a).
 	BankStack []BankStackEntry
@@ -1080,6 +1086,16 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			Activation: ActivationKind(o.Activation),
 		})
 	}
+	friendAvailByCat, err := s.friendAvailableByCategory(ctx, userID, onDate)
+	if err != nil {
+		return OverviewResult{}, err
+	}
+	// «За все покупки» belongs to the Base row, not to the category list —
+	// the viewer's own available rows drop it above for the same reason, and
+	// a friend's copy of it would reintroduce the row the feed avoids.
+	if allPurposesID != nil {
+		delete(friendAvailByCat, *allPurposesID)
+	}
 	seenCats := make(map[int64]bool, len(byCat))
 	for catID, entries := range byCat {
 		seenCats[catID] = true
@@ -1100,13 +1116,22 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			FriendBest: friendBest,
 			BankStack:  bankStackOf(ranked.Ranked, availByCat[catID]),
 		}
+		// A friend's unpicked row is not gated on the viewer's own state, and
+		// that is the one place it parts company with Available. Available is
+		// a call to action and rightly disappears once the viewer has picked;
+		// this is inventory — CB-01 exists to show what cashback is out there,
+		// while choosing a card to pay with happens through search
+		// (merchant/category/MCC), not here.
+		if fa := RankAvailable(friendAvailByCat[catID]); len(fa) > 0 {
+			g.FriendAvailable = &fa[0]
+		}
 		if own == nil {
 			// No own selection — the dashed state stays reachable even when
 			// a friend fills the hole (it is what the row falls back to).
 			if avail := RankAvailable(availByCat[catID]); len(avail) > 0 {
 				g.Available = &avail[0]
 			}
-			if friendBest == nil && g.Available == nil {
+			if friendBest == nil && g.Available == nil && g.FriendAvailable == nil {
 				continue // nothing active
 			}
 		}
@@ -1129,18 +1154,45 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		if seenCats[catID] {
 			continue
 		}
+		seenCats[catID] = true
 		cat, ok := catByID[catID]
 		if !ok {
 			continue
 		}
 		ranked := RankAvailable(avails)
-		res.Categories = append(res.Categories, OverviewCategoryGroup{
+		g := OverviewCategoryGroup{
 			CategoryID: catID,
 			Slug:       cat.Slug,
 			TitleRu:    cat.TitleRu,
 			Emoji:      emojiOf(cat),
 			Available:  &ranked[0],
 			BankStack:  bankStackOf(nil, ranked),
+		}
+		if fa := RankAvailable(friendAvailByCat[catID]); len(fa) > 0 {
+			g.FriendAvailable = &fa[0]
+		}
+		res.Categories = append(res.Categories, g)
+	}
+	// Categories only a friend offers: nothing of the viewer's own is in play
+	// this month, but a friend has a row they have not picked and can. No
+	// BankStack — the logos say «where you have this category», and a
+	// friend's bank is not the viewer's.
+	for catID, favails := range friendAvailByCat {
+		if seenCats[catID] {
+			continue
+		}
+		seenCats[catID] = true
+		cat, ok := catByID[catID]
+		if !ok {
+			continue
+		}
+		ranked := RankAvailable(favails)
+		res.Categories = append(res.Categories, OverviewCategoryGroup{
+			CategoryID:      catID,
+			Slug:            cat.Slug,
+			TitleRu:         cat.TitleRu,
+			Emoji:           emojiOf(cat),
+			FriendAvailable: &ranked[0],
 		})
 	}
 	// Sort: rub before points; then percent desc; then title. The key is the
@@ -1153,7 +1205,13 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		if g.Best != nil {
 			return g.Best
 		}
-		return &g.Available.Entry
+		if g.Available != nil {
+			return &g.Available.Entry
+		}
+		if g.FriendAvailable != nil {
+			return &g.FriendAvailable.Entry
+		}
+		return &LookupEntry{}
 	}
 	sort.SliceStable(res.Categories, func(i, j int) bool {
 		a, b := winnerOf(res.Categories[i]), winnerOf(res.Categories[j])
@@ -1567,7 +1625,19 @@ type MCCBoard struct {
 	Ranked    []LookupEntry    // selected rows, own + friends', stacked супер folded in
 	Available []AvailableEntry // exact-matched menu rows still pickable («свободный слот»)
 	Blocked   []AvailableEntry // exact-matched menu rows this period can no longer take
-	Base      []LookupEntry    // clients whose only answer is the selected base row
+	// FriendAvailable is the same «в меню, но не выбрано» fact on a friend's
+	// shared card, and it is actionable in the way that matters here: the
+	// friend can still pick it if asked. Kept apart from Available because
+	// the viewer cannot pick it themselves — no offer id travels with it.
+	FriendAvailable []AvailableEntry
+	Base            []LookupEntry // clients whose only answer is the selected base row
+}
+
+// friendRowKey collapses a friend's same menu row across the two periods the
+// share window can span.
+type friendRowKey struct {
+	clientID int64
+	title    string
 }
 
 // LookupByMCC builds the board for one code on one date. Friends ride the
@@ -1686,8 +1756,17 @@ func (s *Service) LookupByMCC(ctx context.Context, userID uuid.UUID, code int16,
 				owner[id] = &friends[i]
 			}
 		}
+		// The friend's own slot arithmetic decides whether an unpicked row of
+		// theirs is still takeable.
+		friendBest := make(map[friendRowKey]AvailableEntry)
+		friendRegCount := make(map[int64]int)
 		for _, r := range rows {
-			if !r.Selected || !countsForCode(r.BankID, r.BankCategoryID, r.CanonicalCategoryID) {
+			if r.Selected && OfferKind(r.Kind) == OfferRegular {
+				friendRegCount[r.OfferPeriodID]++
+			}
+		}
+		for _, r := range rows {
+			if !countsForCode(r.BankID, r.BankCategoryID, r.CanonicalCategoryID) {
 				continue
 			}
 			if !rowRange(r.PeriodStart, r.PeriodEnd).Overlaps(window) {
@@ -1701,13 +1780,54 @@ func (s *Service) LookupByMCC(ctx context.Context, userID uuid.UUID, code int16,
 			e.CapValue, e.CapPerCategory, e.OfferCapValue, e.CapScope = nil, nil, nil, ""
 			e.FriendName = f.DisplayName
 			e.FriendUsername = f.Username
-			entries = append(entries, e)
+			if r.Selected {
+				entries = append(entries, e)
+				continue
+			}
+			// Unpicked, and the bank counts this code in it. Worth showing
+			// even though the viewer cannot act: asking the friend to pick it
+			// is the whole point of sharing a menu.
+			if OfferKind(r.Kind) == OfferSpecial {
+				continue
+			}
+			max := r.MaxCategoriesOverride
+			if max == nil {
+				max = r.MaxCategories
+			}
+			verdict := AssessAvailability(AvailabilityCheck{
+				Kind:                 OfferKind(r.Kind),
+				Policy:               MidPeriodAddPolicy(r.MidPeriodAdd),
+				HasRegularSelection:  friendRegCount[r.OfferPeriodID] > 0,
+				MaxCategories:        max,
+				RegularSelectedCount: friendRegCount[r.OfferPeriodID],
+			})
+			if !verdict.Pickable() {
+				continue // a dead end for them too — nothing to ask for
+			}
+			// The share window spans two months, so the same row can be
+			// unpicked in both this period and the next one. They are one
+			// fact to the viewer — «Марина может это выбрать» — and two rows
+			// differing only by a period the board never shows read as a
+			// duplicate. Keep the better offer per client and title.
+			key := friendRowKey{clientID: r.BankClientID, title: r.RawTitle}
+			if prev, seen := friendBest[key]; seen {
+				if cmpPercentDesc(e.Percent, prev.Entry.Percent) >= 0 {
+					continue
+				}
+			}
+			friendBest[key] = AvailableEntry{
+				Entry: e, Verdict: verdict, Activation: ActivationKind(r.Activation),
+			}
+		}
+
+		board.Ranked = RankActiveSelections(onDate, entries).Ranked
+		board.Available = RankAvailable(avail)
+		board.Blocked = RankAvailable(blocked)
+		for _, row := range friendBest {
+			board.FriendAvailable = append(board.FriendAvailable, row)
 		}
 	}
-
-	board.Ranked = RankActiveSelections(onDate, entries).Ranked
-	board.Available = RankAvailable(avail)
-	board.Blocked = RankAvailable(blocked)
+	board.FriendAvailable = RankAvailable(board.FriendAvailable)
 
 	var allPurposesID *int64
 	if ap, err := s.Q.GetCanonicalCategoryBySlug(ctx, "all-purchases"); err == nil {
