@@ -10,9 +10,18 @@ import (
 )
 
 const (
-	// PerCallTimeout bounds one backend completion. qwen3-vl:4b averaged
-	// 149 s/image with a 259 s worst case on the prod GPU (run 5); the
-	// timeout leaves headroom without letting a hung call eat the job.
+	// PerCallTimeout bounds one backend completion. Hitting it kills the
+	// whole job: askJSON returns the deadline error rather than advancing
+	// the ladder, so this is a hard stop and not a retry trigger.
+	//
+	// The value was chosen against qwen3-vl:4b at 149 s/image with a 259 s
+	// worst case (run 5). After the 2026-09 server rebuild the same model
+	// reads a screenshot in ~30 s, so the bound is now roughly ten times
+	// the observed cost — but that figure is an observation, not a harness
+	// run, and the failure modes are not symmetric: too tight loses a real
+	// read, too loose only holds the one-job-per-user lock longer. It stays
+	// until docs/research/recognizer-eval/bench.py measures a worst case on
+	// the new hardware.
 	PerCallTimeout = 5 * time.Minute
 	// LadderRungs is the escalation ladder length (askJSON below).
 	LadderRungs = 3

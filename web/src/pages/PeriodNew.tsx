@@ -295,7 +295,7 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
                 </p>
                 <p className="mt-0.5 text-[12px] font-semibold text-acc">{phaseCaption(poll.data)}</p>
                 <p className="mt-0.5 text-[12px] font-medium text-tx3">
-                  Локальная модель читает меню ≈2–3 минуты на скриншот. Можно уйти с экрана — плашка внизу покажет, когда будет
+                  Локальная модель читает меню ≈30 секунд на скриншот. Можно уйти с экрана — плашка внизу покажет, когда будет
                   готово. Если закрыть приложение совсем, результат ждёт на сервере 30 минут.
                 </p>
                 <button type="button" className="mt-1.5 text-[11.5px] font-semibold text-tx4 underline" onClick={discard}>
