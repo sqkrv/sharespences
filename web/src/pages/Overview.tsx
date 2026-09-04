@@ -249,14 +249,14 @@ function FeedRow({
 
 // A партнёрка feed row (v2, 9a): the gold frame and the ★ already say what
 // it is — no word, only the term chip («по 31.08»), none without a date.
-// The bank is its logo by the percent. Tap goes to its bank-card home.
-function PartnerFeedRow({ p }: { p: PartnerFeed }) {
-  const navigate = useNavigate();
+// The bank is its logo by the percent. Tap opens that bank's menu, the same
+// answer every other feed row gives.
+function PartnerFeedRow({ p, onOpen }: { p: PartnerFeed; onOpen: () => void }) {
   return (
     <ListRow
       lead={<span className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md bg-gold/15 text-[11px] font-extrabold text-gold">★</span>}
       variant="gold"
-      onClick={() => navigate("/banks")}
+      onClick={onOpen}
       title={
         <>
           {p.raw_title}
@@ -414,7 +414,9 @@ export default function Overview() {
 
   // A ranking row leads to its bank's menu for the viewed month (feedback
   // 2026-08-25, same rule as CB-11): marking a selection lives there. A
-  // friend's menu isn't ours to open; партнёрки go to their bank-card home.
+  // friend's menu isn't ours to open. A партнёрка is a row of the same bank
+  // and answers the same way — it used to divert to the bank list, which
+  // made one row in the feed behave unlike its neighbours.
   const openClient = (clientID?: number) => {
     const c = (data.clients ?? []).find((x) => x.bank_client_id === clientID);
     if (c == null) return;
@@ -423,7 +425,6 @@ export default function Overview() {
   };
   const openEntry = (e: { bank_client_id?: number; friend_name?: string; kind?: string }) => {
     if (e.friend_name) navigate("/friends");
-    else if (e.kind === "partner") navigate("/banks");
     else openClient(e.bank_client_id);
   };
 
@@ -482,7 +483,7 @@ export default function Overview() {
                 ) : it.base ? (
                   <BaseFeedRow key={it.key} b={it.base} />
                 ) : (
-                  <PartnerFeedRow key={it.key} p={it.partner!} />
+                  <PartnerFeedRow key={it.key} p={it.partner!} onOpen={() => openEntry(it.partner!)} />
                 ),
               )}
             </div>
@@ -558,7 +559,7 @@ export default function Overview() {
               ) : it.base ? (
                 <BaseFeedRow key={it.key} b={it.base} />
               ) : (
-                <PartnerFeedRow key={it.key} p={it.partner!} />
+                <PartnerFeedRow key={it.key} p={it.partner!} onOpen={() => openEntry(it.partner!)} />
               ),
             )}
 
