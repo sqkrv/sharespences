@@ -182,6 +182,9 @@ func run() error {
 		if err := g.fillBarabanStack(ctx); err != nil {
 			return err
 		}
+		if err := g.fillFriendUnpicked(ctx, lastMonth); err != nil {
+			return err
+		}
 	}
 	g.report()
 	return nil

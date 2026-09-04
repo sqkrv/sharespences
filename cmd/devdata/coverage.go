@@ -775,3 +775,130 @@ func (g *gen) barabanStackFor(ctx context.Context, uid uuid.UUID) error {
 	log.Printf("барабан stack: %q now carries both a pick and the барабан in one Альфа period", title)
 	return nil
 }
+
+// fillFriendUnpicked shapes the shared wallets for the «в меню, но не выбрано»
+// case — a friend's menu row that is not picked and that the friend still has
+// a free slot for.
+//
+// Two things the history pass leaves missing. It counts months backwards, so a
+// friend never has next month — yet the shared window is «today .. end of next
+// month» precisely because menus are entered around the 25th and next month is
+// the coordination case this is for. And it fills slots to the brim most of
+// the time, so the unpicked rows it does leave are mostly «blocked»
+// (slots_full) rather than pickable.
+//
+// Here every shared wallet gets a coordination month, and the clients
+// alternate: odd ones stop two picks short of their slot count (pickable
+// rows), even ones fill up (blocked rows), so both states are present.
+func (g *gen) fillFriendUnpicked(ctx context.Context, last time.Time) error {
+	if g.dry {
+		return nil
+	}
+	const sharedClients = `
+		select c.user_id, c.id, b.name
+		from friend_cashback_share s
+		join friendship f on f.id = s.friendship_id
+		join bank_client c on c.id = s.bank_client_id
+		join bank b on b.id = c.bank_id
+		where $1 in (f.user_lo, f.user_hi) and c.user_id <> $1
+		order by c.user_id, c.id`
+	rows, err := g.pool.Query(ctx, sharedClients, g.userID)
+	if err != nil {
+		return err
+	}
+	type target struct {
+		owner uuid.UUID
+		id    int64
+		bank  string
+	}
+	var targets []target
+	for rows.Next() {
+		var t target
+		if err := rows.Scan(&t.owner, &t.id, &t.bank); err != nil {
+			rows.Close()
+			return err
+		}
+		targets = append(targets, t)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	month := time.Date(last.Year(), last.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
+
+	// One loaded generator per owner: slotsFor reads tierOf, which a bare
+	// forUser leaves empty — without this every period got the fallback slot
+	// count instead of the client's own tier.
+	subs := map[uuid.UUID]*gen{}
+	for _, t := range targets {
+		if _, ok := subs[t.owner]; ok {
+			continue
+		}
+		sub := g.forUser(t.owner)
+		if err := sub.loadClients(ctx); err != nil {
+			return err
+		}
+		subs[t.owner] = sub
+	}
+
+	for i, t := range targets {
+		start, end := periodBounds(t.bank, month)
+		sub := subs[t.owner]
+		period, err := sub.svc.CreateOfferPeriod(ctx, t.owner, t.id, start, end, nil)
+		if err != nil {
+			if errors.Is(err, cashback.ErrPeriodOverlap) {
+				g.counters.skipped++
+				continue // already coordinated
+			}
+			return fmt.Errorf("friend period %s: %w", t.bank, err)
+		}
+		g.counters.periods++
+
+		slots := sub.slotsFor(t.id, t.bank)
+		if sub.tierOf[t.id].maxCategories == nil {
+			if _, err := sub.svc.SetPeriodMaxOverride(ctx, t.owner, period.ID, &slots); err != nil {
+				return fmt.Errorf("friend slots %s: %w", t.bank, err)
+			}
+		}
+
+		var regular []int64
+		for _, r := range sub.pickMenu(t.bank, month) {
+			kind := cashback.OfferKind(r.Kind)
+			pct := sub.percentFor(r, t.bank)
+			bcID := r.ID
+			offer, err := sub.svc.CreateCategoryOffer(ctx, t.owner, period.ID, r.Title,
+				r.CanonicalCategoryID, &pct, kind, nil, &bcID, nil)
+			if err != nil {
+				return fmt.Errorf("friend offer %q: %w", r.Title, err)
+			}
+			g.counters.offers++
+			// Only canonical-mapped regular rows can ever rank for the viewer,
+			// so those are the ones worth leaving pickable.
+			if kind == cashback.OfferRegular && r.CanonicalCategoryID != nil {
+				regular = append(regular, offer.ID)
+			}
+		}
+
+		want := int(slots)
+		if i%2 == 1 { // leave real headroom, not just one slot
+			want -= 2
+		}
+		if want < 1 {
+			want = 1
+		}
+		for j, offerID := range regular {
+			if j >= want {
+				break
+			}
+			if _, err := sub.svc.CreateSelection(ctx, t.owner, offerID, start, false); err != nil {
+				if errors.Is(err, cashback.ErrSlotsExhausted) {
+					break
+				}
+				return fmt.Errorf("friend select: %w", err)
+			}
+			g.counters.selections++
+		}
+	}
+	return nil
+}
