@@ -55,8 +55,7 @@ type cardSpec struct {
 	system string
 }
 
-// profile is the wallet to build: the owner's six banks plus two household
-// members, so the «по держателям» grouping and the cross-client collision
+// profile is the wallet to build: six banks plus two household members, so the «по держателям» grouping and the cross-client collision
 // warnings both have something to show.
 var profile = []clientSpec{
 	{bank: "Альфа-Банк", tier: "Alfa Only", cards: []cardSpec{{4321, "mir"}, {8890, "visa"}}},

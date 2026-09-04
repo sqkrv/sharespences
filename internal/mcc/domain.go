@@ -1,7 +1,6 @@
 // Package mcc implements the MCC module: the code dictionary, per-bank
 // category→MCC membership (flat current state), and the append-only change
-// journal (pipeline design in ADR-0004,
-// meta-repo). Resolution answers «каким банковским категориям принадлежит
+// journal (pipeline design in ADR-0004). Resolution answers «каким банковским категориям принадлежит
 // этот MCC» and hands deduped canonical slugs to the cashback lookup.
 package mcc
 

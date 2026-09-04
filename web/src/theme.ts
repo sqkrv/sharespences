@@ -1,4 +1,4 @@
-// Theme per docs/design/ui-preferences.md (meta-repo): dark-first, system-
+// Theme per docs/design/ui-preferences.md: dark-first, system-
 // dependent, persistent manual override. Three-state System/Light/Dark;
 // System resolves to light ONLY on an explicit OS light preference — dark
 // is the fallback. The initial class is set by an inline script in

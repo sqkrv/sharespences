@@ -2,7 +2,7 @@
 // menus and selections per bank client (a person's relationship with one
 // bank — all of the client's cards share the selection), the constraint
 // helper, and the category-level lookup. Domain rules follow
-// docs/specs/cashback.md (private meta-repo); invariant numbers in comments
+// docs/specs/cashback.md; invariant numbers in comments
 // refer to its "Invariants" section.
 package cashback
 

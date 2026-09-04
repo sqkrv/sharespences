@@ -1,4 +1,4 @@
--- Cashback module v1 tables, per docs/specs/cashback.md (private meta-repo).
+-- Cashback module v1 tables, per docs/specs/cashback.md.
 -- Seam decision (spec left it open): the cashback module OWNS the bank_card
 -- extension (program_tier_id) and may read bank / bank_card as reference
 -- data; no other module reads cashback tables.

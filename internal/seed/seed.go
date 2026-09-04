@@ -1664,7 +1664,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 
 	// MCC dictionary + per-bank category→MCC membership (embedded CSVs,
-	// derived from the meta-repo curation — see mcc.go).
+	// derived from the curated source — see mcc.go).
 	return seedMCC(ctx, pool)
 }
 

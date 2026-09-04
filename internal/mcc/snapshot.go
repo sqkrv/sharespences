@@ -1,7 +1,7 @@
 package mcc
 
 // Canonical snapshot (ADR-0004, schema v2): the stable boundary between the
-// per-bank document parsers (meta-repo utils/) and this import. Pure layer —
+// per-bank document parsers and this import. Pure layer —
 // parsing, validation and diff planning; the DB side lives in
 // snapshot_import.go.
 //

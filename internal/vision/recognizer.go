@@ -10,17 +10,12 @@ import (
 )
 
 const (
-	// PerCallTimeout bounds one backend completion. Hitting it kills the
-	// whole job: askJSON returns the deadline error rather than advancing
-	// the ladder, so this is a hard stop and not a retry trigger. That is
-	// why it is set off a measured WORST case and not off the mean.
-	//
-	// Harness run 7 (2026-09-04, 13 images, qwen3-vl:4b): min 9.0 s, median
-	// 17.1 s, max 21.0 s per image, every one on the first rung. The old
-	// 5 min came from run 5's 259 s worst case on the same card, before the
-	// server rebuild made the same weights 9× faster. Two minutes is ~6× the
-	// worst case now measured, which also covers a cold load of the 3.3 GB
-	// model after ollama's keep-alive has expired.
+	// PerCallTimeout bounds one backend completion. Hitting it fails the
+	// whole job — askJSON returns the deadline error rather than advancing
+	// a rung — so it is a hard stop, not a retry trigger. That is why it is
+	// derived from a measured WORST case rather than an average, with
+	// enough headroom left for a cold model load. Re-measure before
+	// changing it; the measurements are not kept here.
 	PerCallTimeout = 2 * time.Minute
 	// LadderRungs is the escalation ladder length (askJSON below).
 	LadderRungs = 3
@@ -201,8 +196,8 @@ func (r *Recognizer) complete(ctx context.Context, req Request) (Response, error
 }
 
 // oomSignature spots the vision-encoder out-of-memory shape: HTTP 500
-// whose detail mentions memory/CUDA, or the bare «unexpected EOF» run 5
-// hit on the card-grid shot.
+// whose detail mentions memory/CUDA, or a bare «unexpected EOF», which is
+// what a dense card-grid screenshot produced in testing.
 func oomSignature(err error) bool {
 	var be *BackendError
 	if errors.As(err, &be) && be.Status == 500 {

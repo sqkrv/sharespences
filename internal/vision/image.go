@@ -18,12 +18,11 @@ import (
 )
 
 const (
-	// DefaultLongEdge mirrors the harness LONG_EDGE: the benchmarked
-	// accuracy numbers were measured at 1664px.
+	// DefaultLongEdge is the size the accuracy numbers were measured at.
+	// Changing it invalidates them.
 	DefaultLongEdge = 1664
 	// RetryLongEdge is the reduced-resolution retry after the OOM
-	// signature (run 5: HTTP 500 «unexpected EOF» on the card-grid shot,
-	// recovered at 1024).
+	// signature: a dense card grid that fails at full size is read at 1024.
 	RetryLongEdge = 1024
 	// maxDecodedPixels bounds the decode BEFORE it happens: the 10 MiB
 	// upload cap does not bound decoded size — a 30000×30000 PNG fits
