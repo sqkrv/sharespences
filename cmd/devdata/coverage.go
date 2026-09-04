@@ -106,26 +106,40 @@ type friendSpec struct {
 // that is easy to forget exists).
 var friendProfiles = []friendSpec{
 	{
-		username: "marina", display: "Марина Ковалёва", rel: relAccepted, shares: 2,
+		// The richest friend: three wallets, all shared, including the Альфа
+		// one that carries the барабан/pick stack.
+		username: "marina", display: "Марина Ковалёва", rel: relAccepted, shares: 4,
 		wallet: []clientSpec{
 			{bank: "Т-Банк", tier: "Premium", cards: []cardSpec{{4415, "mir"}}},
-			{bank: "Альфа-Банк", tier: "Альфа-Смарт", cards: []cardSpec{{9021, "visa"}}},
+			{bank: "Альфа-Банк", tier: "Альфа-Смарт", cards: []cardSpec{{9021, "visa"}, {9022, "mir"}}},
+			{bank: "Ozon Банк", tier: "Ozon Premium", cards: []cardSpec{{6310, "mir"}}},
+			{bank: "СберБанк", tier: "Подписка СберПрайм+", cards: []cardSpec{{2255, "mir"}}},
 		},
 	},
 	{
-		username: "pavel", display: "Павел", rel: relAccepted, shares: 1,
+		// Shares everything too, and carries a держатель label so the shared
+		// view has to render «Павел · Общая», not just a bank name.
+		username: "pavel", display: "Павел", rel: relAccepted, shares: 4,
 		wallet: []clientSpec{
 			{bank: "ВТБ", tier: "Привилегия", cards: []cardSpec{{7788, "mir"}}},
 			{bank: "Ozon Банк", label: "Общая", tier: "Стандартный", cards: []cardSpec{{1290, "mastercard"}}},
+			{bank: "Яндекс Пэй", tier: "Стандартный", cards: []cardSpec{{4477, "mir"}}},
+			{bank: "Совкомбанк", tier: "Стандартный", cards: []cardSpec{{5140, "mir"}}},
 		},
 	},
 	{
-		// Friends, but shares nothing — «Пока ничем не делится».
+		// Friends, but shares nothing — «Пока ничем не делится». Deliberately
+		// kept at shares: 0; it is the only empty state on that screen.
 		username: "olga.dev", display: "Ольга", rel: relAccepted, shares: 0,
-		wallet: []clientSpec{{bank: "Яндекс Пэй", tier: "Стандартный", cards: []cardSpec{{3040, "mir"}}}},
+		wallet: []clientSpec{
+			{bank: "Яндекс Пэй", tier: "Стандартный", cards: []cardSpec{{3040, "mir"}}},
+			{bank: "МКБ", tier: "Выгодный", cards: []cardSpec{{8123, "mir"}}},
+			{bank: "УБРиР", tier: "Подписка «Моя жизнь+»", cards: []cardSpec{{7350, "mir"}}},
+		},
 	},
 	{
-		// Sitting in the target user's inbox, waiting to be accepted.
+		// Sitting in the target user's inbox, waiting to be accepted. Has a
+		// wallet, but nothing is visible until the заявка is answered.
 		username: "nikita", display: "Никита", rel: relPendingIncoming,
 		wallet: []clientSpec{{bank: "МКБ", tier: "Премиальный", cards: []cardSpec{{5566, "mir"}}}},
 	},
@@ -334,10 +348,15 @@ func (g *gen) fillEdgeClients(ctx context.Context) error {
 		cards []cardSpec
 	}
 	specs := []edgeSpec{
-		// Сбербанк is seeded as a bank but has no cashback program, so a
-		// client of it has no tier and no slots — the «программа не заведена»
-		// branch that every other client avoids.
-		{bank: "Сбербанк", cards: []cardSpec{{2202, "mir"}}},
+		// No tier chosen: the bank has a programme, the client has not said
+		// which tier they are on, so slots are unknown — the branch every
+		// other client avoids.
+		{bank: "СберБанк", cards: []cardSpec{{2202, "mir"}}},
+		// Longest tier name in the seed, against a long держатель label.
+		{bank: "Банк Синара", label: "Свекровь", tier: "Опция «Можно больше»",
+			cards: []cardSpec{{6677, "mir"}}},
+		// Tier whose max_categories is NULL — slot count genuinely unknown.
+		{bank: "ОТП Банк", label: "Private", tier: "Private", cards: []cardSpec{{9100, "visa"}}},
 		// No cards at all: «Добавить карту» empty state on the client.
 		{bank: "Газпромбанк", label: "Дача", tier: "Стандартный"},
 		// Every payment system at once, and more cards than a row can show.
@@ -643,5 +662,116 @@ func (g *gen) fillPartnerMatrix(ctx context.Context, last time.Time) error {
 			}
 		}
 	}
+	return nil
+}
+
+// fillBarabanStack guarantees the case where Альфа's монthly барабан lands on
+// a category that is ALREADY picked in the same period.
+//
+// This is not a collision — DetectCollisions is cross-client and regular-only,
+// and super is granted rather than chosen, so it never warns (invariant 6).
+// It is the stacking case: super is «a full-period STACKING bonus … stacks
+// with the monthly pick», so when the барабан repeats a pick the same category
+// carries both rates at once, and the period shows one category twice.
+//
+// The history pass cannot produce it: it draws the барабан title from a fixed
+// list and passes no canonical category, so its super rows are category-less
+// (and therefore not «the same category» to ranking or to the overview at all).
+// Here the super row is given the picked row's own title AND canonical, which
+// is what makes the two genuinely one category.
+func (g *gen) fillBarabanStack(ctx context.Context) error {
+	if g.dry {
+		return nil
+	}
+	targets := []uuid.UUID{g.userID}
+	for _, spec := range friendProfiles {
+		if spec.rel != relAccepted || spec.shares == 0 {
+			continue
+		}
+		hasAlfa := false
+		for _, w := range spec.wallet {
+			if w.bank == "Альфа-Банк" {
+				hasAlfa = true
+			}
+		}
+		if !hasAlfa {
+			continue
+		}
+		u, err := g.q.GetUserByUsername(ctx, spec.username)
+		if err != nil {
+			continue
+		}
+		targets = append(targets, u.ID)
+	}
+	for _, uid := range targets {
+		if err := g.barabanStackFor(ctx, uid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// barabanStackFor adds the stack to one user's newest Альфа period that does
+// not already have one. Idempotent per user: if the user has any such pair
+// already, nothing happens — otherwise a re-run would add one more each time.
+func (g *gen) barabanStackFor(ctx context.Context, uid uuid.UUID) error {
+	const havePair = `
+		select count(*)
+		from category_offer r
+		join category_offer s
+		  on s.offer_period_id = r.offer_period_id
+		 and s.kind = 'super'
+		 and s.canonical_category_id = r.canonical_category_id
+		join offer_period p on p.id = r.offer_period_id
+		join bank_client c on c.id = p.bank_client_id
+		where c.user_id = $1 and r.kind = 'regular'
+		  and r.canonical_category_id is not null`
+	var have int
+	if err := g.pool.QueryRow(ctx, havePair, uid).Scan(&have); err != nil {
+		return err
+	}
+	if have > 0 {
+		return nil
+	}
+
+	// The newest Альфа period holding a SELECTED regular row with a canonical
+	// category — the барабан has to repeat something actually picked.
+	const pick = `
+		select p.id, o.raw_title, o.canonical_category_id, p.period_start, p.period_end
+		from category_offer o
+		join selection sel on sel.category_offer_id = o.id
+		join offer_period p on p.id = o.offer_period_id
+		join bank_client c on c.id = p.bank_client_id
+		join bank b on b.id = c.bank_id
+		where c.user_id = $1 and b.name = 'Альфа-Банк'
+		  and o.kind = 'regular' and o.canonical_category_id is not null
+		order by p.period_start desc
+		limit 1`
+	var (
+		periodID   int64
+		title      string
+		canonical  int64
+		start, end time.Time
+	)
+	if err := g.pool.QueryRow(ctx, pick, uid).Scan(&periodID, &title, &canonical, &start, &end); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil // no Альфа wallet, or nothing picked in it
+		}
+		return err
+	}
+
+	pct := decimal.NewFromInt(9)
+	notes := "барабан суперкэшбека — выпал на уже выбранную категорию, ставки складываются"
+	offer, err := g.svc.CreateCategoryOffer(ctx, uid, periodID, title,
+		&canonical, &pct, cashback.OfferSuper, &notes, nil, nil)
+	if err != nil {
+		return fmt.Errorf("барабан stack %q: %w", title, err)
+	}
+	g.counters.offers++
+	if _, err := g.svc.CreateSelection(ctx, uid, offer.ID, midPeriod(start, end), false); err != nil {
+		return fmt.Errorf("select барабан stack: %w", err)
+	}
+	g.counters.selections++
+	log.Printf("барабан stack: %q now carries both a pick and the барабан in one Альфа period", title)
 	return nil
 }

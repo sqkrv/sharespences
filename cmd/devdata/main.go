@@ -67,6 +67,8 @@ var profile = []clientSpec{
 	{bank: "Яндекс Пэй", tier: "Стандартный", cards: []cardSpec{{8868, "mir"}}},
 	{bank: "Т-Банк", tier: "Premium", cards: []cardSpec{{3357, "mir"}}},
 	{bank: "МКБ", tier: "Премиальный", cards: []cardSpec{{6604, "mir"}}},
+	{bank: "ОТП Банк", tier: "Premium", cards: []cardSpec{{4802, "mir"}}},
+	{bank: "Совкомбанк", label: "Папа", tier: "Подписка «Оптима»", cards: []cardSpec{{3915, "mir"}}},
 }
 
 // slotFallback supplies a slot count for programs whose tier leaves
@@ -104,7 +106,7 @@ func run() error {
 		confirm  = flag.Bool("confirm", false, "required when DATABASE_URL is not local")
 		dryRun   = flag.Bool("dry-run", false, "report what would be written, write nothing")
 		coverage = flag.Bool("coverage", true, "also generate the design-coverage set: edge-case clients, an awkward and an empty period, the partner-offer matrix, and friends sharing into this user")
-		friendMo = flag.Int("friend-months", 3, "months of history to give each generated friend")
+		friendMo = flag.Int("friend-months", 6, "months of history to give each generated friend")
 	)
 	flag.Parse()
 
@@ -175,6 +177,9 @@ func run() error {
 			return err
 		}
 		if err := g.ensureFriends(ctx, lastMonth, *friendMo); err != nil {
+			return err
+		}
+		if err := g.fillBarabanStack(ctx); err != nil {
 			return err
 		}
 	}
