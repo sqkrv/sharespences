@@ -85,13 +85,18 @@ function useOpenEntry() {
   });
   const openClient = (clientID?: number) => {
     const c = (overview.data?.clients ?? []).find((x) => x.bank_client_id === clientID);
-    if (c == null) return;
+    // Same rule as the feed: a row with no client — a bank-wide партнёрка,
+    // whose bank_client_id the API omits — has no one menu to open, so it
+    // goes to the bank card instead of nowhere.
+    if (c == null) {
+      navigate("/banks");
+      return;
+    }
     if (c.period_id != null) navigate(`/periods/${c.period_id}`);
     else navigate(`/periods/new?client=${c.bank_client_id}&month=${monthKey(todayISO())}`);
   };
   const openEntry = (e: { bank_client_id?: number; friend_name?: string; kind?: string }) => {
     if (e.friend_name) navigate("/friends");
-    else if (e.kind === "partner") navigate("/banks");
     else openClient(e.bank_client_id);
   };
   return { openClient, openEntry };

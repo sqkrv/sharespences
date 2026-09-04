@@ -419,11 +419,10 @@ export default function Overview() {
   // made one row in the feed behave unlike its neighbours.
   const openClient = (clientID?: number) => {
     const c = (data.clients ?? []).find((x) => x.bank_client_id === clientID);
-    // No client on the row means there is no one menu to open, and a
-    // bank-wide партнёрка is the real case: its bank_client_id is null on
-    // the server, so it arrives here as 0 and matches nothing. Its home is
-    // the bank card it is edited from. Falling through silently made the
-    // row unclickable instead.
+    // No client on the row means there is no one menu to open — a bank-wide
+    // партнёрка has none, and the API now omits the field rather than
+    // sending 0. Its home is the bank card it is edited from. Falling
+    // through silently made the row unclickable instead.
     if (c == null) {
       navigate("/banks");
       return;

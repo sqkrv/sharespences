@@ -225,7 +225,11 @@ type ComparisonDTO struct {
 }
 
 type LookupEntryDTO struct {
-	BankClientID   int64   `json:"bank_client_id"`
+	// BankClientID is absent when the row belongs to no single client: a
+	// партнёрка recorded for a whole bank has none. It used to serialize as
+	// 0, which a client could only tell from a real id by failing to find
+	// it in the roster.
+	BankClientID   int64   `json:"bank_client_id,omitempty" doc:"absent when the row belongs to no single client — a bank-wide партнёрка"`
 	BankName       string  `json:"bank_name"`
 	ClientLabel    string  `json:"client_label"`
 	HolderLabel    string  `json:"holder_label,omitempty"`

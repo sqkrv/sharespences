@@ -1274,8 +1274,11 @@ export interface components {
              * @enum {string}
              */
             activation: "immediate" | "next_day" | "unknown";
-            /** Format: int64 */
-            bank_client_id: number;
+            /**
+             * Format: int64
+             * @description absent when the row belongs to no single client — a bank-wide партнёрка
+             */
+            bank_client_id?: number;
             bank_name: string;
             cap_per_category?: string;
             cap_scope?: string;
@@ -2055,8 +2058,11 @@ export interface components {
             url?: string;
         };
         LookupEntryDTO: {
-            /** Format: int64 */
-            bank_client_id: number;
+            /**
+             * Format: int64
+             * @description absent when the row belongs to no single client — a bank-wide партнёрка
+             */
+            bank_client_id?: number;
             bank_name: string;
             cap_per_category?: string;
             cap_scope?: string;
@@ -2328,8 +2334,11 @@ export interface components {
             valid_to?: string;
         };
         PartnerFeedDTO: {
-            /** Format: int64 */
-            bank_client_id: number;
+            /**
+             * Format: int64
+             * @description absent when the row belongs to no single client — a bank-wide партнёрка
+             */
+            bank_client_id?: number;
             bank_name: string;
             cap_per_category?: string;
             cap_scope?: string;
