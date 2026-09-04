@@ -14,6 +14,50 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+type BankExclusionKind string
+
+const (
+	BankExclusionKindMcc          BankExclusionKind = "mcc"
+	BankExclusionKindMccQualified BankExclusionKind = "mcc_qualified"
+	BankExclusionKindClass        BankExclusionKind = "class"
+	BankExclusionKindDescriptor   BankExclusionKind = "descriptor"
+)
+
+func (e *BankExclusionKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = BankExclusionKind(s)
+	case string:
+		*e = BankExclusionKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for BankExclusionKind: %T", src)
+	}
+	return nil
+}
+
+type NullBankExclusionKind struct {
+	BankExclusionKind BankExclusionKind
+	Valid             bool // Valid is true if BankExclusionKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullBankExclusionKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.BankExclusionKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.BankExclusionKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullBankExclusionKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.BankExclusionKind), nil
+}
+
 type CashbackActivation string
 
 const (
@@ -362,11 +406,14 @@ func (ns NullFriendRequestStatus) Value() (driver.Value, error) {
 type MccChangeAction string
 
 const (
-	MccChangeActionImported        MccChangeAction = "imported"
-	MccChangeActionAdded           MccChangeAction = "added"
-	MccChangeActionRemoved         MccChangeAction = "removed"
-	MccChangeActionCategoryAdded   MccChangeAction = "category_added"
-	MccChangeActionCategoryRemoved MccChangeAction = "category_removed"
+	MccChangeActionImported         MccChangeAction = "imported"
+	MccChangeActionAdded            MccChangeAction = "added"
+	MccChangeActionRemoved          MccChangeAction = "removed"
+	MccChangeActionCategoryAdded    MccChangeAction = "category_added"
+	MccChangeActionCategoryRemoved  MccChangeAction = "category_removed"
+	MccChangeActionExcludedImported MccChangeAction = "excluded_imported"
+	MccChangeActionExcludedAdded    MccChangeAction = "excluded_added"
+	MccChangeActionExcludedRemoved  MccChangeAction = "excluded_removed"
 )
 
 func (e *MccChangeAction) Scan(src interface{}) error {
@@ -724,6 +771,17 @@ type BankClient struct {
 	BankID        int32
 	Label         *string
 	ProgramTierID *int64
+	// Day of month the client's cashback period starts on. Null = follow cashback_program.period_type (the calendar). A pre-fill hint for new periods, never a constraint — see ADR-0009 §2.
+	PeriodAnchorDay *int16
+}
+
+type BankExclusion struct {
+	ID       int64
+	BankID   int32
+	Kind     BankExclusionKind
+	Value    string
+	Note     *string
+	SourceID string
 }
 
 type BankMcc struct {

@@ -1331,7 +1331,8 @@ select co.id                     as category_offer_id,
        -- Program-level policy reached via the BANK, not the tier: a client
        -- without a tier still falls under the bank's program (S3b verdicts
        -- must not degrade to 'unknown' just because no tier is set).
-       -- coalesce: banks without a seeded program (Сбербанк/Т-Банк) → unknown.
+       -- coalesce: a bank with no seeded program at all → unknown. Every bank
+       -- shipped today has one, but a user-visible bank need not.
        coalesce((select cpb.mid_period_add
                  from cashback_program cpb
                  where cpb.bank_id = cl.bank_id

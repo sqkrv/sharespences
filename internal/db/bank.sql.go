@@ -14,7 +14,7 @@ import (
 const createBankClient = `-- name: CreateBankClient :one
 insert into bank_client (user_id, bank_id, label, program_tier_id)
 values ($1, $2, $3, $4)
-returning id, user_id, bank_id, label, program_tier_id
+returning id, user_id, bank_id, label, program_tier_id, period_anchor_day
 `
 
 type CreateBankClientParams struct {
@@ -38,6 +38,7 @@ func (q *Queries) CreateBankClient(ctx context.Context, arg CreateBankClientPara
 		&i.BankID,
 		&i.Label,
 		&i.ProgramTierID,
+		&i.PeriodAnchorDay,
 	)
 	return i, err
 }
@@ -132,7 +133,7 @@ func (q *Queries) DeleteCardForUser(ctx context.Context, arg DeleteCardForUserPa
 }
 
 const getBankClientForUser = `-- name: GetBankClientForUser :one
-select cl.id, cl.user_id, cl.bank_id, cl.label, cl.program_tier_id, b.name as bank_name
+select cl.id, cl.user_id, cl.bank_id, cl.label, cl.program_tier_id, cl.period_anchor_day, b.name as bank_name
 from bank_client cl
          join bank b on b.id = cl.bank_id
 where cl.id = $1
@@ -145,12 +146,13 @@ type GetBankClientForUserParams struct {
 }
 
 type GetBankClientForUserRow struct {
-	ID            int64
-	UserID        uuid.UUID
-	BankID        int32
-	Label         *string
-	ProgramTierID *int64
-	BankName      string
+	ID              int64
+	UserID          uuid.UUID
+	BankID          int32
+	Label           *string
+	ProgramTierID   *int64
+	PeriodAnchorDay *int16
+	BankName        string
 }
 
 func (q *Queries) GetBankClientForUser(ctx context.Context, arg GetBankClientForUserParams) (GetBankClientForUserRow, error) {
@@ -162,13 +164,14 @@ func (q *Queries) GetBankClientForUser(ctx context.Context, arg GetBankClientFor
 		&i.BankID,
 		&i.Label,
 		&i.ProgramTierID,
+		&i.PeriodAnchorDay,
 		&i.BankName,
 	)
 	return i, err
 }
 
 const listBankClientsForUser = `-- name: ListBankClientsForUser :many
-select cl.id, cl.user_id, cl.bank_id, cl.label, cl.program_tier_id, b.name as bank_name
+select cl.id, cl.user_id, cl.bank_id, cl.label, cl.program_tier_id, cl.period_anchor_day, b.name as bank_name
 from bank_client cl
          join bank b on b.id = cl.bank_id
 where cl.user_id = $1
@@ -176,12 +179,13 @@ order by cl.id
 `
 
 type ListBankClientsForUserRow struct {
-	ID            int64
-	UserID        uuid.UUID
-	BankID        int32
-	Label         *string
-	ProgramTierID *int64
-	BankName      string
+	ID              int64
+	UserID          uuid.UUID
+	BankID          int32
+	Label           *string
+	ProgramTierID   *int64
+	PeriodAnchorDay *int16
+	BankName        string
 }
 
 func (q *Queries) ListBankClientsForUser(ctx context.Context, userID uuid.UUID) ([]ListBankClientsForUserRow, error) {
@@ -199,6 +203,7 @@ func (q *Queries) ListBankClientsForUser(ctx context.Context, userID uuid.UUID) 
 			&i.BankID,
 			&i.Label,
 			&i.ProgramTierID,
+			&i.PeriodAnchorDay,
 			&i.BankName,
 		); err != nil {
 			return nil, err
@@ -295,7 +300,7 @@ set label           = $3,
     program_tier_id = $4
 where id = $1
   and user_id = $2
-returning id, user_id, bank_id, label, program_tier_id
+returning id, user_id, bank_id, label, program_tier_id, period_anchor_day
 `
 
 type UpdateBankClientForUserParams struct {
@@ -319,6 +324,7 @@ func (q *Queries) UpdateBankClientForUser(ctx context.Context, arg UpdateBankCli
 		&i.BankID,
 		&i.Label,
 		&i.ProgramTierID,
+		&i.PeriodAnchorDay,
 	)
 	return i, err
 }

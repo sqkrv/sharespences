@@ -304,7 +304,7 @@ func TestBuildDraftSummaryHint(t *testing.T) {
 // model's bank field is measurably unreliable, and a false
 // positive on the first real run («ozon банк» vs a client «Озон Банк»).
 func TestBuildDraftBankMismatch(t *testing.T) {
-	seeded := []string{"Альфа-Банк", "ВТБ", "Ozon Банк", "Яндекс Пэй", "Газпромбанк", "МКБ", "Сбербанк", "Т-Банк"}
+	seeded := []string{"Альфа-Банк", "ВТБ", "Ozon Банк", "Яндекс Пэй", "Газпромбанк", "МКБ", "СберБанк", "Т-Банк"}
 	others := func(chosen string) []string {
 		var out []string
 		for _, b := range seeded {

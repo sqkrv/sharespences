@@ -129,7 +129,7 @@ type MCCLinkDTO struct {
 }
 
 type MCCLinksDTO struct {
-	SeedManaged bool         `json:"seed_managed" doc:"link set is seed-refreshed — read-only"`
+	SeedManaged bool         `json:"seed_managed" doc:"always false since the ADR-0004 import took membership over from the seed"`
 	Links       []MCCLinkDTO `json:"links"`
 }
 
@@ -463,8 +463,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 	}, func(ctx context.Context, in *struct {
 		ID int64 `path:"id"`
 	}) (*struct{ Body MCCLinksDTO }, error) {
-		bc, err := s.Q.AdminGetBankCategoryWithBank(ctx, in.ID)
-		if err != nil {
+		if _, err := s.Q.AdminGetBankCategoryWithBank(ctx, in.ID); err != nil {
 			return nil, httpErr(err)
 		}
 		rows, err := s.Q.AdminListBankCategoryMCC(ctx, in.ID)
@@ -472,7 +471,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			return nil, err
 		}
 		out := MCCLinksDTO{
-			SeedManaged: s.SeededMembership[[2]string{bc.BankName, bc.Title}],
+			SeedManaged: false, // membership is import-managed since ADR-0004; edits stand until a snapshot re-lands (journaled)
 			Links:       make([]MCCLinkDTO, len(rows)),
 		}
 		for i, l := range rows {
@@ -483,7 +482,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "admin-mcc-link-upsert", Method: http.MethodPut,
-		Path: "/api/bank-categories/{id}/mcc/{code}", Summary: "Add/update an MCC link (non-covered categories)", Tags: []string{"mcc"},
+		Path: "/api/bank-categories/{id}/mcc/{code}", Summary: "Add/update an MCC link", Tags: []string{"mcc"},
 		DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, in *struct {
 		ID   int64 `path:"id"`
@@ -492,7 +491,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Note *string `json:"note,omitempty"`
 		}
 	}) (*struct{}, error) {
-		if _, err := s.guardMembership(ctx, in.ID); err != nil {
+		if err := s.requireBankCategory(ctx, in.ID); err != nil {
 			return nil, httpErr(err)
 		}
 		if err := s.Q.AdminUpsertBankCategoryMCC(ctx, db.AdminUpsertBankCategoryMCCParams{
@@ -508,13 +507,13 @@ func RegisterHTTP(api huma.API, s *Service) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "admin-mcc-link-delete", Method: http.MethodDelete,
-		Path: "/api/bank-categories/{id}/mcc/{code}", Summary: "Remove an MCC link (non-covered categories)", Tags: []string{"mcc"},
+		Path: "/api/bank-categories/{id}/mcc/{code}", Summary: "Remove an MCC link", Tags: []string{"mcc"},
 		DefaultStatus: http.StatusNoContent,
 	}, func(ctx context.Context, in *struct {
 		ID   int64 `path:"id"`
 		Code int16 `path:"code"`
 	}) (*struct{}, error) {
-		if _, err := s.guardMembership(ctx, in.ID); err != nil {
+		if err := s.requireBankCategory(ctx, in.ID); err != nil {
 			return nil, httpErr(err)
 		}
 		n, err := s.Q.AdminDeleteBankCategoryMCC(ctx, db.AdminDeleteBankCategoryMCCParams{

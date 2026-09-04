@@ -65,7 +65,7 @@ type ChangeDTO struct {
 	BankCategoryID *int64    `json:"bank_category_id,omitempty"`
 	CategoryTitle  string    `json:"category_title"`
 	MCCCode        *string   `json:"mcc_code,omitempty"` // padded; null for category_* events
-	Action         string    `json:"action" enum:"imported,added,removed,category_added,category_removed"`
+	Action         string    `json:"action" enum:"imported,added,removed,category_added,category_removed,excluded_imported,excluded_added,excluded_removed"`
 	NotedAt        time.Time `json:"noted_at"`
 	Source         string    `json:"source"`
 	Note           *string   `json:"note,omitempty"`

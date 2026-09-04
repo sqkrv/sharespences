@@ -84,7 +84,9 @@ func TestAdminE2E(t *testing.T) {
 	if dash.DBSizeBytes <= 0 {
 		t.Fatal("dashboard: zero db size")
 	}
-	for _, k := range []string{"banks", "canonical_categories", "bank_categories", "mcc_codes", "mcc_links", "programs"} {
+	// mcc_links is absent on purpose: membership left the seed with the
+	// ADR-0004 import, so a freshly seeded database has zero links.
+	for _, k := range []string{"banks", "canonical_categories", "bank_categories", "mcc_codes", "programs"} {
 		if dash.Counts[k] == 0 {
 			t.Fatalf("dashboard: seeded count %s is 0", k)
 		}
@@ -156,36 +158,22 @@ func TestAdminE2E(t *testing.T) {
 	}
 	c.must("PUT", fmt.Sprintf("/api/bank-categories/%d", customID),
 		map[string]any{"title": "Тестовая категория адм", "kind": "special", "emoji": "🧪", "active": true}, nil, 200)
-	// A custom row's (bank, title) is outside the seed CSV → links editable.
 	c.must("PUT", fmt.Sprintf("/api/bank-categories/%d/mcc/2999", customID),
 		map[string]any{"note": "e2e link"}, nil, 204)
 
-	// --- links guard: a CSV-covered category refuses link writes ---
-	keys, err := seed.SeededMembershipKeys()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var coveredID int64
-	for _, bc := range cats {
-		if keys[[2]string{bc.BankName, bc.Title}] {
-			coveredID = bc.ID
-			break
-		}
-	}
-	if coveredID == 0 {
-		t.Fatal("no CSV-covered catalog row found")
-	}
+	// --- links: no seed guard since membership moved to the ADR-0004 import —
+	// any existing category accepts link writes, and seed_managed reads false.
+	seededCatID := seededCat
 	var links struct {
 		SeedManaged bool `json:"seed_managed"`
 	}
-	c.must("GET", fmt.Sprintf("/api/bank-categories/%d/mcc", coveredID), nil, &links, 200)
-	if !links.SeedManaged {
-		t.Fatalf("covered category %d not reported seed_managed", coveredID)
+	c.must("GET", fmt.Sprintf("/api/bank-categories/%d/mcc", seededCatID), nil, &links, 200)
+	if links.SeedManaged {
+		t.Fatalf("category %d still reported seed_managed", seededCatID)
 	}
-	if got := c.do("PUT", fmt.Sprintf("/api/bank-categories/%d/mcc/2999", coveredID),
-		map[string]any{}, nil); got != 409 {
-		t.Fatalf("link write under covered category: status %d, want 409", got)
-	}
+	c.must("PUT", fmt.Sprintf("/api/bank-categories/%d/mcc/2999", seededCatID),
+		map[string]any{"note": "e2e import-era link"}, nil, 204)
+	c.must("DELETE", fmt.Sprintf("/api/bank-categories/%d/mcc/2999", seededCatID), nil, nil, 204)
 
 	// --- journal hand-add ---
 	var created struct {

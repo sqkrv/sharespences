@@ -326,12 +326,20 @@ func TestCashbackE2E(t *testing.T) {
 		"username": "other", "display_name": "Other", "email": "other@example.com", "password": "correct horse",
 	}, nil, http.StatusCreated)
 
-	// --- E2E step 1: seeded programs/tiers (Альфа-Смарт: 4 slots 7000₽;
+	// --- E2E step 1: seeded programs/tiers (Альфа-Смарт M: 4 slots 7000₽ —
+	// the S level buys other привилегии and leaves cashback on base terms;
 	// Озон Стандартный: 4 slots, 1500/cat + 3000 total) ---
 	var programs []programJSON
 	owner.must("GET", "/api/v1/cashback/programs", nil, &programs, http.StatusOK)
-	if len(programs) != 7 {
-		t.Fatalf("seeded programs = %d, want 7", len(programs))
+	// Tier A, as of 2026-08-31: the eight wallet-and-adjacent banks (Альфа-Банк,
+	// ВТБ, Ozon Банк, Яндекс Пэй, Газпромбанк, МКБ, СберБанк, Т-Банк) plus the
+	// six promoted on 2026-08-26 (Совкомбанк, ОТП Банк, МТС Деньги, УБРиР,
+	// Примсоцбанк, Банк Синара).
+	// …and Яндекс Про, which is its own bank row rather than a second programme
+	// under Яндекс Пэй — a different card, in a different app, with a separate
+	// cashback pool.
+	if len(programs) != 15 {
+		t.Fatalf("seeded programs = %d, want 15", len(programs))
 	}
 	findProgram := func(bank string) programJSON {
 		for _, p := range programs {
@@ -356,10 +364,10 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("tier %q not found in program %d", name, programID)
 		return tierJSON{}
 	}
-	alfaSmart := findTier(alfa.ID, "Альфа-Смарт")
+	alfaSmart := findTier(alfa.ID, "Альфа-Смарт M")
 	ozonStd := findTier(ozon.ID, "Стандартный")
 	if alfaSmart.CapValue == nil || *alfaSmart.CapValue != "7000" || alfaSmart.MaxCategories == nil || *alfaSmart.MaxCategories != 4 {
-		t.Fatalf("Альфа-Смарт seed wrong: %+v", alfaSmart)
+		t.Fatalf("Альфа-Смарт M seed wrong: %+v", alfaSmart)
 	}
 
 	// Bank clients (person × bank) own держатель + tier; cards hang off them.
@@ -1066,8 +1074,23 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("homoglyph title suggestion = %+v, want restaurants", homoglyphSuggestion.Suggestion)
 	}
 
-	// --- MCC module (2026-07-21): embedded dictionary + membership seed,
+	// --- MCC module: embedded dictionary seed + snapshot import (membership
+	// left the seed with ADR-0004 — a deployment runs `mcc-import` per bank),
 	// search, per-bank resolve, change journal ---
+
+	for _, imp := range []struct{ bank, title string }{
+		{"Альфа-Банк", "Продукты"},
+		{"ВТБ", "Супермаркеты"},
+		{"Ozon Банк", "Супермаркеты"},
+	} {
+		snap := fmt.Sprintf(`{
+			"schema_version": 2, "bank": %q, "captured_at": "2026-09-01",
+			"source": {"id": "e2e-doc", "file": "e2e.json", "sha256": "e2e0000000000000"},
+			"categories": [{"title": %q, "mcc": ["5411"]}]}`, imp.bank, imp.title)
+		if err := mcc.ImportSnapshot(ctx, pool, []byte(snap), false, nil); err != nil {
+			t.Fatalf("mcc-import %s: %v", imp.bank, err)
+		}
+	}
 
 	if got := anon.do("GET", "/api/v1/mcc/resolve?code=5411", nil, nil); got != http.StatusUnauthorized {
 		t.Fatalf("anonymous mcc resolve: %d, want 401", got)
@@ -1143,7 +1166,8 @@ func TestCashbackE2E(t *testing.T) {
 		t.Fatalf("resolve unknown code: %d, want 404", got)
 	}
 
-	// The seed was the first import: journal is non-empty, all `imported`.
+	// The snapshot imports above were each category's first load: journal is
+	// non-empty, all `imported` (per-category baseline), never «added» noise.
 	var changes []struct {
 		Action string `json:"action"`
 		Source string `json:"source"`
