@@ -588,8 +588,20 @@ export default function Period() {
       ? unselect.mutate({ selectionID: offer.selection_id, offerID: offer.id })
       : select.mutate(offer.id);
   const requestToggle = (offer: CategoryOffer) => {
-    if (oneShotLocked && offer.kind === "regular") setConfirmOffer(offer);
-    else runToggle(offer);
+    if (oneShotLocked && offer.kind === "regular") {
+      setConfirmOffer(offer);
+      return;
+    }
+    // Снятие отметки — единственный необратимый жест на экране: строка
+    // остаётся, а запись о том, что банк начислял по ней, исчезает. Спрашиваем
+    // и напоминаем, что экран — зеркало: в банке выбор от этого не снимется.
+    if (
+      offer.selection_id != null &&
+      !window.confirm(`Снять отметку с «${offer.raw_title}»? В банке выбор останется — здесь только запись.`)
+    ) {
+      return;
+    }
+    runToggle(offer);
   };
   // The client's plastics — any of them pays with this period's selection.
   const clientCards = (cards.data ?? []).filter((c) => c.bank_client_id === p.bank_client_id);
