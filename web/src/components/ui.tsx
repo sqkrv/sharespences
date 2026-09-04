@@ -84,6 +84,20 @@ export function BackButton({ fallback = "/", small = false }: { fallback?: strin
   );
 }
 
+// Tiny in-row marker chip (the redesign's second-line vocabulary): gold =
+// спец/барабан/партнёрка, friend = «друг · Кирилл», points = «Баллы Плюс»,
+// neutral = everything stateless. Smaller than Badge on purpose — it lives
+// inside a row's second line, not on a card.
+export function Chip({ children, tone = "neutral" }: { children: ReactNode; tone?: "gold" | "friend" | "points" | "neutral" }) {
+  const tones = {
+    gold: "bg-gold/15 text-gold",
+    friend: "bg-acc/20 text-accl",
+    points: "bg-accl/15 text-accl",
+    neutral: "bg-inset text-tx3",
+  }[tone];
+  return <span className={`inline-block flex-none rounded-[5px] px-1.5 py-px text-[9.5px] font-bold whitespace-nowrap ${tones}`}>{children}</span>;
+}
+
 // min-w-0: a Field is often a grid/flex item, and the default
 // min-width:auto refuses to shrink below its content — an iOS
 // input[type=date] is wider than its box, so the column would overflow
@@ -245,8 +259,20 @@ const BANK_SLUG: Record<string, string> = {
   "Яндекс Пэй": "yandex-pay",
   Газпромбанк: "gazprombank",
   МКБ: "mkb",
-  Сбербанк: "sber",
+  СберБанк: "sber",
   "Т-Банк": "tbank",
+  // Tier A, promoted 2026-08-26. The SVG files are not in the repo yet, so
+  // these fall back to the two-letter chip until each mark is added — which is
+  // what the assets README prescribes for a partial set. The keys must exist
+  // now regardless: they are keyed on the seeded bank.name, and a bank missing
+  // here would never pick up its logo even once the file lands.
+  Совкомбанк: "sovkom",
+  "ОТП Банк": "otp",
+  "МТС Деньги": "mtsmoney",
+  УБРиР: "ubrr",
+  Примсоцбанк: "pskb",
+  "Банк Синара": "sinara",
+  "Яндекс Про": "yandexpro",
 };
 
 export function bankLogo(name: string): string | undefined {
@@ -295,8 +321,21 @@ const BANK_ABBREV: Record<string, string> = {
   "Яндекс Пэй": "ЯП",
   Газпромбанк: "ГП",
   МКБ: "МК",
-  Сбербанк: "СБ",
+  СберБанк: "СБ",
   "Т-Банк": "ТБ",
+  // Tier A, 2026-08-26. bankAbbrev() derives two letters on its own, but its
+  // rule takes the first letter of the first two words — which gives «БС» for
+  // «Банк Синара» and «МД» for «МТС Деньги». Spelled out where the derived
+  // pair would read wrong.
+  Совкомбанк: "СК",
+  "ОТП Банк": "ОТ",
+  "МТС Деньги": "МТ",
+  УБРиР: "УБ",
+  Примсоцбанк: "ПС",
+  "Банк Синара": "СН",
+  // «ЯП» is already Яндекс Пэй's; the distinguishing word is what the chip
+  // has to carry, or the two banks are indistinguishable in the list.
+  "Яндекс Про": "ПР",
 };
 
 export function bankAbbrev(name: string): string {
@@ -306,19 +345,6 @@ export function bankAbbrev(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-// Tiny in-row marker chip (the redesign's second-line vocabulary): gold =
-// спец/барабан/партнёрка, friend = «друг · Кирилл», points = «Баллы Плюс»,
-// neutral = everything stateless. Smaller than Badge on purpose — it lives
-// inside a row's second line, not on a card.
-export function Chip({ children, tone = "neutral" }: { children: ReactNode; tone?: "gold" | "friend" | "points" | "neutral" }) {
-  const tones = {
-    gold: "bg-gold/15 text-gold",
-    friend: "bg-acc/20 text-accl",
-    points: "bg-accl/15 text-accl",
-    neutral: "bg-inset text-tx3",
-  }[tone];
-  return <span className={`inline-block flex-none rounded-[5px] px-1.5 py-px text-[9.5px] font-bold whitespace-nowrap ${tones}`}>{children}</span>;
-}
 
 // One list row in the redesign's shape (ТУР 2, строки как в 1a): lead icon
 // column, bold title, muted second line, value column on the right. The

@@ -14,6 +14,50 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+type BankExclusionKind string
+
+const (
+	BankExclusionKindMcc          BankExclusionKind = "mcc"
+	BankExclusionKindMccQualified BankExclusionKind = "mcc_qualified"
+	BankExclusionKindClass        BankExclusionKind = "class"
+	BankExclusionKindDescriptor   BankExclusionKind = "descriptor"
+)
+
+func (e *BankExclusionKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = BankExclusionKind(s)
+	case string:
+		*e = BankExclusionKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for BankExclusionKind: %T", src)
+	}
+	return nil
+}
+
+type NullBankExclusionKind struct {
+	BankExclusionKind BankExclusionKind
+	Valid             bool // Valid is true if BankExclusionKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullBankExclusionKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.BankExclusionKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.BankExclusionKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullBankExclusionKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.BankExclusionKind), nil
+}
+
 type CashbackActivation string
 
 const (
@@ -362,11 +406,15 @@ func (ns NullFriendRequestStatus) Value() (driver.Value, error) {
 type MccChangeAction string
 
 const (
-	MccChangeActionImported        MccChangeAction = "imported"
-	MccChangeActionAdded           MccChangeAction = "added"
-	MccChangeActionRemoved         MccChangeAction = "removed"
-	MccChangeActionCategoryAdded   MccChangeAction = "category_added"
-	MccChangeActionCategoryRemoved MccChangeAction = "category_removed"
+	MccChangeActionImported         MccChangeAction = "imported"
+	MccChangeActionAdded            MccChangeAction = "added"
+	MccChangeActionRemoved          MccChangeAction = "removed"
+	MccChangeActionCategoryAdded    MccChangeAction = "category_added"
+	MccChangeActionCategoryRemoved  MccChangeAction = "category_removed"
+	MccChangeActionExcludedImported MccChangeAction = "excluded_imported"
+	MccChangeActionExcludedAdded    MccChangeAction = "excluded_added"
+	MccChangeActionExcludedRemoved  MccChangeAction = "excluded_removed"
+	MccChangeActionCodeUnknown      MccChangeAction = "code_unknown"
 )
 
 func (e *MccChangeAction) Scan(src interface{}) error {
@@ -533,6 +581,50 @@ func (ns NullPeriod) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.Period), nil
+}
+
+type PerkEventKind string
+
+const (
+	PerkEventKindUse    PerkEventKind = "use"
+	PerkEventKindGrant  PerkEventKind = "grant"
+	PerkEventKindResize PerkEventKind = "resize"
+	PerkEventKindAdjust PerkEventKind = "adjust"
+)
+
+func (e *PerkEventKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PerkEventKind(s)
+	case string:
+		*e = PerkEventKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PerkEventKind: %T", src)
+	}
+	return nil
+}
+
+type NullPerkEventKind struct {
+	PerkEventKind PerkEventKind
+	Valid         bool // Valid is true if PerkEventKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPerkEventKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.PerkEventKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PerkEventKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPerkEventKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PerkEventKind), nil
 }
 
 type PointOfSaleOrigin string
@@ -852,6 +944,17 @@ type BankClient struct {
 	BankID        int32
 	Label         *string
 	ProgramTierID *int64
+	// Day of month the client's cashback period starts on. Null = follow cashback_program.period_type (the calendar). A pre-fill hint for new periods, never a constraint — see ADR-0009 §2.
+	PeriodAnchorDay *int16
+}
+
+type BankExclusion struct {
+	ID       int64
+	BankID   int32
+	Kind     BankExclusionKind
+	Value    string
+	Note     *string
+	SourceID string
 }
 
 type BankMcc struct {
@@ -1001,6 +1104,55 @@ type PartnerOffer struct {
 type PartnerOfferAttachment struct {
 	PartnerOfferID int64
 	AttachmentID   uuid.UUID
+}
+
+type Perk struct {
+	ID     int64
+	UserID uuid.UUID
+	Name   string
+	// the counted noun, singular: «поездка», «преференция», «проход» — rendered next to a number
+	Unit         string
+	Note         *string
+	CreatedAt    time.Time
+	BankClientID int64
+}
+
+type PerkEvent struct {
+	ID        int64
+	QuotaID   int64
+	Kind      PerkEventKind
+	Qty       int32
+	EventDate time.Time
+	Note      *string
+	CreatedAt time.Time
+}
+
+type PerkQuotum struct {
+	ID            int64
+	PerkID        int64
+	ParentQuotaID *int64
+	WindowStart   time.Time
+	WindowEnd     time.Time
+	Size          int32
+	Note          *string
+	CreatedAt     time.Time
+	IsChild       pgtype.Bool
+	ParentIsRoot  pgtype.Bool
+}
+
+type PerkSnapshot struct {
+	ID         int64
+	QuotaID    int64
+	ObservedOn time.Time
+	Remaining  int32
+	Note       *string
+	CreatedAt  time.Time
+}
+
+type PerkSplit struct {
+	PerkID       int64
+	BankClientID int64
+	N            int64
 }
 
 type PointOfSale struct {

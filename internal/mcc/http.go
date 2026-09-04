@@ -50,12 +50,12 @@ type CanonicalRefDTO struct {
 // MerchantDTO — one point of sale from the imported merchant base
 // (mcc-codes.ru scrape; данные mcc-codes.ru — the SPA renders the credit).
 type MerchantDTO struct {
-	ID              string     `json:"id"` // the site's own row UUID — stable across re-imports
-	Name            string     `json:"name"`
-	MerchantTitle   *string    `json:"merchant_title,omitempty"`
-	MCC             string     `json:"mcc"` // zero-padded
-	Type            *string    `json:"type,omitempty" enum:"offline,online,app,other"`
-	Address *string `json:"address,omitempty"`
+	ID            string  `json:"id"` // the site's own row UUID — stable across re-imports
+	Name          string  `json:"name"`
+	MerchantTitle *string `json:"merchant_title,omitempty"`
+	MCC           string  `json:"mcc"` // zero-padded
+	Type          *string `json:"type,omitempty" enum:"offline,online,app,other"`
+	Address       *string `json:"address,omitempty"`
 	// Origin says where the row came from, which is what lets a client
 	// credit mcc-codes.ru for the rows that are actually theirs once the
 	// base is mixed (00027).
@@ -91,7 +91,7 @@ type ChangeDTO struct {
 	BankCategoryID *int64    `json:"bank_category_id,omitempty"`
 	CategoryTitle  string    `json:"category_title"`
 	MCCCode        *string   `json:"mcc_code,omitempty"` // padded; null for category_* events
-	Action         string    `json:"action" enum:"imported,added,removed,category_added,category_removed"`
+	Action         string    `json:"action" enum:"imported,added,removed,category_added,category_removed,excluded_imported,excluded_added,excluded_removed"`
 	NotedAt        time.Time `json:"noted_at"`
 	Source         string    `json:"source"`
 	Note           *string   `json:"note,omitempty"`

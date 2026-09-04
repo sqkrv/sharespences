@@ -1,17 +1,13 @@
-// Package seed loads reference data derived from the knowledge base
-// (docs/knowledge in the private meta-repo): the six banks with
-// their КБ programs and tiers, ~55 canonical categories (with UI emoji),
-// the known bank-title aliases, the per-bank picker catalogs
-// (bank_category), and bank brand colors (five banks + catalogs/emoji/
-// colors from concepts/categories-taxonomy.md and the bank pages,
-// 2026-07-16). Program/tier numbers are as of 2025-05 (wiki table) — notes
-// on every program/tier say so; re-verify against live bank apps before
-// relying on them for real decisions.
+// Package seed loads the cashback module's reference data: the banks with
+// their КБ programs and tiers, ~55 canonical categories (with UI emoji), the
+// known bank-title aliases, the per-bank picker catalogs (bank_category) and
+// the bank brand colors. Program and tier figures carry an as-of date in
+// their notes; re-verify against the bank's own terms before relying on them.
 //
 // Idempotent: safe to run repeatedly (natural-key upserts). Knowledge-
-// derived reference facts (program policy, emoji, brand colors, seeded
-// bank_category rows) are refreshed on existing rows; user-created custom
-// bank_category rows are never touched — a custom row with the same
+// derived reference facts (program policy, program tiers, emoji, brand colors,
+// seeded bank_category rows) are refreshed on existing rows; user-created
+// custom bank_category rows are never touched — a custom row with the same
 // (bank, title) always wins over the seed.
 package seed
 
@@ -22,12 +18,40 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const asOf = "as of 2025-05 (wiki table); re-verify in the bank app"
+const asOf = "as of 2025-05; re-verify in the bank app"
 
-// Т-Банк's programme terms are newer than the wiki table and come from a different
-// kind of source: the caps are stated terms, the slot count is an
-// observation from the menu screenshots rather than the programme document.
-const tbankAsOf = "as of 2026-07-31; 4 слота — по корпусу скриншотов меню (2025-06…2026-07), не из условий программы"
+// ВТБ's «Мультибонус» rules, read 2026-08-26. Таблица 2 gives the caps per
+// package; Таблица 3.1 (in force from 26.08.2026) gives the slot counts.
+const vtbAsOf = "as of 2026-08-26, официальные Условия ПЛ «Мультибонус» (Таблица 2 — лимиты, Таблица 3.1 — слоты, действует с 26.08.2026)"
+
+// СберСпасибо rules, редакция 28.07.2026, Таблица 2 — sixteen priority rungs
+// keyed on package/subscription/card, each with its own slot count and cap.
+const sberAsOf = "as of 2026-07-28, официальные Правила «СберСпасибо», Таблица 2"
+
+// Ozon Банк Ultra levels, from the bank's own pages (finance.ozon.ru/promo/ultra
+// and its blog explainer, published 2026-05-26, «действительна на май 2026»).
+const ozonUltraAsOf = "as of 2026-05, first-party finance.ozon.ru (промо Ultra + блог)"
+
+const otpAsOf = "as of 2026-09, официальная инструкция ОТП по МСС (матрица категорий × уровней привилегий)"
+const ubrrAsOf = "as of 2026-08-01, официальные Правила ПЛ «Моя жизнь» (пп. 3.2–3.12 + Приложение №1)"
+const sovcomAsOf = "as of 2026-04-21 (перекройка ПЛ и запуск подписки «Оптима»)"
+const mtsAsOf = "as of 2026-08"
+const pskbAsOf = "as of 2026-04"
+const sinaraAsOf = "as of 2026-03"
+
+// Карта Яндекс Про, from Yandex's own partner knowledge base (2025-12-17) and
+// the ПЛ at yandex.ru/legal/card_and_pay_points.
+const yandexProAsOf = "as of 2025-12-17, first-party pro.yandex.ru (база знаний Яндекс Про)"
+
+const mkbAsOf = "as of 2026-06; квартальный список категорий (III кв. 2026) лимитов и слотов не содержит"
+
+// Альфа-Банк's cap ladder is read off the bank's own MCCD appendix (2026-08),
+// which states it verbatim: cards outside the Alfa Only / Максимум packages get
+// 5000, or 7000 with an Альфа-Смарт subscription; cards inside them get 30 000.
+// That supersedes the earlier 2025-05 figure of 15 000 for Alfa Only.
+const alfaAsOf = "as of 2026-08 (MCCD appendix, банковский документ)"
+
+const tbankAsOf = "as of 2026-07-31; 4 слота (в условиях программы не зафиксировано)"
 
 type tier struct {
 	name           string
@@ -66,19 +90,42 @@ var programs = []program{
 		midPeriodAdd: "allowed", activation: "immediate", // 2026-07-16: add while a slot is free
 		notes: asOf,
 		tiers: []tier{
-			{name: "Стандартный", capValue: "5000", capScope: "total", maxCategories: 3, notes: asOf},
-			{name: "Альфа-Смарт", paid: true, capValue: "7000", capScope: "total", maxCategories: 4, notes: asOf},
-			{name: "Alfa Only", paid: true, capValue: "15000", capScope: "total", maxCategories: 5, notes: asOf},
+			{name: "Стандартный", capValue: "5000", capScope: "total", maxCategories: 3, notes: alfaAsOf},
+			// Альфа-Смарт is two products (bank's subscription page, 2026-08): a
+			// set of 9 привилегий at 199 ₽/мес and one of 15 at 399 ₽ личный /
+			// 499 ₽ семейный. Only the 15-privilege set carries the cashback
+			// privileges — the 4th slot, the extra барабан spin, and the
+			// 5000 → 7000 cap — so S is seeded at base-equivalent terms.
+			// Migration 00030 renames the pre-split row to M, which preserves
+			// the terms every existing subscriber already has.
+			{name: "Альфа-Смарт S", paid: true, capValue: "5000", capScope: "total", maxCategories: 3,
+				notes: alfaAsOf + "; набор из 9 привилегий (199 ₽/мес) — кэшбэк на базовых условиях"},
+			{name: "Альфа-Смарт M", paid: true, capValue: "7000", capScope: "total", maxCategories: 4,
+				notes: alfaAsOf + "; набор из 15 привилегий (399 ₽ личный / 499 ₽ семейный)"},
+			// Same cap covers the Максимум package; А-Клуб (30 000 / 200 000) is
+			// a further level and is not modelled yet.
+			{name: "Alfa Only", paid: true, capValue: "30000", capScope: "total", maxCategories: 5, notes: alfaAsOf},
 		},
 	},
 	{
 		bank: "ВТБ", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub", opensDay: 26,
 		midPeriodAdd: "locked_after_first", activation: "immediate", // one-shot (п. 3.5); +5 мин ≈ immediate
-		notes: asOf + "; дополнительные категории за хранение остатков — record-only",
+		notes: vtbAsOf + "; Отчетный период = календарный месяц (п. 1.7); бонусные рубли зачисляются на счёт 1:1, баланс обнуляется в начале периода (пп. 2.13–2.14); дополнительные категории за хранение остатков — record-only",
 		tiers: []tier{
-			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 3, notes: asOf + "; % варьируется до 15%"},
-			{name: "Привилегия", capValue: "30000", capScope: "total", maxCategories: 3, notes: asOf},
+			// Names are the packages the rules themselves use (Таблица 2);
+			// 00032 renames the project's earlier «Стандартный»/«Привилегия».
+			// maxCategories is the STANDARD count — Таблица 3.1 adds slots for
+			// a client's Уровень (+1 Серебряный / +2 Золотой on Мультикарта;
+			// +2 for Изумруд/Сапфир/Рубин/Бриллиант on Привилегия-Мультикарта;
+			// +2 for Private Banking on Прайм+), which is a per-period fact and
+			// belongs in offer_period.max_categories_override, not here.
+			{name: "Мультикарта", capValue: "3000", capScope: "total", maxCategories: 3,
+				notes: vtbAsOf + "; +1 категория для Уровня «Серебряный», +2 для «Золотой»; % варьируется до 15%"},
+			{name: "Привилегия-Мультикарта", capValue: "30000", capScope: "total", maxCategories: 3,
+				notes: vtbAsOf + "; +2 категории для Уровней «Изумруд»/«Сапфир»/«Рубин»/«Бриллиант»"},
+			{name: "Прайм+", capValue: "100000", capScope: "total", maxCategories: 3,
+				notes: vtbAsOf + "; +2 категории для Уровня «Private Banking»"},
 		},
 	},
 	{
@@ -90,6 +137,24 @@ var programs = []program{
 			{name: "Стандартный", capValue: "3000", capScope: "both", capPerCategory: "1500", maxCategories: 4, notes: asOf},
 			{name: "Ozon Premium", paid: true, capValue: "3000", capScope: "both", capPerCategory: "1500", maxCategories: 4,
 				notes: asOf + "; подписка добавляет выбираемые категории (Кафе и Рестораны 5%, Фастфуд 5%)"},
+			// Ultra is a premium SERVICE, separate from the Ozon Premium subscription
+			// above; the two can coexist. Four levels, each raising the cap and lifting
+			// the slot count to 5. Per-category cap is deliberately unset — the
+			// published pages state only the total.
+			//
+			// ⚠️ `paid` is true for all four, but a level is EITHER bought (Бронзовый,
+			// 2 990 ₽/мес) OR earned by holding a balance (2 / 3 / 6 / 12 млн ₽).
+			// is_paid_subscription is a property of the tier, and here it is a property
+			// of how a given client reached it — the same gap ОТП Premium and
+			// Газпромбанк have.
+			{name: "Ultra Бронзовый", paid: true, capValue: "20000", capScope: "total", maxCategories: 5,
+				notes: ozonUltraAsOf + "; 2 990 ₽/мес либо бесплатно от 2 млн ₽ на счетах; 2 бизнес-зала, компенсации до 1 000 ₽"},
+			{name: "Ultra Серебряный", paid: true, capValue: "30000", capScope: "total", maxCategories: 5,
+				notes: ozonUltraAsOf + "; от 3 млн ₽ на счетах; 4 бизнес-зала, компенсации до 1 500 ₽"},
+			{name: "Ultra Золотой", paid: true, capValue: "40000", capScope: "total", maxCategories: 5,
+				notes: ozonUltraAsOf + "; от 6 млн ₽ на счетах; 6 бизнес-залов, компенсации до 2 000 ₽, персональный менеджер"},
+			{name: "Ultra Платиновый", paid: true, capValue: "50000", capScope: "total", maxCategories: 5,
+				notes: ozonUltraAsOf + "; от 12 млн ₽ на счетах; безлимит бизнес-залов, компенсации до 2 500 ₽, персональный менеджер"},
 		},
 	},
 	{
@@ -100,12 +165,8 @@ var programs = []program{
 		midPeriodAdd: "locked_after_first", activation: "immediate",
 		notes: asOf + "; баллы требуют активной подписки Яндекс Плюс; колесо фортуны — record-only",
 		tiers: []tier{
-			// 5 slots: «Выберите 5 из 12 категорий» / «Выберите ещё 4 …» + 1
-			// selected, consistent across 2025-09, 2026-02 and 2026-07 (both
-			// locales) in the picker corpus. The menu size varies (12–14) and
-			// is NOT the slot count — «Select 4 more out of 14» reads as 14
-			// slots if skimmed.
-			{name: "Стандартный", capValue: "10000", capScope: "total", maxCategories: 5, notes: asOf + "; 5 слотов (скриншоты 2025-09 / 2026-02 / 2026-07)"},
+			// 5 slots. The menu size varies (12–14) and is NOT the slot count.
+			{name: "Стандартный", capValue: "10000", capScope: "total", maxCategories: 5, notes: asOf + "; 5 слотов"},
 		},
 	},
 	{
@@ -121,38 +182,195 @@ var programs = []program{
 		bank: "МКБ", name: "Кэшбэк", periodType: "quarter", selectionMode: "atomic",
 		currencyKind: "points", pointsLabel: "баллы МКБ",
 		midPeriodAdd: "paid", activation: "next_day",
-		notes: asOf + "; баллы 1:1 в рубли с месячными лимитами перевода; платная смена категории посреди квартала, активация на следующий день",
+		notes: mkbAsOf + "; баллами возвращают стоимость покупок прошлого месяца от 1 ₽ (1 б = 1 ₽), выплата до 20 числа; бонусируются покупки от 300 ₽ (кроме соц. карты); платная смена категории посреди квартала, активация на следующий день; ⚠️ с 30.06.25 банк следит, чтобы на повышенные категории приходилось не более 70% всех покупок, иначе ПЛ урезают",
 		tiers: []tier{
-			{name: "Стандарт", capValue: "1500", capScope: "total", notes: asOf},
-			{name: "Выгодный", capValue: "3000", capScope: "total", notes: asOf},
-			{name: "Премиальный", capValue: "20000", capScope: "total", notes: asOf},
-			{name: "Эксклюзивный", capValue: "50000", capScope: "total", notes: asOf},
+			// Выгодный and Эксклюзивный are 2025-05 rungs that no 2026 source
+			// mentions. They are kept rather than deleted because bank_client rows may
+			// reference them, and their notes say the numbers are unverified.
+			{name: "Стандарт", capValue: "3000", capScope: "total", maxCategories: 3,
+				notes: mkbAsOf + "; обычные и соц. карты, 5% в 3 категориях (было 1 500 б по таблице 2025-05)"},
+			{name: "Выгодный", capValue: "3000", capScope: "total",
+				notes: asOf + "; ⚠️ ступень не упоминается ни в одном источнике 2026 года — лимит не перепроверен"},
+			{name: "Премиальный", capValue: "20000", capScope: "total", maxCategories: 4,
+				notes: mkbAsOf + "; 7% в 4 категориях"},
+			{name: "Эксклюзивный", capValue: "50000", capScope: "total",
+				notes: asOf + "; ⚠️ ступень не упоминается ни в одном источнике 2026 года — лимит не перепроверен"},
+		},
+	},
+	{
+		// Таблица 2 is a sixteen-rung PRIORITY ladder, not a set of products: a
+		// client matching several criteria gets exactly one — the highest
+		// порядковый номер — except Детская СберКарта, which is pinned to rung 1
+		// however else the holder qualifies (п. 2.1.7). Seeded here are the ten
+		// distinct (slots, cap) shapes; rungs sharing a shape are listed in the
+		// notes rather than duplicated as rows.
+		bank: "СберБанк", name: "СберСпасибо", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "points", pointsLabel: "бонусы СберСпасибо",
+		// «Активация Категории» is per-period and one-shot; purchases in the
+		// first 15 minutes after activating may not count (п. 2.1.9), which is
+		// a delay no `activation` value expresses — recorded as immediate,
+		// with the caveat in the notes.
+		midPeriodAdd: "locked_after_first", activation: "immediate",
+		notes: sberAsOf + "; Расчетный период = календарный месяц; начисление за каждые полные 100 ₽ с округлением вниз (п. 3.2.4); покупки в первые 15 минут после активации категории могут не учитываться (п. 2.1.9); ⚠️ курс бонуса к рублю устанавливается Уполномоченной компанией и в Правилах не зафиксирован",
+		tiers: []tier{
+			{name: "Детская СберКарта", capValue: "3000", capScope: "total", maxCategories: 2,
+				notes: sberAsOf + "; категории назначаются банком, самостоятельная активация не требуется; приоритет 1 независимо от других критериев"},
+			{name: "Карты Standart, Gold, Classic", capValue: "2000", capScope: "total", maxCategories: 3, notes: sberAsOf},
+			{name: "СберКарта", capValue: "2000", capScope: "total", maxCategories: 3,
+				notes: sberAsOf + "; либо владелец Платежного счета"},
+			{name: "Тарифный план «СберПрайм Зарплатный»", paid: true, capValue: "2000", capScope: "total", maxCategories: 4,
+				notes: sberAsOf + "; 5 000 бонусов, если зарплатные зачисления за предыдущий месяц ≥ 70 000 ₽; та же ступень — ТП «Релиз» и ТП «Патриот»"},
+			{name: "Тарифный план «СберПрайм Старт»", paid: true, capValue: "5000", capScope: "total", maxCategories: 4,
+				notes: sberAsOf + "; либо пакет услуг «СберПрайм Старт Зарплатный»"},
+			{name: "Карты с «большими бонусами»", capValue: "5000", capScope: "total", maxCategories: 5,
+				notes: sberAsOf + "; премиальные пластики (Visa Infinite/Platinum, World MasterCard Elite/Black Edition, МИР Премиальная) и Кредитная СберКарта"},
+			{name: "Подписка СберПрайм", paid: true, capValue: "10000", capScope: "total", maxCategories: 5,
+				notes: sberAsOf + "; та же ступень — ТП «Формула выгоды»"},
+			{name: "Подписка СберПрайм+", paid: true, capValue: "15000", capScope: "total", maxCategories: 5, notes: sberAsOf},
+			{name: "СберПремьер", capValue: "20000", capScope: "total", maxCategories: 5,
+				notes: sberAsOf + "; пакет услуг «Премиальное обслуживание» уровней 1–3; та же ступень — «СберПервый» и уровень 5"},
+			{name: "Премиальное обслуживание, уровень 4", capValue: "50000", capScope: "total", maxCategories: 5,
+				notes: sberAsOf + "; 20 000 бонусов для держателя дополнительной карты, а не владельца пакета"},
+			{name: "Sber Private Banking", capScope: "total", maxCategories: 6,
+				notes: sberAsOf + "; лимит не установлен; категории назначаются банком, самостоятельная активация не требуется"},
 		},
 	},
 	{
 		bank: "Т-Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "incremental",
 		currencyKind: "rub",
-		// Filling a still-empty slot later is what the picker demonstrably
-		// allows (the sheet re-titles to «Select another category»); whether
-		// a TAKEN slot can be swapped stays unobserved, and that is a
-		// different question from adding.
+		// Filling a still-empty slot later is allowed; whether a TAKEN slot can be
+		// swapped is a different question, and stays unknown.
 		midPeriodAdd: "allowed", activation: "unknown",
 		notes: tbankAsOf,
 		tiers: []tier{
-			// The subscription buys cap, not slots: 4 is the only count ever
-			// observed, across all eight sampled months.
+			// The subscription buys cap, not slots — 4 on every tier.
 			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
 			{name: "Pro", paid: true, capValue: "5000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
 			{name: "Premium", paid: true, capValue: "30000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
 		},
 	},
+	{
+		// A SEPARATE bank row, not a second programme under Яндекс Пэй. Both are
+		// products of Яндекс Банк, but `bank` here means the cashback surface a user
+		// actually deals with. Про carries its OWN 10 000-балл pool, and two pools
+		// only model correctly as two bank_clients with independent periods, which
+		// needs two banks.
+		//
+		// It also sidesteps a latent bug: the S3b policy lookup resolves
+		// mid_period_add/activation with `where cpb.bank_id = cl.bank_id limit 1`,
+		// unordered — a second programme under one bank would make it read an
+		// arbitrary row.
+		//
+		// ⚠️ NOT a retail card: only партнёры Яндекс Про (Такси / Доставка / Смена,
+		// RF citizenship) can hold it, and it doubles as their payout card. ⚠️ Its
+		// «уровни» (Начальный/Базовый/Продвинутый) are IDENTIFICATION tiers set by
+		// KYC depth and govern payment limits — the cashback terms are identical
+		// across all three, so they are deliberately not modelled as program_tier.
+		bank: "Яндекс Про", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "points", pointsLabel: "Баллы Плюса", opensDay: 28,
+		midPeriodAdd: "unknown", activation: "unknown",
+		notes: yandexProAsOf + "; карта для исполнителей Яндекс Про, она же карта для выплат; выбор категорий с 28 числа, период — полный календарный месяц; ⚠️ кешбэк начисляется ТОЛЬКО за покупки вне сервисов Яндекса; ⚠️ балл = 1 ₽ скидки внутри сервисов Яндекса, в рубли не выводится; уровни Начальный/Базовый/Продвинутый — это ступени идентификации (лимиты хранения и трат), на кешбэк не влияют",
+		tiers: []tier{
+			// One tier: the card has no cashback levels at all. «Стандартный» is this
+			// project's own label, as with Т-Банк's base level.
+			{name: "Стандартный", capValue: "10000", capScope: "total", maxCategories: 6,
+				notes: yandexProAsOf + "; до 30% в 6 категориях + постоянная строка «Все покупки»; баллы приходят в течение 21 дня, тратятся сразу"},
+		},
+	},
+	{
+		bank: "Совкомбанк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "rub",
+		midPeriodAdd: "unknown", activation: "unknown",
+		// ⚠️ periodType is «monthly cadence», NOT the calendar month: Совкомбанк
+		// accounts caps per расчетный период, which runs from each card's issue
+		// date. The start day belongs on bank_client.period_anchor_day (00033,
+		// ADR-0009 §2); this row only says how LONG a period is.
+		notes: sovcomAsOf + "; ⚠️ расчетный период у каждого клиента свой (от даты выдачи карты) — день начала задаётся в bank_client.period_anchor_day, а не здесь; «Халва» — отдельный продукт со своей ПЛ, здесь не отражён",
+		tiers: []tier{
+			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 3,
+				notes: sovcomAsOf + "; до 15% в 3 категориях, либо 1,5% на всё — режимы взаимоисключающие"},
+			{name: "Подписка «Оптима»", paid: true, capValue: "5000", capScope: "total", maxCategories: 5,
+				notes: sovcomAsOf + "; 399 ₽/мес; до 30% в 5 категориях, либо 3% на всё"},
+		},
+	},
+	{
+		bank: "ОТП Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "points", pointsLabel: "баллы ОТП",
+		midPeriodAdd: "unknown", activation: "unknown",
+		// ⚠️ The offered set is RANDOM after a client's first two months — the
+		// catalog below is a POOL no client ever sees whole (ADR-0009 §1).
+		notes: otpAsOf + "; баллы 1:1 в рубли от 500 б, начисление по 10 числам; ⚠️ покупки округляются вниз до 100 ₽ — покупка за 99 ₽ не приносит ничего; ⚠️ после первых двух месяцев набор предлагаемых категорий случаен, каталог — это пул; лимит общий на все карты клиента, но дебетовая и кредитная не суммируются (в seed — дебетовые лимиты)",
+		tiers: []tier{
+			{name: "ОТП Карта", capValue: "3000", capScope: "total", maxCategories: 4,
+				notes: otpAsOf + "; кредитная карта того же уровня — 1 000 б"},
+			{name: "Зарплатный клиент", capValue: "5000", capScope: "total", maxCategories: 4,
+				notes: otpAsOf + "; статус подтверждается зачислением от 1 ₽ до 19 числа прошлого месяца; кредитная — 1 000 б"},
+			{name: "Premium Light", capValue: "5000", capScope: "total",
+				notes: otpAsOf + "; ⚠️ число категорий не указано в документе; кредитная — 1 000 б"},
+			{name: "Premium", paid: true, capValue: "20000", capScope: "total", maxCategories: 8,
+				notes: otpAsOf + "; ⚠️ отдельный набор категорий, а не расширенный — пять строк доступны только здесь, и восемнадцать базовых недоступны; какие именно предлагают, зависит от остатка (≥2 млн ₽ → Супермаркеты и Искусство); кредитная — 3 000 б"},
+			{name: "Private", paid: true, capValue: "100000", capScope: "total",
+				notes: otpAsOf + "; ⚠️ число категорий не указано в документе; кредитная — 3 000 б"},
+		},
+	},
+	{
+		bank: "МТС Деньги", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "points", pointsLabel: "баллы МТС",
+		midPeriodAdd: "unknown", activation: "unknown",
+		// ⚠️ Not МТС Банк — a different credit institution. The card is issued
+		// by Экси Банк, and it is Экси Банк that runs this picker.
+		notes: mtsAsOf + "; карту выпускает Экси Банк (не МТС Банк — это другая кредитная организация); ⚠️ баллы тратятся только в экосистеме МТС и только при активной подписке — для большинства клиентов они НЕ превращаются в рубли; части клиентов доступна компенсация покупок от 500 ₽ (1 б = 1 ₽), и это единственный путь обратно в деньги",
+		tiers: []tier{
+			{name: "Стандартный", capValue: "10000", capScope: "both", capPerCategory: "1000", maxCategories: 5,
+				notes: mtsAsOf + "; до 30% в сервисах МТС, до 20% в остальных категориях; подписка МТС Premium 99 ₽ первый месяц, далее 349 ₽/мес"},
+		},
+	},
+	{
+		bank: "УБРиР", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "rub", opensDay: 25,
+		midPeriodAdd: "locked_after_first", activation: "immediate",
+		// ⚠️ `activation: immediate` is an approximation the document does not
+		// quite support: chosen BEFORE the period → retroactive to the 1st;
+		// chosen DURING it → from the moment of confirmation (п. 3.4). Neither
+		// `immediate` nor `next_day` says that. ADR-0009 §5 keeps it as text.
+		notes: ubrrAsOf + "; карта «Моя Жизнь»; выбор открывается 25 числа, подтверждённые категории изменению не подлежат (п. 3.5), без выбора кешбэка нет вовсе кроме Транспорта и Онлайн-покупок (п. 3.11); ⚠️ активация: выбрано до начала месяца → с 1 числа, выбрано внутри месяца → с момента подтверждения; ⚠️ кешбэк только при обороте от 5 000 ₽/мес (ЖКХ в оборот не входит) и с покупок от 200 ₽; ⚠️ у части строк условие ежедневного остатка от 10 000 ₽ в течение 20 дней, а при нехватке остатка банк выбирает оплачиваемую категорию СЛУЧАЙНО (п. 3.12)",
+		tiers: []tier{
+			{name: "Базовый", capValue: "2100", capScope: "both", capPerCategory: "500", maxCategories: 3,
+				notes: ubrrAsOf + "; ⚠️ банк устанавливает 3 ИЛИ 4 категории на каждый расчетный месяц (пп. 3.2, 3.7) — здесь базовое значение, фактическое пишется в offer_period.max_categories_override"},
+			{name: "Подписка «Моя жизнь+»", paid: true, capValue: "4100", capScope: "both", capPerCategory: "500", maxCategories: 3,
+				notes: ubrrAsOf + "; 299 ₽/мес; открывает 10% на онлайн-покупки (до 600 ₽/мес) — эффективные 7,5% после вычета подписки"},
+		},
+	},
+	{
+		bank: "Примсоцбанк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "rub",
+		midPeriodAdd: "unknown", activation: "unknown",
+		notes: pskbAsOf + "; выплата до 15 числа, учёт по дате покупки; ⚠️ покупки округляются до 100 ₽ (кроме общественного транспорта); ⚠️ с 2026-05 весь кешбэк умножается на 0,8 — заявленная ставка не равна выплачиваемой; список категорий ОДИНАКОВ для всех клиентов, что среди банков редкость",
+		tiers: []tier{
+			{name: "Стандартный", capValue: "2500", capScope: "both", capPerCategory: "1000", maxCategories: 4,
+				notes: pskbAsOf + "; ставки 3–10%; соцкарта получает повышение в отдельных категориях (аптеки, супермаркеты, книги), а не общий множитель; per-category лимит действует лишь на часть строк"},
+			{name: "Премиальный", paid: true, capValue: "7000", capScope: "both", capPerCategory: "1500", maxCategories: 4,
+				notes: pskbAsOf + "; тот же лимит у зарплатных клиентов; зарплатным ежемесячно дают ещё одну категорию до 10% сверх четырёх"},
+		},
+	},
+	{
+		bank: "Банк Синара", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		currencyKind: "points", pointsLabel: "баллы Синары",
+		midPeriodAdd: "unknown", activation: "unknown",
+		notes: sinaraAsOf + "; карта «Та Самая», 4 категории из 11, список одинаков для всех клиентов; ⚠️ баллы меняются на рубли 1:1 ТОЛЬКО от 1 000 б — заработанное ниже порога нереализуемо; у кредитной карты своя ПЛ (1 категория с разбавлением 70/30, новые карты не выдают)",
+		tiers: []tier{
+			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 4,
+				notes: sinaraAsOf + "; до 15%; первые 3 месяца +5% по всем категориям в рамках продлеваемой акции"},
+			{name: "Опция «Можно больше»", paid: true, capValue: "5000", capScope: "total", maxCategories: 4,
+				notes: sinaraAsOf + "; 599 ₽/мес; ⚠️ покупает лимит, но не слоты — 4 категории на обеих ступенях"},
+		},
+	},
 }
 
-// Reference-only banks (wiki): no programs seeded.
-var extraBanks = []string{"Сбербанк"}
+// Reference-only banks: no programs seeded.
+var extraBanks = []string{}
 
-// Emoji are UI icons for the picker, curated in the taxonomy page
-// (2026-07-16, timeless).
+// Emoji are the picker's UI icons.
 var canonicalCategories = [][3]string{
 	{"supermarkets", "Супермаркеты", "🛒"},
 	{"restaurants", "Кафе и рестораны", "🍽️"},
@@ -184,8 +402,7 @@ var canonicalCategories = [][3]string{
 	{"medicine", "Медицина", "🩺"},
 	{"charity", "Благотворительность", "🤝"},
 	{"all-purchases", "Все покупки", "🧾"},
-	// Additions from the categories taxonomy (knowledge:
-	// concepts/categories-taxonomy.md, five banks synthesized 2026-07-14).
+	// Additions from the category taxonomy.
 	{"avia-tickets", "Авиабилеты", "✈️"},
 	{"rail-tickets", "Ж/д билеты", "🚆"},
 	{"hotels", "Отели", "🏨"},
@@ -213,9 +430,8 @@ var canonicalCategories = [][3]string{
 	{"fines", "Штрафы", "🚨"},
 }
 
-// Known raw-title aliases. Альфа-Банк titles come from the captured category
-// menus (categories.csv); Озон from the wiki/official docs. Other banks'
-// exact raw titles are not yet known — the alias table grows inline (S1).
+// Known raw-title aliases. Banks whose exact raw titles are not known yet
+// have none; the table grows inline (S1).
 var aliases = []struct{ bank, raw, slug string }{
 	{"Альфа-Банк", "Продукты", "supermarkets"},
 	{"Альфа-Банк", "Супермаркеты", "supermarkets"},
@@ -248,8 +464,8 @@ var aliases = []struct{ bank, raw, slug string }{
 	{"Ozon Банк", "Аптеки", "pharmacies"},
 	{"Ozon Банк", "Кафе и Рестораны", "restaurants"},
 	{"Ozon Банк", "Фастфуд", "fastfood"},
-	// Additions from the categories taxonomy (2026-07-14) — documented raw
-	// titles only; service/partner rows stay alias-less by design.
+	// Additions from the category taxonomy — documented raw titles only;
+	// service/partner rows stay alias-less by design.
 	{"Альфа-Банк", "Продукты (Супермаркеты)", "supermarkets"},
 	{"Альфа-Банк", "Фастфуд, кафе и рестораны", "restaurants"},
 	{"Альфа-Банк", "За все покупки", "all-purchases"},
@@ -399,11 +615,10 @@ var aliases = []struct{ bank, raw, slug string }{
 	{"Т-Банк", "Одежда и обувь", "clothes"},
 	{"Т-Банк", "Подарки и творчество", "hobby"},
 	{"Т-Банк", "Цветы", "flowers"},
-	// Beyond the 2026-04 MCC appendix — live app, 2026-07-24.
 	{"Т-Банк", "Все покупки", "all-purchases"},
-	// The «… в Городе» family maps to NO canonical (2026-07-28) — see
-	// the catalog block below; aliasing them would make the lookup promise
-	// the rate at any АЗС / supermarket.
+	// The «… в Городе» family maps to NO canonical — see the catalog block
+	// below; aliasing them would make the lookup promise the rate at any
+	// АЗС / supermarket.
 	{"Яндекс Пэй", "Кафе, бары и рестораны", "restaurants"},
 	{"Яндекс Пэй", "Кафе, рестораны и бары", "restaurants"}, // 2026-07 rules wording; app says «бары и рестораны»
 	{"Яндекс Пэй", "Образование", "education"},
@@ -428,7 +643,7 @@ var aliases = []struct{ bank, raw, slug string }{
 	{"Яндекс Пэй", "Товары для детей", "kids"},
 	{"Яндекс Пэй", "АЗС", "gas-stations"},
 	{"Яндекс Пэй", "Все покупки", "all-purchases"},
-	// МКБ had no aliases at all — added with its first catalog (2026-07-27).
+	// МКБ
 	{"МКБ", "на все покупки", "all-purchases"},
 	{"МКБ", "на АЗС", "gas-stations"},
 	{"МКБ", "Такси", "taxi"},
@@ -453,10 +668,10 @@ var aliases = []struct{ bank, raw, slug string }{
 // snapshot (FK nulls out), MCC memberships cascade and re-land on the new
 // title via the seed CSV.
 var retiredBankCategories = []struct{ bank, title string }{
-	{"Альфа-Банк", "Супермаркеты"}, // → «Продукты» (verified 2026-07-22)
-	{"Т-Банк", "Бензин в городе"},  // never in the live app — «Топливо в Городе» is the real row (2026-07-27)
-	// Corpus sweep 2026-07-27: these titles came from rules PDFs / recollection
-	// and the app renders them differently. Right-hand side is the live wording.
+	{"Альфа-Банк", "Супермаркеты"}, // → «Продукты»
+	{"Т-Банк", "Бензин в городе"},  // → «Топливо в Городе»
+	// Titles the app renders differently from the rules documents. The
+	// right-hand side is the current wording.
 	{"Т-Банк", "Топливо в городе"},           // → «Топливо в Городе»
 	{"Т-Банк", "Шоппинг в городе"},           // → «Шопинг в Городе»
 	{"Ozon Банк", "На все покупки"},          // → «Все покупки»
@@ -470,18 +685,17 @@ var retiredBankCategories = []struct{ bank, title string }{
 // retiredBankCategories, one table down (a stale alias would keep resolving a
 // raw title nobody can enter).
 var retiredAliases = []struct{ bank, raw string }{
-	{"Т-Банк", "Бензин в городе"}, // 2026-07-27
-	// The «… в Городе» family lost its canonical mappings (2026-07-28);
-	// the aliases have to go too, or a raw title typed into a period would
-	// still resolve to АЗС / Супермаркеты / Автоуслуги.
+	{"Т-Банк", "Бензин в городе"},
+	// The «… в Городе» family lost its canonical mappings; the aliases have to
+	// go too, or a raw title typed into a period would still resolve to
+	// АЗС / Супермаркеты / Автоуслуги.
 	{"Т-Банк", "Топливо в Городе"},
 	{"Т-Банк", "Топливо в городе"},
 	{"Т-Банк", "Супермаркеты в Городе"},
 	{"Т-Банк", "Автосервисы в Городе"},
 }
 
-// Brand colors for UI bank tinting (knowledge: bank pages + index,
-// as of 2026-07).
+// Brand colors for UI bank tinting.
 var bankColors = map[string]string{
 	"Альфа-Банк":  "#EF3124",
 	"ВТБ":         "#0A2896",
@@ -489,18 +703,33 @@ var bankColors = map[string]string{
 	"Яндекс Пэй":  "#FC3F1D",
 	"Газпромбанк": "#10069F",
 	"МКБ":         "#E31E24",
-	"Сбербанк":    "#21A038",
+	"СберБанк":    "#21A038",
 	"Т-Банк":      "#FFDD2D",
+	// Read off the background of each bank's own logo in web/src/assets/banks:
+	// the color tints the two-letter chip that stands in for that very logo, so
+	// matching the icon's own background makes the fallback look like a
+	// placeholder for the mark instead of an unrelated square.
+	"Совкомбанк":  "#213A8B",
+	"ОТП Банк":    "#C3FF0B",
+	"УБРиР":       "#CC163F",
+	"Примсоцбанк": "#BEA980",
+	"Банк Синара": "#E40134",
+	// МТС Деньги's icon is a gradient (#FD2D42 → #E8001F), and a chip takes one
+	// flat color — this is the midpoint of the two stops, not a value the brand
+	// states anywhere.
+	"МТС Деньги": "#F21630",
+	"Яндекс Про": "#FFC806",
 }
 
-// Per-bank picker catalogs: the CURRENTLY selectable menu rows, from the
-// taxonomy page's «Bank catalogs» section (⚠️-flagged rows there pending
-// live-app re-verification). slug "" = canonical-less service/channel row —
-// still ordinary kind=regular (corrected 2026-07-21: special is for
-// granted bonus mechanics like Пятница/колесо, never catalog rows); emoji
-// "" = inherit the canonical's.
-var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
-	// Альфа-Банк (as of 2026-01 PDF; menus 2025-01/02; «Продукты» verified live 2026-07-22)
+// Per-bank picker catalogs: the currently selectable menu rows. slug "" =
+// canonical-less service/channel row — still ordinary kind=regular (special
+// is for granted bonus mechanics like Пятница/колесо, never catalog rows);
+// emoji "" = inherit the canonical's.
+var bankCategories = []struct {
+	bank, title, slug, kind, emoji string
+	inactive                       bool // seeded hidden; the insert-only active flag stays an operator control afterwards
+}{
+	// Альфа-Банк
 	{bank: "Альфа-Банк", title: "Продукты", slug: "supermarkets"},
 	{bank: "Альфа-Банк", title: "Кафе и рестораны", slug: "restaurants"},
 	{bank: "Альфа-Банк", title: "Фастфуд", slug: "fastfood"},
@@ -549,7 +778,13 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Альфа-Банк", title: "Деливери", emoji: "🛵"},
 	{bank: "Альфа-Банк", title: "KASSIR.RU", emoji: "🎫"},
 	{bank: "Альфа-Банк", title: "Подели", emoji: "💳"},
-	// Ozon Банк (as of 2026-07 help page)
+	// Rows carried by the bank's MCC appendix:
+	{bank: "Альфа-Банк", title: "Спорт и красота у партнера", emoji: "💪"}, // WellPass partner category
+	// The umbrella duplicate of Фастфуд + Кафе и рестораны: seeded hidden so
+	// mcc-import can attach its codes while the picker and resolve keep showing
+	// only the two separate rows.
+	{bank: "Альфа-Банк", title: "Фастфуд, кафе и рестораны", inactive: true},
+	// Ozon Банк
 	{bank: "Ozon Банк", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "Ozon Банк", title: "Рестораны", slug: "restaurants"},
 	{bank: "Ozon Банк", title: "Фастфуд", slug: "fastfood"},
@@ -563,7 +798,7 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Ozon Банк", title: "Каршеринг", slug: "car-rental"},
 	{bank: "Ozon Банк", title: "Автоуслуги", slug: "auto-services"},
 	{bank: "Ozon Банк", title: "Дом и ремонт", slug: "home-repair"},
-	{bank: "Ozon Банк", title: "Ветклиники и зоомагазины", slug: "pets"},
+	{bank: "Ozon Банк", title: "Вет клиники и зоомагазины", slug: "pets"}, // two words, as the bank's documents write it
 	{bank: "Ozon Банк", title: "Книги", slug: "books"},
 	{bank: "Ozon Банк", title: "Салоны красоты и СПА", slug: "beauty"},
 	{bank: "Ozon Банк", title: "Косметика", slug: "cosmetics"},
@@ -583,9 +818,8 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Ozon Банк", title: "Химчистки", slug: "household-services"},
 	{bank: "Ozon Банк", title: "Фото и видео", slug: "photo-video"},
 	{bank: "Ozon Банк", title: "Все покупки", slug: "all-purchases"},
-	// Merchant rows rendered inline in the Озон picker with their logos,
-	// slot-consuming (2026-06/2026-07 screenshots). Акции outside the menu
-	// («Партнёрские акции» history filter) stay partner_offer.
+	// Merchant rows rendered inline in the picker with their logos,
+	// slot-consuming. Акции outside the menu stay partner_offer.
 	{bank: "Ozon Банк", title: "Tasty Coffee", emoji: "☕"},
 	{bank: "Ozon Банк", title: "START", emoji: "🎬"},
 	{bank: "Ozon Банк", title: "Дикси Доставка", emoji: "🛒"},
@@ -593,7 +827,7 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Ozon Банк", title: "РИВ ГОШ", emoji: "💄"},
 	{bank: "Ozon Банк", title: "Отели на Туту", emoji: "🏨"},
 	{bank: "Ozon Банк", title: "Сварщица Екатерина", emoji: "🔧"},
-	// ВТБ (as of 2025-12 «Мультибонус» rules)
+	// ВТБ
 	{bank: "ВТБ", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "ВТБ", title: "Кафе и рестораны", slug: "restaurants"},
 	{bank: "ВТБ", title: "АЗС", slug: "gas-stations"},
@@ -636,15 +870,15 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "ВТБ", title: "Все остальные покупки", slug: "all-purchases"},
 	{bank: "ВТБ", title: "Оплата ЖКУ в ВТБ-Онлайн", emoji: "🧾"},
 	{bank: "ВТБ", title: "Оплата сотовой связи в ВТБ-Онлайн", emoji: "📱"},
-	// Own-service row seen in the picker corpus 2026-07 (ж/д и авиабилеты на
-	// vtb.aviakassa.ru, «дополнительно к кешбэку в сервисе») — canonical-less:
-	// it is a channel, not a spending category.
+	// Own-service row (ж/д и авиабилеты на vtb.aviakassa.ru, «дополнительно к
+	// кешбэку в сервисе») — canonical-less: it is a channel, not a spending
+	// category.
 	{bank: "ВТБ", title: "ВТБ Путешествия", emoji: "🧳"},
-	// Merchant rows inside the ВТБ picker (2026-01/2026-07 screenshots).
+	// Merchant rows inside the ВТБ picker.
 	{bank: "ВТБ", title: "Яндекс Лавка", emoji: "🥬"},
 	{bank: "ВТБ", title: "М.Косметик", emoji: "💄"},
 	{bank: "ВТБ", title: "Почта России", emoji: "📮"},
-	// Т-Банк (as of 2026-04 MCC appendix; reference-only bank)
+	// Т-Банк
 	{bank: "Т-Банк", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "Т-Банк", title: "Рестораны", slug: "restaurants"},
 	{bank: "Т-Банк", title: "Фастфуд", slug: "fastfood"},
@@ -679,36 +913,29 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Т-Банк", title: "Детские товары", slug: "kids"},
 	{bank: "Т-Банк", title: "Маркетплейсы", slug: "marketplaces"},
 	{bank: "Т-Банк", title: "Подарки и творчество", slug: "hobby"},
-	// Beyond the 2026-04 MCC appendix — live app, 2026-07-24 (the
-	// appendix lacks these; full live-menu ingest queued in the knowledge log).
 	{bank: "Т-Банк", title: "Все покупки", slug: "all-purchases"},
 	// Geo-scoped «… в Городе» family — where Т-Банк's headline rates live
-	// (10–30% vs 5–7% on plain rows). Spelling verified against the corpus
-	// 2026-07-27: capital «Г», and «Шопинг» with one «п».
-	// None of them carries a canonical (2026-07-28): «в Городе» pays
-	// at partner merchants in the user's city, not across the whole MCC
-	// category, so mapping «Топливо в Городе» onto АЗС would make the lookup
-	// promise 10% at any filling station. Canonical-less means the rows stay
-	// selectable and visible in their period, but never answer «какой картой
-	// платить?» for АЗС / Супермаркеты / Автоуслуги. They carry their own
-	// emoji — with no canonical there is nothing to inherit one from.
+	// (10–30% vs 5–7% on plain rows). None of them carries a canonical: «в
+	// Городе» pays at partner merchants in the user's city, not across the whole
+	// MCC category, so mapping «Топливо в Городе» onto АЗС would make the lookup
+	// promise 10% at any filling station. Canonical-less rows stay selectable and
+	// visible in their period but never answer «какой картой платить?»; they
+	// carry their own emoji, having no canonical to inherit one from.
 	{bank: "Т-Банк", title: "Топливо в Городе", emoji: "⛽"},
 	{bank: "Т-Банк", title: "Супермаркеты в Городе", emoji: "🛒"},
 	{bank: "Т-Банк", title: "Автосервисы в Городе", emoji: "🛠️"},
-	// «Шопинг в Городе» was the first of the family ruled canonical-less
-	// (2026-07-27): it also bundles одежда + техника + аксессуары +
-	// маркетплейсы, so no single canonical was honest even before the
-	// geo-scope argument.
+	// «Шопинг в Городе» also bundles одежда + техника + аксессуары +
+	// маркетплейсы, so no single canonical is honest for it either.
 	{bank: "Т-Банк", title: "Шопинг в Городе", emoji: "🛍️"},
 	{bank: "Т-Банк", title: "Афиша в Городе", emoji: "🎭"},
-	// Own-service rows — slot-consuming, hence catalog rows (2026-07-27).
+	// Own-service rows — slot-consuming, hence catalog rows.
 	{bank: "Т-Банк", title: "Т-Страхование", emoji: "🛡️"},
 	{bank: "Т-Банк", title: "Долями", emoji: "💳"},
 	// Merchant + subscription-reward rows inside the Т-Банк picker.
 	{bank: "Т-Банк", title: "MODI", emoji: "🛍️"},
 	{bank: "Т-Банк", title: "Подписка Магнит в Т-Банке", emoji: "🧲"},
 	{bank: "Т-Банк", title: "PREMIER в Т-Банке", emoji: "🎬"},
-	// Яндекс Пэй (as of 2026-07-14 rules)
+	// Яндекс Пэй
 	{bank: "Яндекс Пэй", title: "Супермаркеты", slug: "supermarkets"},
 	{bank: "Яндекс Пэй", title: "Кафе, бары и рестораны", slug: "restaurants"},
 	{bank: "Яндекс Пэй", title: "АЗС", slug: "gas-stations"},
@@ -731,10 +958,11 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Яндекс Пэй", title: "Товары для детей", slug: "kids"},
 	{bank: "Яндекс Пэй", title: "Ювелирные изделия", slug: "jewelry"},
 	{bank: "Яндекс Пэй", title: "Медицина", slug: "medicine"},
+	// In the rules' Приложение № 2.
+	{bank: "Яндекс Пэй", title: "Развлечения", slug: "entertainment"},
 	{bank: "Яндекс Пэй", title: "Все покупки", slug: "all-purchases"},
-	// Own-service rows. Titles below carry the wording the app renders
-	// («Яндекс Маркет», not «Сервис «Яндекс Маркет»» as the rules PDF has
-	// it) — corpus-verified 2026-07-27 against Russian-locale screenshots.
+	// Own-service rows, titled as the app renders them («Яндекс Маркет», not
+	// «Сервис «Яндекс Маркет»» as the rules PDF has it).
 	{bank: "Яндекс Пэй", title: "Яндекс Маркет", emoji: "🛍️"},
 	{bank: "Яндекс Пэй", title: "Яндекс Лавка", emoji: "🛒"},
 	{bank: "Яндекс Пэй", title: "Яндекс Заправки", emoji: "⛽"},
@@ -744,24 +972,23 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	// the app's own subtitle is «Билеты на концерты».
 	{bank: "Яндекс Пэй", title: "Яндекс Музыка", emoji: "🎫"},
 	{bank: "Яндекс Пэй", title: "Кинопоиск", emoji: "🎬"},
-	// «ОСАГО» sits under «С картой любого банка» and is scoped to Яндекс
-	// Заботой (its own subtitle). Canonical-less despite `insurance`
-	// existing, for the same reason «Яндекс Заправки» is canonical-less
-	// despite `gas-stations`: the row pays only through Яндекс's service,
-	// so mapping it would make «какой картой платить?» recommend it for an
-	// ОСАГО bought anywhere else.
+	// «ОСАГО» sits under «С картой любого банка» and is scoped to Яндекс Заботе.
+	// Canonical-less despite `insurance` existing, for the same reason «Яндекс
+	// Заправки» is canonical-less despite `gas-stations`: the row pays only
+	// through Яндекс's service, so mapping it would make «какой картой платить?»
+	// recommend it for an ОСАГО bought anywhere else.
 	{bank: "Яндекс Пэй", title: "ОСАГО", emoji: "🛡️"},
-	// Channel rows (rules PDF, not seen in the picker corpus).
+	// Channel rows (from the rules PDF).
 	{bank: "Яндекс Пэй", title: "Сервис «Яндекс Go»", emoji: "🚖"},
 	{bank: "Яндекс Пэй", title: "1% в Сервисах Яндекса", emoji: "🟡"},
 	{bank: "Яндекс Пэй", title: "Оплата через Яндекс Сплит", emoji: "💳"},
 	{bank: "Яндекс Пэй", title: "Оплата через СБП со Счёта в Яндексе", emoji: "💸"},
 	{bank: "Яндекс Пэй", title: "Оплата через SberPay QR", emoji: "🔳"},
 	{bank: "Яндекс Пэй", title: "Оплата токеном по NFC", emoji: "📲"},
-	// Merchant rows rendered inside the picker. Seeded canonical-less on the
-	// slot test — picking one spends a slot, so it must exist to record a
-	// month (2026-07-27: prefer more rows over fewer). These rotate
-	// monthly; a row absent from the current menu is not wrong, just idle.
+	// Merchant rows rendered inside the picker, seeded canonical-less on the
+	// slot test — picking one spends a slot, so it must exist to record a month
+	// (prefer more rows over fewer). These rotate monthly; a row absent from the
+	// current menu is not wrong, just idle.
 	{bank: "Яндекс Пэй", title: "Свои Плюсы в S7", emoji: "✈️"},
 	{bank: "Яндекс Пэй", title: "РИВ ГОШ", emoji: "💄"},
 	{bank: "Яндекс Пэй", title: "ЛЭТУАЛЬ", emoji: "💄"},
@@ -772,20 +999,14 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "Яндекс Пэй", title: "Амедиатека", emoji: "🎬"},
 	{bank: "Яндекс Пэй", title: "START", emoji: "🎬"},
 	{bank: "Яндекс Пэй", title: "Иви", emoji: "📺"},
-	// ⚠️ Titles below are RECONSTRUCTED from English-locale screenshots —
-	// the corpus has no Russian rendering of these rows yet. That is the
-	// exact move that produced the «Яндекс Забота»/«ОСАГО» miss, so treat
-	// them as provisional and retire on the first Russian sighting that
-	// disagrees. Seeded anyway on the «more rows over fewer» rule;
-	// «Яндекс Еда» is the safest of the three (Альфа's catalog already
-	// carries that exact Russian title).
-	{bank: "Яндекс Пэй", title: "Яндекс Афиша", emoji: "🎭"},         // «Yandex Afisha», 25%, theater tickets
-	{bank: "Яндекс Пэй", title: "Яндекс Еда", emoji: "🍱"},           // «Yandex Eats»
-	{bank: "Яндекс Пэй", title: "Самокаты в Яндекс Go", emoji: "🛴"}, // «Scooters at Yandex Go»
-	// МКБ (first catalog, from the 2025-09 screenshot ingest 2026-07-27).
-	// The bank had a program but no catalog rows at all until now — the
-	// quarter rotates the offered set rather than the rate (flat 5% almost
-	// throughout), so this is a per-quarter snapshot, not a stable menu.
+	// ⚠️ Provisional titles: the Russian wording of these rows is unconfirmed,
+	// so retire them on the first sighting that disagrees. Seeded anyway on the
+	// «more rows over fewer» rule.
+	{bank: "Яндекс Пэй", title: "Яндекс Афиша", emoji: "🎭"},
+	{bank: "Яндекс Пэй", title: "Яндекс Еда", emoji: "🍱"},
+	{bank: "Яндекс Пэй", title: "Самокаты в Яндекс Go", emoji: "🛴"},
+	// МКБ — the quarter rotates the offered set rather than the rate (flat 5%
+	// almost throughout), so this is a per-quarter snapshot, not a stable menu.
 	// Lower-case «на …» prefixes are the app's own rendering, not a typo.
 	{bank: "МКБ", title: "на все покупки", slug: "all-purchases"},
 	{bank: "МКБ", title: "на АЗС", slug: "gas-stations"},
@@ -802,8 +1023,453 @@ var bankCategories = []struct{ bank, title, slug, kind, emoji string }{
 	{bank: "МКБ", title: "Развлечения", slug: "entertainment"},
 	{bank: "МКБ", title: "Кино и театры", slug: "cinema"},
 	{bank: "МКБ", title: "Видеоигры", slug: "digital-goods"},
-	{bank: "МКБ", title: "МКБ Travel", emoji: "✈️"},
+	{bank: "МКБ", title: "МКБ Путешествия", emoji: "✈️"}, // «МКБ Travel» until 2026-Q2; the bank renamed the service
 	{bank: "МКБ", title: "Бургер Кинг", emoji: "🍔"},
+	// The catalog is re-cut every quarter, so rows accumulate across issues (a
+	// row absent this quarter is an unused search hit, a missing one blocks
+	// recording). III квартал 2026: the base row carries its rate in the title;
+	// gated rows (pension card, mortgage, «Просто» subscription, Премиум / 5-й
+	// уровень, age 14–18) keep the document's titles.
+	{bank: "МКБ", title: "1% на все покупки", slug: "all-purchases"},
+	{bank: "МКБ", title: "Фастфуд", slug: "fastfood"},
+	{bank: "МКБ", title: "Книги и канцтовары", slug: "books"},
+	{bank: "МКБ", title: "Цветы и подарки", slug: "flowers"},
+	{bank: "МКБ", title: "Салоны красоты", slug: "beauty"},
+	{bank: "МКБ", title: "Образование", slug: "education"},
+	{bank: "МКБ", title: "Золотое Яблоко", emoji: "🍏"},
+	{bank: "МКБ", title: "Аптеки и оптика", slug: "pharmacies"},
+	{bank: "МКБ", title: "Кафе и рестораны", slug: "restaurants"},
+	{bank: "МКБ", title: "ЦУМ", emoji: "🏬"},
+	{bank: "МКБ", title: "Дом и ремонт", slug: "home-repair"},
+	{bank: "МКБ", title: "АЗС в рамках подписки «Просто»", slug: "gas-stations"},
+
+	// ─── Tier A banks ──────────────────────────────────────────────────────
+	// Titles come from each bank's own published documents. Seeded on «prefer
+	// more rows over fewer»: a missing row blocks recording a month, a surplus
+	// one is an unused search hit.
+
+	// УБРиР — Приложение №1 to the ПЛ effective 2026-08-01. This is a POOL of
+	// ~45 rows; the bank offers a restricted subset each month and the client
+	// picks 3–4 of those (п. 3.7). Seeding the pool is correct: seeding a
+	// month's offering would make every other month's rows look absent.
+	{bank: "УБРиР", title: "Оплата ЖКУ", slug: "utilities"},
+	{bank: "УБРиР", title: "Салоны красоты", slug: "beauty"},
+	{bank: "УБРиР", title: "Аптеки", slug: "pharmacies"},
+	{bank: "УБРиР", title: "Авиабилеты", slug: "avia-tickets"},
+	{bank: "УБРиР", title: "Прокат авто", slug: "car-rental"},
+	{bank: "УБРиР", title: "Автозапчасти и сервисы", slug: "auto-parts"},
+	{bank: "УБРиР", title: "Автомойки", slug: "auto-services"},
+	{bank: "УБРиР", title: "Бизнес услуги", slug: "household-services"},
+	{bank: "УБРиР", title: "Уход и уборка", slug: "household-services"},
+	{bank: "УБРиР", title: "Компьютеры и сервисы", slug: "electronics"},
+	{bank: "УБРиР", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "УБРиР", title: "Образование", slug: "education"},
+	{bank: "УБРиР", title: "Кино", slug: "cinema"},
+	{bank: "УБРиР", title: "Танцы", slug: "active-leisure"},
+	{bank: "УБРиР", title: "Театр", slug: "culture"},
+	{bank: "УБРиР", title: "Музыка", slug: "music"},
+	{bank: "УБРиР", title: "Цветы", slug: "flowers"},
+	{bank: "УБРиР", title: "АЗС и зарядные станции", slug: "gas-stations"},
+	{bank: "УБРиР", title: "Охрана и безопасность", slug: "household-services"},
+	{bank: "УБРиР", title: "Живопись и декор", slug: "culture"},
+	{bank: "УБРиР", title: "Книги", slug: "books"},
+	{bank: "УБРиР", title: "Подарки и Сувениры", slug: "souvenirs"},
+	{bank: "УБРиР", title: "Творчество", slug: "hobby"},
+	{bank: "УБРиР", title: "Фото", slug: "photo-video"},
+	{bank: "УБРиР", title: "Гостиницы", slug: "hotels"},
+	{bank: "УБРиР", title: "Украшения и аксессуары", slug: "jewelry"},
+	{bank: "УБРиР", title: "Аренда лодок и яхт", slug: "active-leisure"},
+	{bank: "УБРиР", title: "Медицина", slug: "medicine"},
+	{bank: "УБРиР", title: "Автоперевозки", slug: "transport"},
+	{bank: "УБРиР", title: "Домашние питомцы", slug: "pets"},
+	{bank: "УБРиР", title: "Антиквариат", slug: "culture"},
+	{bank: "УБРиР", title: "Спорттовары", slug: "sport-goods"},
+	{bank: "УБРиР", title: "Активный спорт", slug: "active-leisure"},
+	{bank: "УБРиР", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "УБРиР", title: "Платные дороги", slug: "toll-roads"},
+	{bank: "УБРиР", title: "Такси", slug: "taxi"},
+	{bank: "УБРиР", title: "Универсамы", slug: "supermarkets"},
+	{bank: "УБРиР", title: "Детские товары", slug: "kids"},
+	{bank: "УБРиР", title: "Магазины косметики", slug: "cosmetics"},
+	// Pool rows whose title cell wraps or carries a comma in the PDF.
+	{bank: "УБРиР", title: "Бытовая электроника и сервис", slug: "electronics"},
+	{bank: "УБРиР", title: "Аттракционы и видео игры", slug: "entertainment"},
+	{bank: "УБРиР", title: "Дом, Ремонт", slug: "home-repair"},
+	{bank: "УБРиР", title: "Магазин беспошлинной торговли (DUTY FREE)", slug: "duty-free"},
+	{bank: "УБРиР", title: "Одежда, обувь", slug: "clothes"},
+	{bank: "УБРиР", title: "Аренда оборудования и инструментов", emoji: "🛠️"},
+	{bank: "УБРиР", title: "Кафе, рестораны", slug: "restaurants"},
+	{bank: "УБРиР", title: "ТВ, связь", slug: "telecom"},
+	{bank: "УБРиР", title: "Туристические агентства и операторы", slug: "travel-agencies"},
+	{bank: "УБРиР", title: "Игровые и медиа платформы, программное обеспечение", slug: "digital-goods"},
+	{bank: "УБРиР", title: "Железнодорожный и водный транспорт", slug: "rail-tickets"},
+	{bank: "УБРиР", title: "Остальные покупки", slug: "all-purchases"},
+	// The two rows Приложение №1 lists as «не требуется выбирать» — credited
+	// automatically, consuming no slot, and the only thing that still pays when
+	// a client picks nothing at all (п. 3.11). They are catalog rows because
+	// they appear in the appendix, not because they are pickable.
+	{bank: "УБРиР", title: "Транспорт (местный и пригородный)", slug: "transport"},
+	{bank: "УБРиР", title: "Онлайн-покупки", slug: "marketplaces"},
+	// Single-merchant rows: their MCC is defined as «коды, присвоенные
+	// <магазином>», so they are merchants, not categories — canonical-less by
+	// the 2026-07-27 rule, and they carry their own emoji since there is no
+	// canonical to inherit one from.
+	{bank: "УБРиР", title: "Библиотека ароматов онлайн", emoji: "🕯️"},
+	{bank: "УБРиР", title: "Бубль Гум онлайн", emoji: "🧸"},
+	{bank: "УБРиР", title: "Издательство «МИФ» онлайн", emoji: "📚"},
+	{bank: "УБРиР", title: "Мегафон онлайн", emoji: "📱"},
+	{bank: "УБРиР", title: "Билайн онлайн", emoji: "📱"},
+	{bank: "УБРиР", title: "Очкарик онлайн", emoji: "👓"},
+	{bank: "УБРиР", title: "Котофото онлайн", emoji: "📷"},
+
+	// ОТП Банк — the official MCC instruction's category × tier matrix
+	// (сентябрь 2026). ⚠️ A POOL: after a client's first two months the bank
+	// draws which rows they are offered.
+	{bank: "ОТП Банк", title: "Автоуслуги", slug: "auto-services"},
+	{bank: "ОТП Банк", title: "Запчасти и аксессуары", slug: "auto-parts"},
+	{bank: "ОТП Банк", title: "Прокат авто и каршеринг", slug: "car-rental"},
+	{bank: "ОТП Банк", title: "АЗС", slug: "gas-stations"},
+	{bank: "ОТП Банк", title: "Авиабилеты", slug: "avia-tickets"},
+	{bank: "ОТП Банк", title: "Аптеки", slug: "pharmacies"},
+	{bank: "ОТП Банк", title: "Детские товары", slug: "kids"},
+	{bank: "ОТП Банк", title: "Дом, ремонт", slug: "home-repair"},
+	{bank: "ОТП Банк", title: "ЖКХ", slug: "utilities"},
+	{bank: "ОТП Банк", title: "Животные", slug: "pets"},
+	{bank: "ОТП Банк", title: "Здоровье и медицина", slug: "medicine"},
+	{bank: "ОТП Банк", title: "Кафе и рестораны", slug: "restaurants"},
+	{bank: "ОТП Банк", title: "Книги", slug: "books"},
+	{bank: "ОТП Банк", title: "Творчество и хобби", slug: "hobby"},
+	{bank: "ОТП Банк", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "ОТП Банк", title: "Обучение и образование", slug: "education"},
+	{bank: "ОТП Банк", title: "Магазины одежды", slug: "clothes"},
+	{bank: "ОТП Банк", title: "Продуктовые магазины", slug: "supermarkets"},
+	{bank: "ОТП Банк", title: "Кино и развлечения", slug: "entertainment"},
+	{bank: "ОТП Банк", title: "Такси", slug: "taxi"},
+	{bank: "ОТП Банк", title: "Алкоголь", slug: "alcohol"},
+	{bank: "ОТП Банк", title: "Отдых и путешествия", slug: "travel"},
+	{bank: "ОТП Банк", title: "Транспорт", slug: "transport"},
+	{bank: "ОТП Банк", title: "Часы, ювелирные изделия", slug: "jewelry"},
+	{bank: "ОТП Банк", title: "Сувениры", slug: "souvenirs"},
+	{bank: "ОТП Банк", title: "Цветы", slug: "flowers"},
+	{bank: "ОТП Банк", title: "Фастфуд", slug: "fastfood"},
+	{bank: "ОТП Банк", title: "Красота", slug: "beauty"},
+	// Further base-tier rows. «Спортивные товары» is credit-card-only per the
+	// matrix's footnote 1.
+	{bank: "ОТП Банк", title: "Спортивные товары", slug: "sport-goods"},
+	{bank: "ОТП Банк", title: "Duty Free", slug: "duty-free"},
+	{bank: "ОТП Банк", title: "Цифровые товары", slug: "digital-goods"},
+	{bank: "ОТП Банк", title: "Бытовая техника и электроника", slug: "electronics"},
+	{bank: "ОТП Банк", title: "На все покупки", slug: "all-purchases"},
+	// ⚠️ Premium-only rows. They are NOT renamings of the base rows above —
+	// the matrix gives them different MCC sets, and the base card cannot pick
+	// them at all. Folding either pair together would erase that.
+	{bank: "ОТП Банк", title: "Искусство", slug: "culture"},
+	{bank: "ОТП Банк", title: "Рестораны, фастфуд", slug: "restaurants"},
+	{bank: "ОТП Банк", title: "Одежда и обувь", slug: "clothes"},
+	{bank: "ОТП Банк", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "ОТП Банк", title: "Такси и каршеринг", slug: "taxi"},
+	// Premium-only too; pharmacies plus the medical block in one row, which
+	// maps cleanly to neither canonical.
+	{bank: "ОТП Банк", title: "Аптеки и медицинские услуги", emoji: "💊"},
+	// A manufacturer, not a merchant and not a category — 10% at MCC 5722/5712.
+	{bank: "ОТП Банк", title: "Tefal", emoji: "🍳"},
+
+	// Примсоцбанк — Приложение 1 of the bank's own rules («Полный перечень
+	// категорий покупок и МСС», ред. 09.06.2026), 35 rows. The picker offers the
+	// whole list to every client, who picks 4. «Весь кешбэк» is the base row (all
+	// MCC except Приложение 2 and the chosen categories).
+	{bank: "Примсоцбанк", title: "Общественный транспорт", slug: "transport"},
+	{bank: "Примсоцбанк", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "Примсоцбанк", title: "Путешествия", slug: "travel"},
+	{bank: "Примсоцбанк", title: "Красота, парикмахерские, салоны красоты", slug: "beauty"},
+	{bank: "Примсоцбанк", title: "Развлечения, кинотеатры", slug: "entertainment"},
+	{bank: "Примсоцбанк", title: "Одежда, обувь", slug: "clothes"},
+	{bank: "Примсоцбанк", title: "Рестораны, кафе, закусочные, фастфуд", slug: "restaurants"},
+	{bank: "Примсоцбанк", title: "Алкомаркеты", slug: "alcohol"},
+	{bank: "Примсоцбанк", title: "Цветы, флористика", slug: "flowers"},
+	{bank: "Примсоцбанк", title: "Косметика", slug: "cosmetics"},
+	{bank: "Примсоцбанк", title: "Спорттовары, спорт", slug: "sport-goods"},
+	{bank: "Примсоцбанк", title: "Товары для дома и ремонта", slug: "home-repair"},
+	{bank: "Примсоцбанк", title: "Яндекс+АЗС", slug: "gas-stations"},
+	{bank: "Примсоцбанк", title: "Ювелирные украшения и часы", slug: "jewelry"},
+	{bank: "Примсоцбанк", title: "Аптеки", slug: "pharmacies"},
+	{bank: "Примсоцбанк", title: "Подарки, товары для творчества", slug: "hobby"},
+	{bank: "Примсоцбанк", title: "Супермаркеты и универсамы", slug: "supermarkets"},
+	{bank: "Примсоцбанк", title: "Такси", slug: "taxi"},
+	{bank: "Примсоцбанк", title: "Образование", slug: "education"},
+	{bank: "Примсоцбанк", title: "Техника", slug: "electronics"},
+	{bank: "Примсоцбанк", title: "Здоровье", slug: "health"},
+	{bank: "Примсоцбанк", title: "Бытовые услуги", slug: "household-services"},
+	{bank: "Примсоцбанк", title: "Детские товары", slug: "kids"},
+	{bank: "Примсоцбанк", title: "Цифровые товары", slug: "digital-goods"},
+	{bank: "Примсоцбанк", title: "Домашние животные", slug: "pets"},
+	{bank: "Примсоцбанк", title: "Аренда авто", slug: "car-rental"},
+	{bank: "Примсоцбанк", title: "Искусство, коллекция", slug: "culture"},
+	{bank: "Примсоцбанк", title: "Музыкальные инструменты, магазины", slug: "music"},
+	{bank: "Примсоцбанк", title: "Аксессуары, галантерея", slug: "accessories"},
+	{bank: "Примсоцбанк", title: "Книги, канцелярия", slug: "books"},
+	{bank: "Примсоцбанк", title: "Фото, видео", slug: "photo-video"},
+	{bank: "Примсоцбанк", title: "Весь кешбэк", slug: "all-purchases"},
+	{bank: "Примсоцбанк", title: "Автоуслуги", slug: "auto-services"},
+	// Business-service and logistics rows map cleanly to nothing.
+	{bank: "Примсоцбанк", title: "Транспортировка, хранение, доставка", emoji: "📦"},
+	{bank: "Примсоцбанк", title: "Агентства, бизнес-услуги", emoji: "🧾"},
+
+	// МТС Деньги — the full pool of «Условия программы лояльности „МТС
+	// Cashback"» Приложение №1 (редакция 31.08.2026). 84 rows of three kinds:
+	// MCC categories, own-service and merchant rows (no MCC), and QR-channel
+	// rows that pay only through the bank's own apps. A client picks 5; the rate
+	// is set per row each month.
+	{bank: "МТС Деньги", title: "Duty Free", slug: "duty-free"},
+	{bank: "МТС Деньги", title: "Авиабилеты", slug: "avia-tickets"},
+	{bank: "МТС Деньги", title: "Автомобильные услуги", slug: "auto-services"},
+	{bank: "МТС Деньги", title: "Аптеки", slug: "pharmacies"},
+	{bank: "МТС Деньги", title: "Аренда автомобилей", slug: "car-rental"},
+	{bank: "МТС Деньги", title: "Выставки и музеи", slug: "culture"},
+	{bank: "МТС Деньги", title: "Дача, сад", slug: "home-repair"},
+	{bank: "МТС Деньги", title: "Детские товары", slug: "kids"},
+	{bank: "МТС Деньги", title: "Дом и ремонт", slug: "home-repair"},
+	{bank: "МТС Деньги", title: "Железнодорожные билеты", slug: "rail-tickets"},
+	{bank: "МТС Деньги", title: "ЖКХ", slug: "utilities"},
+	{bank: "МТС Деньги", title: "Здоровье", slug: "health"},
+	{bank: "МТС Деньги", title: "Зоотовары", slug: "pets"},
+	{bank: "МТС Деньги", title: "Искусство", slug: "culture"},
+	{bank: "МТС Деньги", title: "Каршеринг", slug: "car-rental"},
+	{bank: "МТС Деньги", title: "Фастфуд и рестораны", slug: "restaurants"},
+	{bank: "МТС Деньги", title: "Кино", slug: "cinema"},
+	{bank: "МТС Деньги", title: "Книги", slug: "books"},
+	{bank: "МТС Деньги", title: "Косметика и парфюмерия", slug: "cosmetics"},
+	{bank: "МТС Деньги", title: "Красота", slug: "beauty"},
+	{bank: "МТС Деньги", title: "Круизы", slug: "travel"},
+	{bank: "МТС Деньги", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "МТС Деньги", title: "Медицинские услуги", slug: "medicine"},
+	{bank: "МТС Деньги", title: "Музыка", slug: "music"},
+	{bank: "МТС Деньги", title: "Образование", slug: "education"},
+	{bank: "МТС Деньги", title: "Одежда и обувь", slug: "clothes"},
+	{bank: "МТС Деньги", title: "Одежда, Обувь, Ювелирные изделия и часы", slug: "clothes"},
+	{bank: "МТС Деньги", title: "Отели", slug: "hotels"},
+	{bank: "МТС Деньги", title: "Платные дороги", slug: "toll-roads"},
+	{bank: "МТС Деньги", title: "Путешествия", slug: "travel"},
+	{bank: "МТС Деньги", title: "Развлечения и Кино", slug: "entertainment"},
+	{bank: "МТС Деньги", title: "Рестораны", slug: "restaurants"},
+	{bank: "МТС Деньги", title: "Спортивные товары", slug: "sport-goods"},
+	{bank: "МТС Деньги", title: "Стоматология", slug: "medicine"},
+	{bank: "МТС Деньги", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "МТС Деньги", title: "Такси", slug: "taxi"},
+	{bank: "МТС Деньги", title: "Такси, каршеринг и аренда авто", slug: "taxi"},
+	{bank: "МТС Деньги", title: "Техника, электроника", slug: "electronics"},
+	{bank: "МТС Деньги", title: "Топливо и АЗС", slug: "gas-stations"},
+	{bank: "МТС Деньги", title: "Транспорт", slug: "transport"},
+	{bank: "МТС Деньги", title: "Турагентства", slug: "travel-agencies"},
+	{bank: "МТС Деньги", title: "Фастфуд", slug: "fastfood"},
+	{bank: "МТС Деньги", title: "Фитнес", slug: "active-leisure"},
+	{bank: "МТС Деньги", title: "Фото, Видео", slug: "photo-video"},
+	{bank: "МТС Деньги", title: "Цветы", slug: "flowers"},
+	{bank: "МТС Деньги", title: "Часы и украшения", slug: "jewelry"},
+	{bank: "МТС Деньги", title: "На все!", slug: "all-purchases"},
+	// Canonical-less: umbrella mixes, ecosystem codes, own services, merchants
+	// and QR-channel rows — a canonical would make the lookup promise their
+	// rate at an ordinary merchant.
+	{bank: "МТС Деньги", title: "Бренды из-за рубежа", emoji: "📦"},
+	{bank: "МТС Деньги", title: "Канцтовары", emoji: "✏️"},
+	{bank: "МТС Деньги", title: "Сувениры", emoji: "🎁"},
+	{bank: "МТС Деньги", title: "Шик-блеск-красота", emoji: "✨"},
+	{bank: "МТС Деньги", title: "Сбер", emoji: "🟢"},
+	{bank: "МТС Деньги", title: "Экосистема", emoji: "🔗"},
+	{bank: "МТС Деньги", title: "Яндекс", emoji: "🟡"},
+	{bank: "МТС Деньги", title: "Билеты в кино на МТС Live", emoji: "🎟️"},
+	{bank: "МТС Деньги", title: "Гемотест", emoji: "🧪"},
+	{bank: "МТС Деньги", title: "Дринкит", emoji: "☕"},
+	{bank: "МТС Деньги", title: "Магазины напитков", emoji: "🍷"},
+	{bank: "МТС Деньги", title: "Пополнение App Store из России", emoji: "🍎"},
+	{bank: "МТС Деньги", title: "Самокат", emoji: "🛒"},
+	{bank: "МТС Деньги", title: "Супермаркеты по QR", emoji: "🔳"},
+	{bank: "МТС Деньги", title: "Фастфуд и рестораны по QR", emoji: "🔳"},
+	{bank: "МТС Деньги", title: "Транспорт по QR", emoji: "🔳"},
+	{bank: "МТС Деньги", title: "Wildberries", emoji: "🛍️"},
+	{bank: "МТС Деньги", title: "KION", emoji: "🎬"},
+	{bank: "МТС Деньги", title: "МТС Music", emoji: "🎵"},
+	{bank: "МТС Деньги", title: "МТС Live", emoji: "🎟️"},
+	{bank: "МТС Деньги", title: "Ticketland", emoji: "🎫"},
+	{bank: "МТС Деньги", title: "МТС Юрент", emoji: "🛴"},
+	{bank: "МТС Деньги", title: "МТС Premium", emoji: "⭐"},
+	{bank: "МТС Деньги", title: "МТС Junior", emoji: "🧒"},
+	{bank: "МТС Деньги", title: "МТС Строки", emoji: "📖"},
+	{bank: "МТС Деньги", title: "МТС Fog Play", emoji: "🎮"},
+	{bank: "МТС Деньги", title: "МТС Оплата", emoji: "🎮"},
+	{bank: "МТС Деньги", title: "МТС Все страховки", emoji: "🛡️"},
+	{bank: "МТС Деньги", title: "Оплата мобильной связи МТС", emoji: "📱"},
+	{bank: "МТС Деньги", title: "Оплата интернета МТС", emoji: "🌐"},
+	{bank: "МТС Деньги", title: "Спутниковое ТВ МТС", emoji: "📡"},
+	{bank: "МТС Деньги", title: "Магазины МТС", emoji: "🏪"},
+	{bank: "МТС Деньги", title: "Shop.mts.ru", emoji: "🏪"},
+	{bank: "МТС Деньги", title: "MTC Pay", emoji: "📲"},
+	{bank: "МТС Деньги", title: "Оплата по QR", emoji: "🔳"},
+	{bank: "МТС Деньги", title: "Экосистема МТС", emoji: "🔴"},
+	{bank: "МТС Деньги", title: "Оплата по QR за рубежом в Мой МТС", emoji: "🌍"},
+
+	// Яндекс Про — only one row is documented: «Все покупки» stands permanently
+	// alongside the six chosen categories. The six themselves are picked from a
+	// menu no first-party source lists, so the catalog stops here rather than
+	// borrowing Яндекс Пэй's — a different card in a different app.
+	{bank: "Яндекс Про", title: "Все покупки", slug: "all-purchases"},
+
+	// Газпромбанк — the bank's own MCC appendix («Категории покупок и MCC», in
+	// force 01.08.2026). The picker shows 5–10 of these per client, six of them
+	// «постоянные» (АЗС, ЖКХ, Транспорт и такси, Кафе и рестораны, Спортивные
+	// товары, and Маркетплейсы with a subscription). The 1/3/4/6 % rate is a
+	// property of the card balance, not of a row (ADR-0009). Catalog and MCC
+	// data ship in lockstep.
+	{bank: "Газпромбанк", title: "АЗС", slug: "gas-stations"},
+	{bank: "Газпромбанк", title: "ЖКХ", slug: "utilities"},
+	// Umbrella: 4111/4121/4131/4789/7512 — taxi and carsharing inside.
+	{bank: "Газпромбанк", title: "Транспорт и такси", slug: "transport"},
+	{bank: "Газпромбанк", title: "Кафе и рестораны", slug: "restaurants"},
+	{bank: "Газпромбанк", title: "Фастфуд", slug: "fastfood"},
+	{bank: "Газпромбанк", title: "Спортивные товары", slug: "sport-goods"},
+	{bank: "Газпромбанк", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "Газпромбанк", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "Газпромбанк", title: "Аптеки", slug: "pharmacies"},
+	{bank: "Газпромбанк", title: "Медицинские услуги", slug: "medicine"},
+	{bank: "Газпромбанк", title: "Автозапчасти", slug: "auto-parts"},
+	{bank: "Газпромбанк", title: "Автоуслуги", slug: "auto-services"},
+	{bank: "Газпромбанк", title: "Аренда авто", slug: "car-rental"},
+	{bank: "Газпромбанк", title: "Алкоголь", slug: "alcohol"},
+	{bank: "Газпромбанк", title: "Детские товары", slug: "kids"},
+	{bank: "Газпромбанк", title: "Дом и ремонт", slug: "home-repair"},
+	{bank: "Газпромбанк", title: "Домашние животные", slug: "pets"},
+	{bank: "Газпромбанк", title: "Книги", slug: "books"},
+	// Stationery has no canonical and does not map cleanly to books.
+	{bank: "Газпромбанк", title: "Канцтовары", emoji: "✏️"},
+	{bank: "Газпромбанк", title: "Косметика", slug: "cosmetics"},
+	{bank: "Газпромбанк", title: "Образование", slug: "education"},
+	{bank: "Газпромбанк", title: "Одежда и обувь", slug: "clothes"},
+	// Umbrella over avia/rail/hotels/tours (649 codes).
+	{bank: "Газпромбанк", title: "Путешествия", slug: "travel"},
+	{bank: "Газпромбанк", title: "Развлечения", slug: "entertainment"},
+	{bank: "Газпромбанк", title: "Салоны красоты", slug: "beauty"},
+	{bank: "Газпромбанк", title: "Техника и электроника", slug: "electronics"},
+	{bank: "Газпромбанк", title: "Фото и видео", slug: "photo-video"},
+	{bank: "Газпромбанк", title: "Цветы", slug: "flowers"},
+	{bank: "Газпромбанк", title: "Ювелирные изделия", slug: "jewelry"},
+	{bank: "Газпромбанк", title: "Дьюти-фри", slug: "duty-free"},
+	// Not in the appendix: offered to new clients alongside Супермаркеты.
+	{bank: "Газпромбанк", title: "1% на всё", slug: "all-purchases"},
+
+	// СберБанк — Правила «СберСпасибо», Таблица 1 (редакция 01.09.2026),
+	// verbatim. The table is the pool; a client's rung (Таблица 2) fixes how
+	// many rows they may activate (2–6). Near-duplicate pairs («Такси» / «Такси
+	// и каршеринг», «Рестораны» / «Кафе и рестораны», «Фитнес» / «Спорт и
+	// фитнес») are distinct rows with distinct MCC sets, kept apart. Catalog and
+	// MCC data ship in lockstep.
+	{bank: "СберБанк", title: "На все покупки", slug: "all-purchases"},
+	{bank: "СберБанк", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "СберБанк", title: "АЗС", slug: "gas-stations"},
+	{bank: "СберБанк", title: "Автозапчасти", slug: "auto-parts"},
+	{bank: "СберБанк", title: "Автоуслуги", slug: "auto-services"},
+	{bank: "СберБанк", title: "Штрафы ГИБДД", slug: "fines"},
+	// 5462 + 5811–5814: fast food inside, like ОТП's «Рестораны, фастфуд».
+	{bank: "СберБанк", title: "Кафе и рестораны", slug: "restaurants"},
+	{bank: "СберБанк", title: "Рестораны", slug: "restaurants"},
+	{bank: "СберБанк", title: "Фастфуд", slug: "fastfood"},
+	{bank: "СберБанк", title: "Одежда и обувь", slug: "clothes"},
+	{bank: "СберБанк", title: "Товары для дома", slug: "home-repair"},
+	{bank: "СберБанк", title: "Товары для детей", slug: "kids"},
+	{bank: "СберБанк", title: "Питомцы", slug: "pets"},
+	{bank: "СберБанк", title: "Такси и каршеринг", slug: "taxi"},
+	{bank: "СберБанк", title: "Такси", slug: "taxi"},
+	{bank: "СберБанк", title: "Аренда авто", slug: "car-rental"},
+	{bank: "СберБанк", title: "Транспорт", slug: "transport"},
+	{bank: "СберБанк", title: "Кино и театр", slug: "cinema"},
+	// The pure recreation row (cinema, theatre, bowling, attractions, parks).
+	{bank: "СберБанк", title: "Впечатления", slug: "entertainment"},
+	// Instruments, records, antiques, photo gear, boat rental, arcades — the
+	// hobby half dominates the mix.
+	{bank: "СберБанк", title: "Хобби и развлечения", slug: "hobby"},
+	{bank: "СберБанк", title: "Парфюмерия и косметика", slug: "cosmetics"},
+	{bank: "СберБанк", title: "Ювелирные изделия", slug: "jewelry"},
+	{bank: "СберБанк", title: "Цифровые товары", slug: "digital-goods"},
+	{bank: "СберБанк", title: "Цветы", slug: "flowers"},
+	{bank: "СберБанк", title: "Книги", slug: "books"},
+	{bank: "СберБанк", title: "Образование", slug: "education"},
+	{bank: "СберБанк", title: "Салоны красоты", slug: "beauty"},
+	{bank: "СберБанк", title: "Электроника и бытовая техника", slug: "electronics"},
+	{bank: "СберБанк", title: "Медицинские услуги", slug: "medicine"},
+	{bank: "СберБанк", title: "Аптеки", slug: "pharmacies"},
+	{bank: "СберБанк", title: "Спорт и фитнес", slug: "active-leisure"},
+	{bank: "СберБанк", title: "Фитнес", slug: "active-leisure"},
+	{bank: "СберБанк", title: "Спортивные товары", slug: "sport-goods"},
+	{bank: "СберБанк", title: "За оплату ЖКХ", slug: "utilities"},
+	{bank: "СберБанк", title: "Связь, Интернет и ТВ", slug: "telecom"},
+	// Channel-bound rows pay only inside «Сбербанк Онлайн» / the Тревел
+	// section / a payment rail — no canonical, or the lookup would promise the
+	// rate at any merchant of that kind (the «… в Городе» rule).
+	{bank: "СберБанк", title: "ЖКХ в Сбербанк Онлайн", emoji: "💡"},
+	{bank: "СберБанк", title: "Транспортные карты", emoji: "🚌"},
+	{bank: "СберБанк", title: "Маркетплейс ОСАГО", emoji: "🛡️"},
+	{bank: "СберБанк", title: "СпасибоТревел", emoji: "🧳"},
+	{bank: "СберБанк", title: "Авиа на СпасибоТревел", emoji: "✈️"},
+	{bank: "СберБанк", title: "ЖД на СпасибоТревел", emoji: "🚆"},
+	{bank: "СберБанк", title: "Отели на СпасибоТревел", emoji: "🏨"},
+	{bank: "СберБанк", title: "Туры на СпасибоТревел", emoji: "🗺️"},
+	{bank: "СберБанк", title: "На всё за оплату улыбкой", emoji: "😊"},
+	{bank: "СберБанк", title: "На всё по SberPay NFC", emoji: "📱"},
+	{bank: "СберБанк", title: "На всё за оплату Вжух", emoji: "💫"},
+
+	// Совкомбанк — Приложение №1 of the «Дебетовая карта с кешбэком на
+	// категории» rules (версия 8.0, с 21.04.2026). The app deals 8 rows per
+	// отчётный период (one boosted, seven generated) and the client picks 3 or 5
+	// by «Оптима». Two umbrellas: «Авиа и Ж/Д билеты» → avia-tickets (rail
+	// inside), «Транспорт» → transport (the car-rental block, taxi and auto
+	// services inside).
+	{bank: "Совкомбанк", title: "Рестораны и кафе", slug: "restaurants"},
+	{bank: "Совкомбанк", title: "Дом, ремонт", slug: "home-repair"},
+	{bank: "Совкомбанк", title: "Одежда и обувь", slug: "clothes"},
+	{bank: "Совкомбанк", title: "Авиа и Ж/Д билеты", slug: "avia-tickets"},
+	{bank: "Совкомбанк", title: "Путешествия", slug: "travel"},
+	{bank: "Совкомбанк", title: "Электроника", slug: "electronics"},
+	{bank: "Совкомбанк", title: "Аптеки", slug: "pharmacies"},
+	{bank: "Совкомбанк", title: "Медицина", slug: "medicine"},
+	{bank: "Совкомбанк", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "Совкомбанк", title: "Топливо", slug: "gas-stations"},
+	{bank: "Совкомбанк", title: "Транспорт", slug: "transport"},
+	{bank: "Совкомбанк", title: "Цветы", slug: "flowers"},
+	{bank: "Совкомбанк", title: "Ювелирные изделия", slug: "jewelry"},
+	{bank: "Совкомбанк", title: "Красота", slug: "beauty"},
+	{bank: "Совкомбанк", title: "Фото, Видео", slug: "photo-video"},
+	{bank: "Совкомбанк", title: "Детские товары", slug: "kids"},
+	{bank: "Совкомбанк", title: "Животные", slug: "pets"},
+	{bank: "Совкомбанк", title: "Образование", slug: "education"},
+	{bank: "Совкомбанк", title: "Развлечения", slug: "entertainment"},
+	{bank: "Совкомбанк", title: "Спорттовары", slug: "sport-goods"},
+
+	// Банк Синара — Приложение №1 of «Условия бонусной программы «БОНУС КЛУБ»»
+	// (the «Та Самая» debit card, версия 5.6): the whole list, from which the
+	// app offers 11 a month and the client picks 4. «Город» is an umbrella
+	// (transit, taxi, carsharing, toll roads); «Маркетплейсы» is defined by
+	// merchant names; «На все» is the base row.
+	{bank: "Банк Синара", title: "АЗС, в том числе для электромобилей", slug: "gas-stations"},
+	{bank: "Банк Синара", title: "Аптеки", slug: "pharmacies"},
+	{bank: "Банк Синара", title: "Город", slug: "transport"},
+	{bank: "Банк Синара", title: "Детские товары", slug: "kids"},
+	{bank: "Банк Синара", title: "Дом, ремонт", slug: "home-repair"},
+	{bank: "Банк Синара", title: "Досуг и развлечения", slug: "entertainment"},
+	{bank: "Банк Синара", title: "Животные", slug: "pets"},
+	{bank: "Банк Синара", title: "Книги", slug: "books"},
+	{bank: "Банк Синара", title: "Красота и здоровье", slug: "beauty"},
+	{bank: "Банк Синара", title: "Маркетплейсы", slug: "marketplaces"},
+	{bank: "Банк Синара", title: "Музыка", slug: "music"},
+	{bank: "Банк Синара", title: "Одежда и обувь", slug: "clothes"},
+	{bank: "Банк Синара", title: "Рестораны", slug: "restaurants"},
+	{bank: "Банк Синара", title: "Супермаркеты", slug: "supermarkets"},
+	{bank: "Банк Синара", title: "Фастфуд", slug: "fastfood"},
+	{bank: "Банк Синара", title: "Цветы и подарки", slug: "flowers"},
+	{bank: "Банк Синара", title: "Часы и ювелирные изделия", slug: "jewelry"},
+	{bank: "Банк Синара", title: "Электроника и техника для дома", slug: "electronics"},
+	{bank: "Банк Синара", title: "Магазины беспошлинной торговли (Duty Free)", slug: "duty-free"},
+	{bank: "Банк Синара", title: "На все", slug: "all-purchases"},
+	// Department and variety stores (5310/5311/5331) map cleanly to nothing.
+	{bank: "Банк Синара", title: "Универмаги и универсамы", emoji: "🏬"},
 }
 
 // Run loads all seed data.
@@ -835,18 +1501,20 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 			p.pointsLabel, p.opensDay, p.midPeriodAdd, p.activation, p.notes); err != nil {
 			return fmt.Errorf("seed program %s: %w", p.bank, err)
 		}
-		// Policy facts are knowledge-derived, not user data — refresh them on
-		// existing rows too (the insert guard leaves pre-existing programs as
-		// they were, which would strand prod on the 'unknown' defaults).
+		// Policy facts and notes are reference data, not user data — refresh them
+		// on existing rows too (the insert guard leaves pre-existing programs as
+		// they were, which would strand prod on the 'unknown' defaults, and on
+		// whatever the notes said when the row was first seeded).
 		if _, err := pool.Exec(ctx, `
 			update cashback_program cp
 			set mid_period_add = $3::cashback_mid_period_add,
-			    activation     = $4::cashback_activation
+			    activation     = $4::cashback_activation,
+			    notes          = nullif($5, '')
 			from bank b
 			where b.id = cp.bank_id
 			  and b.name = $1
 			  and cp.name = $2`,
-			p.bank, p.name, p.midPeriodAdd, p.activation); err != nil {
+			p.bank, p.name, p.midPeriodAdd, p.activation, p.notes); err != nil {
 			return fmt.Errorf("seed program policy %s: %w", p.bank, err)
 		}
 		for _, t := range p.tiers {
@@ -865,6 +1533,30 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 				p.bank, p.name, t.name, t.paid, t.capValue, t.capScope,
 				t.capPerCategory, t.maxCategories, t.notes); err != nil {
 				return fmt.Errorf("seed tier %s/%s: %w", p.bank, t.name, err)
+			}
+			// Caps and slot counts are knowledge-derived reference facts, same
+			// as the program policy above — refresh them on existing rows.
+			// Without this the insert guard pins a database to whatever the
+			// tiers were on first seed, so a corrected cap never lands: Alfa
+			// Only shipped 15 000 ₽ against a documented 30 000 ₽ because the
+			// constant was the only thing anyone changed.
+			if _, err := pool.Exec(ctx, `
+				update program_tier pt
+				set is_paid_subscription = $4,
+				    cap_value            = nullif($5, '')::numeric,
+				    cap_scope            = $6::cashback_cap_scope,
+				    cap_per_category     = nullif($7, '')::numeric,
+				    max_categories       = nullif($8, 0),
+				    notes                = nullif($9, '')
+				from cashback_program cp
+				         join bank b on b.id = cp.bank_id
+				where pt.program_id = cp.id
+				  and b.name = $1
+				  and cp.name = $2
+				  and pt.name = $3`,
+				p.bank, p.name, t.name, t.paid, t.capValue, t.capScope,
+				t.capPerCategory, t.maxCategories, t.notes); err != nil {
+				return fmt.Errorf("refresh tier %s/%s: %w", p.bank, t.name, err)
 			}
 		}
 	}
@@ -944,10 +1636,10 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 			kind = "regular"
 		}
 		if _, err := pool.Exec(ctx, `
-			insert into bank_category (bank_id, title, canonical_category_id, kind, emoji, is_custom, created_by)
+			insert into bank_category (bank_id, title, canonical_category_id, kind, emoji, is_custom, created_by, active)
 			select b.id, $2,
 			       (select cc.id from canonical_category cc where cc.slug = nullif($3, '')),
-			       $4::cashback_offer_kind, nullif($5, ''), false, null
+			       $4::cashback_offer_kind, nullif($5, ''), false, null, $6
 			from bank b
 			where b.name = $1
 			on conflict (bank_id, title, created_by) do update
@@ -955,7 +1647,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 				    kind                  = excluded.kind,
 				    emoji                 = excluded.emoji
 			where not bank_category.is_custom`,
-			c.bank, c.title, c.slug, kind, c.emoji); err != nil {
+			c.bank, c.title, c.slug, kind, c.emoji, !c.inactive); err != nil {
 			return fmt.Errorf("seed bank category %s/%s: %w", c.bank, c.title, err)
 		}
 	}
@@ -977,10 +1669,14 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 func seedBank(ctx context.Context, pool *pgxpool.Pool, name string) error {
+	// bank.name is unique since 00031, so this is both race-free and the
+	// database's own guarantee rather than this query's. The previous
+	// `where not exists` form let two concurrent seed runs both pass the check
+	// and both insert.
 	_, err := pool.Exec(ctx, `
 		insert into bank (name)
-		select $1
-		where not exists (select 1 from bank where name = $1)`, name)
+		values ($1)
+		on conflict (name) do nothing`, name)
 	if err != nil {
 		return fmt.Errorf("seed bank %s: %w", name, err)
 	}

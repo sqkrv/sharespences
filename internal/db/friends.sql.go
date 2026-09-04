@@ -47,7 +47,7 @@ type CreateFriendInviteParams struct {
 	ExpiresAt       time.Time
 }
 
-// The plaintext token lives at rest since 00025: a claim only files a
+// The plaintext token lives at rest since 00037: a claim only files a
 // friend request, so the link is re-showable without extra capability.
 func (q *Queries) CreateFriendInvite(ctx context.Context, arg CreateFriendInviteParams) (FriendInvite, error) {
 	row := q.db.QueryRow(ctx, createFriendInvite,

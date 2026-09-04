@@ -16,7 +16,7 @@ import (
 // happens on short branches off main, so two branches routinely take the same
 // next number, and whichever merges second carries a version the deployed
 // database has already passed. That is exactly what happened to 00023
-// (foreign-key indexes, branched before 00024 existed, merged after 00028 was
+// (foreign-key indexes, branched before 00036 (партнёрки v2, then numbered 00024) existed, merged after 00028 was
 // live): goose's default refused the whole run, and the deploy stopped with
 // «detected 1 missing (out-of-order) migration lower than database version».
 //

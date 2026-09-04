@@ -21,7 +21,7 @@ that folder's README) and are bundled into the app.
 | Яндекс Пэй | `yandex-pay.svg` | [Trace Logos](https://trace-logos.ru/en/logos/pay/yandexpay/) | ООО «Яндекс» |
 | Газпромбанк | `gazprombank.svg` | [rblp] `dark/svg/icon/gazprombank.svg` | «Газпромбанк» (АО) |
 | МКБ | `mkb.svg` | [rblp] `dark/svg/icon/mkb.svg` | ПАО «Московский кредитный банк» |
-| Сбербанк | `sber.svg` | [rblp] `dark/svg/icon/sberbank.svg` | ПАО Сбербанк |
+| СберБанк | `sber.svg` | [rblp] `dark/svg/icon/sberbank.svg` | ПАО Сбербанк |
 | Т-Банк | `tbank.svg` | [rblp] `dark/svg/icon/tbank.svg` | АО «Т-Банк» |
 
 [rblp]: https://github.com/melpnz/rblp
@@ -59,6 +59,12 @@ their own rows here.
   ([mcc-codes.ru](https://mcc-codes.ru) and the banks' own published MCC
   appendices); per-bank category↔MCC membership is derived from each bank's
   loyalty documents. See `internal/seed/data/`.
+- **НАЭКОНОМИЛА** ([t.me/naeconomila](https://t.me/naeconomila)) — a public
+  Telegram channel tracking Russian retail-bank loyalty programmes month by
+  month. Used as a secondary reference for programme terms, and as an index to
+  the banks' own rules and MCC appendices — those documents are the primary
+  source for the seeded values. No channel content is bundled in this
+  repository. Not affiliated with the project.
 - **Merchant base (points of sale)** — the crowd-sourced merchant→MCC data
   from [mcc-codes.ru](https://mcc-codes.ru), imported into each deployment at
   run time via `sharespences import-pos` (the dataset itself is not bundled in

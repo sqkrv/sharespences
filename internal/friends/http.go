@@ -102,8 +102,8 @@ type RequestDTO struct {
 	ViaInvite   bool      `json:"via_invite,omitempty" doc:"the sender arrived through your invite link («пришла по твоей ссылке»)"`
 }
 
-// InviteDTO carries the live link itself (00025: multi-use, re-showable).
-// URL/Token are absent on pre-00025 rows — those were shown once; the
+// InviteDTO carries the live link itself (00037: multi-use, re-showable).
+// URL/Token are absent on pre-00037 rows — those were shown once; the
 // client offers «Создать новую» instead.
 type InviteDTO struct {
 	ID        uuid.UUID `json:"id"`

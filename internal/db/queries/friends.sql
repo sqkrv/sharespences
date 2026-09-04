@@ -98,7 +98,7 @@ where created_by_user_id = $1
   and claimed_at is null;
 
 -- name: CreateFriendInvite :one
--- The plaintext token lives at rest since 00025: a claim only files a
+-- The plaintext token lives at rest since 00037: a claim only files a
 -- friend request, so the link is re-showable without extra capability.
 insert into friend_invite (created_by_user_id, token_hash, token, expires_at)
 values ($1, $2, $3, $4)

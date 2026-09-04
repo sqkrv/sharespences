@@ -78,13 +78,9 @@ func New(cfg Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	seededMembership, err := seed.SeededMembershipKeys()
-	if err != nil {
-		return nil, err
-	}
 	svc := &Service{
 		Q: db.New(cfg.Pool), Pool: cfg.Pool,
-		SeededMCC: seededMCC, SeededMembership: seededMembership,
+		SeededMCC: seededMCC,
 	}
 
 	r := chi.NewRouter()

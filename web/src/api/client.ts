@@ -25,6 +25,12 @@ export type FriendCashback = Schemas["FriendCashbackDTO"];
 export type FriendSharedClient = Schemas["FriendSharedClientDTO"];
 export type FriendOffer = Schemas["FriendOfferDTO"];
 export type FriendPeriod = Schemas["FriendPeriodDTO"];
+export type PerkClient = Schemas["PerkClientDTO"];
+export type Perk = Schemas["PerkDTO"];
+export type PerkQuota = Schemas["PerkQuotaDTO"];
+export type PerkHistoryQuota = Schemas["PerkHistoryQuotaDTO"];
+export type PerkEvent = Schemas["PerkEventDTO"];
+export type PerkSnapshot = Schemas["PerkSnapshotDTO"];
 
 // huma error body (ErrorModel)
 type ErrorBody = { title?: string; detail?: string; errors?: { message?: string; location?: string }[] };

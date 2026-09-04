@@ -3,8 +3,9 @@ import { matchPath } from "react-router-dom";
 // Screen IDs (docs/design/ui-preferences.md §Dev mode). A shared vocabulary:
 // «поправь CB-03» beats describing a screen in
 // prose. Prefix = module (CB кешбек, GR группы, HM главная, HS история,
-// SYS системные, MD модерация), so the numbers never collide the way the
-// specs' old S<n> labels did across cashback.md and group-expenses.md.
+// MD модерация, PV привилегии, SYS системные), so the numbers never collide
+// the way the specs' old S<n> labels did across cashback.md and
+// group-expenses.md.
 //
 // This array is the ONLY list of screen IDs — it is what renders the chip,
 // so it cannot rot silently. Sub-region IDs (CB-01.a…) are deliberately not
@@ -37,6 +38,16 @@ export const SCREENS: Screen[] = [
   // pre-00025 spelling old links still carry.
   { id: "CB-08", path: "/join/:token", title: "Приглашение в друзья", file: "web/src/pages/FriendJoin.tsx" },
   { id: "CB-08", path: "/friends/join/:token", title: "Приглашение в друзья", file: "web/src/pages/FriendJoin.tsx" },
+  // Sub-regions (design4 «Perks - Module»). One letter, one thing — PV-02.a
+  // was on the корректировка-шит AND on the годовое окно until 2026-08-30.
+  //   PV-01.a карточка клиента · .b строка привилегии · .u «Списать»
+  //         · .n новая привилегия (держатель выбирается здесь) · .empty пусто
+  //         по варианту 2d сверки на обзоре НЕТ — вход в неё тап по карточке
+  //   PV-02.h годовое окно · .c чипы месяцев · .u быстрое «Списать» · .b лента событий
+  //         · .a корректировка · .e событие · .s сверка · .n новый период
+  //         · .p изменить привилегию · .w изменить период
+  { id: "PV-01", path: "/perks", title: "Привилегии", file: "web/src/pages/Perks.tsx" },
+  { id: "PV-02", path: "/perks/:perkId", title: "Привилегия", file: "web/src/pages/Perk.tsx" },
   { id: "HM-01", path: "/home", title: "Главная (заглушка)", file: "web/src/pages/Stub.tsx" },
   { id: "GR-01", path: "/groups", title: "Группы (заглушка)", file: "web/src/pages/Stub.tsx" },
   { id: "HS-01", path: "/history", title: "История (заглушка)", file: "web/src/pages/Stub.tsx" },

@@ -19,11 +19,12 @@ const buildLabel = Number.isNaN(built.getTime())
   ? null
   : built.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
 
-// SYS-03.f (design4 board 1a, roles ≠ user only): a compact accent row —
+// SYS-03.g (design4 board 1a, roles ≠ user only): a compact accent row —
 // shield squircle, name, subtitle, and the queue-size badge. Moderators get
 // no notifications by design (in-app visibility only, как у друзей) — this
 // badge IS the whole push. Query key shares the ["moderation"] prefix, so
-// acting in MD-01 refreshes it.
+// acting in MD-01 refreshes it. SYS-03.f is the «Модули» card below —
+// this row was drawn against the same id before that card shipped.
 function ModerationCard() {
   const queue = useQuery({
     queryKey: ["moderation", "badge"],
@@ -36,7 +37,7 @@ function ModerationCard() {
     <Link
       to="/moderation"
       className="flex items-center gap-3 rounded-2xl border border-acc bg-srf2 px-3.5 py-3 shadow-[0_10px_26px_-16px_rgba(139,111,255,.5)]"
-      data-sid="SYS-03.f"
+      data-sid="SYS-03.g"
     >
       <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[13px] bg-inset text-[17px]">
         🛡️
@@ -50,6 +51,45 @@ function ModerationCard() {
           {total}
         </span>
       )}
+    </Link>
+  );
+}
+
+// SYS-03.f «Модули» (design4 «Perks - Module», board C). The spec asks for one
+// «Привилегии» item; the design widens it to a card, because Друзья is built
+// and has had no entry from this screen at all. Both rows use the accent-row
+// pattern the moderation card already established.
+//
+// The «нов» badge marks the first release of a module and comes off in the next
+// one — it is a hand-edited literal, not stored state.
+function ModuleRow({
+  to,
+  emoji,
+  title,
+  sub,
+  fresh,
+}: {
+  to: string;
+  emoji: string;
+  title: string;
+  sub: string;
+  fresh?: boolean;
+}) {
+  return (
+    <Link to={to} className="flex items-center gap-3 rounded-xl border border-brd bg-srf2 px-3 py-2.5">
+      <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[12px] bg-inset text-[16px]">
+        {emoji}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[13px] font-bold">{title}</span>
+          {fresh && (
+            <span className="flex-none rounded bg-acc/15 px-1 py-[1px] text-[9px] font-bold text-accl">нов</span>
+          )}
+        </span>
+        <span className="block truncate text-[10.5px] font-medium text-tx3">{sub}</span>
+      </span>
+      <span className="flex-none text-[13px] font-bold text-tx4">›</span>
     </Link>
   );
 }
@@ -149,6 +189,20 @@ export default function Services() {
       {/* The card is navigation sugar: the server re-checks the role on
           every moderation call, so hiding it is UX, not security. */}
       {me.data?.role && me.data.role !== "user" && <ModerationCard />}
+
+      <Card className="p-4" data-sid="SYS-03.f">
+        <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Модули</p>
+        <div className="mt-2.5 space-y-1.5">
+          <ModuleRow
+            to="/perks"
+            emoji="🎟️"
+            title="Привилегии"
+            sub="Квоты банковских привилегий: такси, бизнес-залы, преференции"
+            fresh
+          />
+          <ModuleRow to="/friends/settings" emoji="👥" title="Друзья" sub="Обмен кешбек-выборами и заявки" />
+        </div>
+      </Card>
 
       <Card className="p-4" data-sid="SYS-03.d">
         <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Для разработчиков</p>

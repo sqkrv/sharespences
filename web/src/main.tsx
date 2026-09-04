@@ -23,6 +23,8 @@ import PartnerNew from "./pages/PartnerNew";
 import Friends from "./pages/Friends";
 import FriendsSettings from "./pages/FriendsSettings";
 import FriendJoin from "./pages/FriendJoin";
+import Perks from "./pages/Perks";
+import Perk from "./pages/Perk";
 import Services from "./pages/Services";
 import Moderation from "./pages/Moderation";
 import Stub from "./pages/Stub";
@@ -111,6 +113,8 @@ createRoot(document.getElementById("root")!).render(
                 /friends/join links keep working. */}
             <Route path="/join/:token" element={<FriendJoin />} />
             <Route path="/friends/join/:token" element={<FriendJoin />} />
+            <Route path="/perks" element={<Perks />} />
+            <Route path="/perks/:perkId" element={<Perk />} />
             <Route path="/services" element={<Services />} />
             <Route path="/moderation" element={<Moderation />} />
             <Route path="/home" element={<Stub title="Главная" />} />

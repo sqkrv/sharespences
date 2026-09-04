@@ -5,6 +5,9 @@
 //	sharespences serve     run the HTTP API + embedded SPA (default)
 //	sharespences openapi   print the OpenAPI 3.1 doc (frontend type codegen)
 //	sharespences import-pos <csv>   load the merchant base (mcc-codes.ru scrape)
+//	sharespences mcc-import <snapshot.json> [--dry-run]   apply an ADR-0004
+//	    category→MCC / exclusions snapshot (diff + journal; --dry-run prints
+//	    the diff and writes nothing)
 //
 // Config via env: DATABASE_URL (required), LISTEN_ADDR (default :8080),
 // ATTACHMENTS_DIR (default ./attachments), COOKIE_SECURE (default true —
@@ -146,6 +149,24 @@ func run() error {
 			log.Printf("skipped %d rows with MCCs missing from the dictionary: %v", stats.UnknownMCCRows, stats.UnknownMCCCodes)
 		}
 		return nil
+	case "mcc-import":
+		var path string
+		dryRun := false
+		for _, arg := range os.Args[2:] {
+			if arg == "--dry-run" || arg == "-n" {
+				dryRun = true
+				continue
+			}
+			path = arg
+		}
+		if path == "" {
+			return errors.New("usage: sharespences mcc-import <snapshot.json> [--dry-run]")
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return mcc.ImportSnapshot(ctx, pool, data, dryRun, log.Printf)
 	case "openapi":
 		spec, err := server.OpenAPI(server.Config{Pool: pool, AttachmentsDir: "attachments"})
 		if err != nil {
@@ -195,6 +216,6 @@ func run() error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q (want migrate|seed|serve|openapi|import-pos)", cmd)
+		return fmt.Errorf("unknown command %q (want migrate|seed|serve|openapi|import-pos|mcc-import)", cmd)
 	}
 }

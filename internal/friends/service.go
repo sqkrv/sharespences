@@ -168,7 +168,7 @@ func (s *Service) Unfriend(ctx context.Context, userID, otherID uuid.UUID) error
 	return nil
 }
 
-// CreateInvite mints the invite link. Multi-use and re-showable since 00025:
+// CreateInvite mints the invite link. Multi-use and re-showable since 00037:
 // a claim only files a friend request, so the token may live at rest — that
 // is what lets the app display the live link again. One live invite per
 // user: the previous link is revoked in the same transaction — «Создать
@@ -201,7 +201,7 @@ func (s *Service) CreateInvite(ctx context.Context, userID uuid.UUID) (db.Friend
 }
 
 // ListInvites returns the live link (at most one by construction). Rows
-// minted before 00025 carry no stored token — the client shows «Создать
+// minted before 00037 carry no stored token — the client shows «Создать
 // новую» for them, the only path that ever could recover a lost link.
 func (s *Service) ListInvites(ctx context.Context, userID uuid.UUID) ([]db.FriendInvite, error) {
 	return s.Q.ListLiveInvitesForUser(ctx, userID)
@@ -231,7 +231,7 @@ func (s *Service) ClaimInvite(ctx context.Context, userID uuid.UUID, token strin
 	if err != nil {
 		return db.User{}, RequestOutcome{}, err
 	}
-	// Pre-00025 rows were one-shot and may sit in the burned terminal state.
+	// Pre-00037 rows were one-shot and may sit in the burned terminal state.
 	if inv.ClaimedAt != nil {
 		return db.User{}, RequestOutcome{}, ErrInviteBurned
 	}

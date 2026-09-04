@@ -291,7 +291,7 @@ func TestFriendsE2E(t *testing.T) {
 		t.Fatalf("unfriending a non-friend: status %d, want 404", got)
 	}
 
-	// --- Step 4: invites (multi-use live link since 00025) ---
+	// --- Step 4: invites (multi-use live link since 00037) ---
 	var inv inviteCreatedJSON
 	anna.must("POST", "/api/v1/friends/invites", nil, &inv, http.StatusCreated)
 	if inv.Token == "" || inv.URL != "/join/"+inv.Token {
@@ -443,12 +443,12 @@ func TestFriendsE2E(t *testing.T) {
 	anna.must("GET", fmt.Sprintf("/api/v1/cashback/programs/%d/tiers", alfaProgram.ID), nil, &tiers, http.StatusOK)
 	var smart tierJSON
 	for _, tr := range tiers {
-		if tr.Name == "Альфа-Смарт" {
+		if tr.Name == "Альфа-Смарт M" {
 			smart = tr
 		}
 	}
 	if smart.ID == 0 {
-		t.Fatal("no seeded Альфа-Смарт tier")
+		t.Fatal("no seeded Альфа-Смарт M tier")
 	}
 
 	var annaOwn, annaMama clientJSON
