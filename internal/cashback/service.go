@@ -1820,13 +1820,16 @@ func (s *Service) LookupByMCC(ctx context.Context, userID uuid.UUID, code int16,
 			}
 		}
 
-		board.Ranked = RankActiveSelections(onDate, entries).Ranked
-		board.Available = RankAvailable(avail)
-		board.Blocked = RankAvailable(blocked)
 		for _, row := range friendBest {
 			board.FriendAvailable = append(board.FriendAvailable, row)
 		}
 	}
+	// The viewer's own three lists are built from `offers` above and have
+	// nothing to do with sharing, so they are assigned outside the friends
+	// block — inside it, a viewer with no shared rows got an empty board.
+	board.Ranked = RankActiveSelections(onDate, entries).Ranked
+	board.Available = RankAvailable(avail)
+	board.Blocked = RankAvailable(blocked)
 	board.FriendAvailable = RankAvailable(board.FriendAvailable)
 
 	var allPurposesID *int64
