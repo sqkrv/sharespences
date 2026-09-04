@@ -379,7 +379,6 @@ export default function Overview() {
     rememberMonth(iso);
     setMonthDateState(iso);
   };
-  const [showSingles, setShowSingles] = useState(false);
   const overview = useOverview(monthDate);
   const clientsQ = useClients();
   const periods = usePeriods();
@@ -571,28 +570,42 @@ export default function Overview() {
             )}
 
             {singles.length > 0 && (
-              <div className="rounded-xl border border-brd bg-srf/60 px-3 py-2.5" data-sid="CB-01.e">
-                <button type="button" onClick={() => setShowSingles(!showSingles)} className="flex w-full items-center gap-2 text-left">
-                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-tx4">
-                    Только в одном банке · {singles.length} — {singles.map((e) => e.raw_title).join(", ")}
-                  </span>
-                  <span className="text-[9px] text-tx4">{showSingles ? "▲" : "▼"}</span>
-                </button>
-                {showSingles && (
-                  <div className="mt-2 space-y-2 border-t border-brd/60 pt-2">
-                    {singles.map((e, i) => (
-                      <button key={i} type="button" onClick={() => openEntry(e)} className="flex w-full items-center gap-2 text-left">
-                        <BankBadge name={e.bank_name} size={18} />
-                        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-tx2">
-                          {e.raw_title}
-                          <span className="font-medium text-tx4"> · {e.bank_name}{e.holder_label ? ` · ${e.holder_label}` : ""}</span>
+              // The bank's own rows: menu rows with no canonical category, so
+              // nothing across banks compares with them. They used to sit in a
+              // collapsed fold that inlined every title into one truncated
+              // line — unreadable past a handful, and its «только в одном
+              // банке» heading was not even true (the same title exists at two
+              // banks often enough). One labelled section at the end instead:
+              // always open, ordinary rows, and the label states the fact once
+              // rather than a chip repeating it on each row. They stay a group
+              // rather than sorting into the list above, because that list is
+              // «which card pays most for X» across banks, and these answer a
+              // different question.
+              <div className="space-y-1.5 pt-1" data-sid="CB-01.e">
+                <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Свои категории банков</p>
+                {singles.map((e, i) => (
+                  <ListRow
+                    key={`s-${e.bank_client_id ?? 0}-${i}`}
+                    emoji={e.emoji || FALLBACK_EMOJI}
+                    variant="solid"
+                    onClick={() => openEntry(e)}
+                    title={
+                      <>
+                        {e.raw_title}
+                        {mechanicChip(e) && <span className="ml-1.5 align-[1px]">{mechanicChip(e)}</span>}
+                      </>
+                    }
+                    right={
+                      <span className="flex flex-none flex-col items-end gap-0.5">
+                        <span className="flex items-center gap-2">
+                          <BankBadge name={e.bank_name} size={18} />
+                          <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
                         </span>
-                        <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
-                        <span className="flex-none text-[10px] text-tx4">›</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                        {e.holder_label && <span className="text-[10px] font-semibold text-tx4">{e.holder_label}</span>}
+                      </span>
+                    }
+                  />
+                ))}
               </div>
             )}
 
