@@ -40,11 +40,11 @@ const MERCHANT_PAGE = 20;
 // the next batch loads when asked, so the list ends where the user stopped
 // asking — the license footer and the other groups stay reachable instead
 // of running away from the scroll.
-function LoadMore({ onVisible, busy, remaining }: { onVisible: () => void; busy: boolean; remaining: number }) {
+function LoadMore({ onLoad, busy, remaining }: { onLoad: () => void; busy: boolean; remaining: number }) {
   return (
     <button
       type="button"
-      onClick={onVisible}
+      onClick={onLoad}
       disabled={busy}
       className="w-full rounded-2xl border border-dashed border-dash py-2.5 text-center text-[12px] font-semibold text-tx3 disabled:opacity-50"
     >
@@ -316,10 +316,11 @@ export default function Search() {
                   </div>
                 </button>
               ))}
-              {/* Load-more sentinel: crossing it pulls the next page, so the
-                  list ends where the matches end rather than at the page size. */}
+              {/* Asked for, never crossed into: the next page loads on a tap,
+                  so the list ends where the matches end rather than growing
+                  under the finger. */}
               {merchants.hasNextPage && (
-                <LoadMore onVisible={merchants.fetchNextPage} busy={merchants.isFetchingNextPage} remaining={merchantTotal - merchantRows.length} />
+                <LoadMore onLoad={merchants.fetchNextPage} busy={merchants.isFetchingNextPage} remaining={merchantTotal - merchantRows.length} />
               )}
             </div>
           )}
