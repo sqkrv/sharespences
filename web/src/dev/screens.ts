@@ -53,6 +53,34 @@ export const SCREENS: Screen[] = [
   { id: "HS-01", path: "/history", title: "История (заглушка)", file: "web/src/pages/Stub.tsx" },
 ];
 
+// The array above is the only inventory of screen IDs, and it has already
+// carried one id twice by accident: CB-13 named «Новая точка» and «Экран
+// кода» at the same time, so the chip labelled two screens identically and
+// «поправь CB-13» addressed neither. Nothing caught it, because a duplicate
+// breaks no type and renders fine.
+//
+// An id repeated across rows that name the SAME screen is not the bug —
+// CB-08 is one screen on two routes (the short invite link and the spelling
+// old links carry), and W-widgets repeat by design. So the check compares
+// what each row points at, not the id alone.
+//
+// web/ has no test runner to assert this in, so it runs at import time; the
+// DEV guard drops it from production bundles. It throws rather than logs on
+// purpose — it can only fire on an edit to the array directly above, and a
+// console line is precisely what went unread the first time.
+if (import.meta.env.DEV) {
+  const byId = new Map<string, Set<string>>();
+  for (const s of SCREENS) {
+    const targets = byId.get(s.id) ?? new Set<string>();
+    targets.add(`${s.title} · ${s.file}`);
+    byId.set(s.id, targets);
+  }
+  const clashes = [...byId].filter(([, targets]) => targets.size > 1).map(([id]) => id);
+  if (clashes.length > 0) {
+    throw new Error(`screens.ts: ${clashes.join(", ")} names more than one screen — one ID names one screen`);
+  }
+}
+
 // Shared widgets keep one ID wherever they appear, so «W-01» always means the
 // month picker. That is what spares the components a `sid` prop from every
 // parent screen; they carry their `data-sid` literal themselves.

@@ -28,6 +28,15 @@ function context(pathname: string, search: string, serverBuild: string | null | 
     .map((el) => el.getAttribute("data-sid") ?? "")
     .filter(Boolean)
     .sort();
+  // Repeats are counted, not deduped: one `data-sid` on two unrelated
+  // regions is how SYS-03.f came to mark both the «Модули» card and the
+  // moderation row, and the Set that used to sit here is what hid it. «×N»
+  // is also the honest reading for a sid on a list row, which repeats by
+  // design.
+  const seen = new Map<string, number>();
+  for (const sid of regions) seen.set(sid, (seen.get(sid) ?? 0) + 1);
+  const regionList = [...seen].map(([sid, n]) => (n > 1 ? `${sid} ×${n}` : sid)).join(", ");
+
   const dark = document.documentElement.classList.contains("dark");
   const standalone = window.matchMedia("(display-mode: standalone)").matches;
   const server = serverBuild == null ? "—" : serverBuild === BUILD ? "same" : `${serverBuild} ⚠️ stale bundle`;
@@ -37,7 +46,7 @@ function context(pathname: string, search: string, serverBuild: string | null | 
     `route:   ${screen?.path ?? "—"}`,
     `url:     ${pathname}${search}`,
     `file:    ${screen?.file ?? "—"}`,
-    `regions: ${[...new Set(regions)].join(", ") || "—"}`,
+    `regions: ${regionList || "—"}`,
     `build:   ${BUILD} (server ${server})`,
     `ui:      ${uiState()}`,
     `env:     ${window.innerWidth}×${window.innerHeight} theme=${dark ? "dark" : "light"} standalone=${standalone ? "yes" : "no"}`,
