@@ -592,9 +592,10 @@ export default function Period() {
       setConfirmOffer(offer);
       return;
     }
-    // Снятие отметки — единственный необратимый жест на экране: строка
-    // остаётся, а запись о том, что банк начислял по ней, исчезает. Спрашиваем
-    // и напоминаем, что экран — зеркало: в банке выбор от этого не снимется.
+    // Unmarking is the only irreversible gesture on this screen: the row
+    // stays, the record that the bank paid on it does not, and there is no
+    // undo. The prompt restates what the screen is, too — a mirror, so
+    // unmarking here unpicks nothing in the bank.
     if (
       offer.selection_id != null &&
       !window.confirm(`Снять отметку с «${offer.raw_title}»? В банке выбор останется — здесь только запись.`)
