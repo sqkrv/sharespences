@@ -788,7 +788,7 @@ type BankStackEntry struct {
 // still-available menu rows; one entry per bank. A bank seen as a friend's
 // AND the viewer's own keeps its rank position but counts as own — the
 // friends toggle must not hide the viewer's own presence.
-func bankStackOf(ranked []LookupEntry, avail []AvailableEntry) []BankStackEntry {
+func bankStackOf(ranked []LookupEntry, avail, friendAvail []AvailableEntry) []BankStackEntry {
 	idx := make(map[string]int, len(ranked)+len(avail))
 	var out []BankStackEntry
 	add := func(bank string, friend bool) {
@@ -809,6 +809,14 @@ func bankStackOf(ranked []LookupEntry, avail []AvailableEntry) []BankStackEntry 
 	}
 	for _, e := range avail {
 		add(e.Entry.BankName, false)
+	}
+	// A bank where only a friend holds the row, unpicked. It belongs in the
+	// stack by the stack's own definition — «every bank where the category
+	// exists this month» — and being flagged as a friend's it disappears
+	// with the friends toggle. Without it the row would go silent about a
+	// rate that is one tap away.
+	for _, e := range friendAvail {
+		add(e.Entry.BankName, true)
 	}
 	return out
 }
@@ -1123,7 +1131,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			Emoji:      emojiOf(cat),
 			Best:       own,
 			FriendBest: friendBest,
-			BankStack:  bankStackOf(ranked.Ranked, availByCat[catID]),
+			BankStack:  bankStackOf(ranked.Ranked, availByCat[catID], friendAvailByCat[catID]),
 		}
 		// A friend's unpicked row is not gated on the viewer's own state, and
 		// that is the one place it parts company with Available. Available is
@@ -1175,7 +1183,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			TitleRu:    cat.TitleRu,
 			Emoji:      emojiOf(cat),
 			Available:  &ranked[0],
-			BankStack:  bankStackOf(nil, ranked),
+			BankStack:  bankStackOf(nil, ranked, friendAvailByCat[catID]),
 		}
 		if fa := RankAvailable(friendAvailByCat[catID]); len(fa) > 0 {
 			g.FriendAvailable = &fa[0]
@@ -1275,7 +1283,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 	// «Остальное»: best selected «За все покупки» across clients.
 	fb := RankActiveSelections(onDate, fallbackEntries(offers, allPurposesID, nil, entryOf))
 	if len(fb.Ranked) > 0 {
-		base := OverviewBase{Best: fb.Ranked[0], OthersCount: len(fb.Ranked) - 1, BankStack: bankStackOf(fb.Ranked, nil)}
+		base := OverviewBase{Best: fb.Ranked[0], OthersCount: len(fb.Ranked) - 1, BankStack: bankStackOf(fb.Ranked, nil, nil)}
 		if allPurposesID != nil {
 			base.Emoji = emojiOf(catByID[*allPurposesID])
 		}
@@ -1422,7 +1430,12 @@ type LookupResultView struct {
 	Fallback  []LookupEntry    // selected «За все покупки» — pays when nothing ranks
 	Available []AvailableEntry // S3b: offered-but-unselected rows still pickable
 	Blocked   []AvailableEntry // offered-but-unselected rows this period can no longer take
-	Partner   []db.ListPartnerOffersForUserRow
+	// FriendAvailable is the same «в меню, но не выбрано» on a friend's
+	// shared card. It reaches the row expansion, which is where the per-bank
+	// picture lives — the collapsed row says it with a dimmed logo in the
+	// stack rather than a sentence.
+	FriendAvailable []AvailableEntry
+	Partner         []db.ListPartnerOffersForUserRow
 }
 
 // partnerEntryOf turns one partner_offer row into a rankable entry. Caps
@@ -1575,9 +1588,14 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 			footnote = append(footnote, p)
 		}
 	}
+	friendAvail, err := s.friendAvailableByCategory(ctx, userID, onDate)
+	if err != nil {
+		return LookupResultView{}, err
+	}
 	return LookupResultView{
 		Category: cat, Ranked: ranked.Ranked,
-		Fallback: fallback, Available: RankAvailable(available), Blocked: RankAvailable(blocked), Partner: footnote,
+		Fallback: fallback, Available: RankAvailable(available), Blocked: RankAvailable(blocked),
+		FriendAvailable: RankAvailable(friendAvail[cat.ID]), Partner: footnote,
 	}, nil
 }
 

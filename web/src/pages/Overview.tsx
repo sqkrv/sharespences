@@ -124,6 +124,10 @@ function ExpandedCategory({
   const d = lookup.data;
   const ranked = (d.ranked ?? []).filter((e) => friendsOn || !e.friend_name);
   const available = d.available ?? [];
+  // A friend's unpicked rows land here rather than on the collapsed row: this
+  // is where the per-bank picture lives, and «попроси Марину» is detail, not
+  // the answer to «чем платить».
+  const friendAvailable = friendsOn ? (d.friend_available ?? []) : [];
   const currencies = new Set(ranked.map((e) => e.currency_kind));
 
   return (
@@ -134,12 +138,18 @@ function ExpandedCategory({
           every served available row is pickable (the API drops dead ends),
           picking happens in the bank menu. */}
       {[
-        ...ranked.map((e, i) => ({ key: `r-${e.bank_client_id}-${i}`, avail: false as const, e })),
-        ...available.map((e) => ({ key: `a-${e.offer_id}`, avail: true as const, e })),
+        ...ranked.map((e, i) => ({ key: `r-${e.bank_client_id}-${i}`, avail: false as const, unpicked: false, e })),
+        ...available.map((e) => ({ key: `a-${e.offer_id}`, avail: true as const, unpicked: false, e })),
+        ...friendAvailable.map((e, i) => ({ key: `f-${e.bank_client_id}-${i}`, avail: false as const, unpicked: true, e })),
       ]
         .sort((a, b) => pctNum(b.e.percent) - pctNum(a.e.percent))
-        .map(({ key, avail, e }) => (
-          <button key={key} type="button" onClick={() => openEntry(e)} className="flex w-full items-center gap-2 text-left">
+        .map(({ key, avail, unpicked, e }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => openEntry(e)}
+            className={`flex w-full items-center gap-2 text-left ${unpicked ? "opacity-60" : ""}`}
+          >
             <BankBadge name={e.bank_name} size={18} />
             <span className="min-w-0 flex-1 truncate text-xs font-semibold text-tx2">
               {e.bank_name}
@@ -154,6 +164,14 @@ function ExpandedCategory({
                 <span className="ml-1 text-[10px] font-medium text-tx4">· {verdictNote(e as Schemas["AvailableEntryDTO"])}</span>
               )}
               {!avail && e.friend_name && <span className="ml-1.5"><Chip tone="friend">друг · {e.friend_name}</Chip></span>}
+              {/* Same marker their own unpicked rows carry, so one legend
+                  covers both: the outlined dot means «в меню, не выбрано». */}
+              {unpicked && (
+                <span className="ml-1.5 inline-flex items-baseline gap-1 text-[10px] font-semibold text-tx3">
+                  <span className="h-1.5 w-1.5 flex-none self-center rounded-full border-[1.5px] border-tx4" />
+                  не выбрано
+                </span>
+              )}
               {!avail && e.kind === "partner" && (
                 <span className="ml-1.5">
                   <Chip tone="gold">партнёрка{e.partner_scope === "merchant" ? ` · только в «${e.raw_title}»` : ""}</Chip>
@@ -198,17 +216,10 @@ function FeedRow({
   const { entry: e, state } = w;
   const variant = state === "friend" ? "friend" : state === "available" || state === "friend-available" ? "dashed" : "solid";
   const stackBanks = (g.bank_stack ?? []).filter((b) => friendsOn || !b.friend).map((b) => b.bank_name);
-  const availChip =
-    state === "available"
-      ? verdictNote(g.available!) || "свободен слот"
-      : state === "friend-available"
-        ? `${e.friend_name} · не выбрано`
-        : "";
-  // Shown even when the row is fronted by something else: CB-01 is the
-  // inventory of what cashback exists, and «друг может это выбрать» is part
-  // of it. Suppressed when the friend row IS the winner — the chip above
-  // already says so.
-  const friendAvail = friendsOn && g.friend_available && state !== "friend-available" ? g.friend_available : null;
+  // A friend's unpicked row says itself: the dashed border means nobody has
+  // taken this, the caption says whose menu it is, and the logo joins the
+  // stack. Words on top of that were the third copy of one fact.
+  const availChip = state === "available" ? verdictNote(g.available!) || "свободен слот" : "";
   return (
     <ListRow
       emoji={g.emoji || FALLBACK_EMOJI}
@@ -219,13 +230,6 @@ function FeedRow({
           {g.title_ru}
           {mechanicChip(e) && <span className="ml-1.5 align-[1px]">{mechanicChip(e)}</span>}
           {availChip && <span className="ml-1.5 align-[1px]"><Chip tone="friend">{availChip}</Chip></span>}
-          {friendAvail && (
-            <span className="ml-1.5 align-[1px]">
-              <Chip tone="friend">
-                {friendAvail.friend_name} · {friendAvail.percent ?? "?"}% не выбрано
-              </Chip>
-            </span>
-          )}
         </>
       }
       right={
@@ -234,14 +238,14 @@ function FeedRow({
             <BankStack banks={stackBanks} winner={e.bank_name} />
             <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
           </span>
-          {/* The caption answers «чья карта платит», so it appears only when
-              one does. A friend's UNPICKED row has no payer — its chip names
-              her instead, and the держатель here would be hers, not the
-              viewer's, which is why this is a third branch and not a
-              fallthrough. */}
-          {state === "friend" ? (
+          {/* One place names the friend. Which of the two friend states this
+              is comes from the border: dashed = nobody has taken it. Note
+              the explicit branch — `holder_label` on a friend's entry is
+              THEIR держатель, and falling through would print it as if the
+              viewer had a card there. */}
+          {state === "friend" || state === "friend-available" ? (
             <span className="text-[10px] font-bold text-accl">друг · {e.friend_name}</span>
-          ) : state === "friend-available" ? null : (
+          ) : (
             e.holder_label && <span className="text-[10px] font-semibold text-tx4">{e.holder_label}</span>
           )}
         </span>

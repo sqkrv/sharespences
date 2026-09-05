@@ -1543,6 +1543,8 @@ export interface components {
             date: string;
             /** @description selected «За все покупки» — pays when nothing ranks */
             fallback?: components["schemas"]["LookupEntryDTO"][] | null;
+            /** @description a friend's shared menu row they have not picked and still have room for — display only, no offer id */
+            friend_available?: components["schemas"]["AvailableEntryDTO"][] | null;
             message?: string;
             partner?: components["schemas"]["PartnerOfferDTO"][] | null;
             /** @description regular + super + special, marked by kind (invariant 6 amendment 2026-07-27) */

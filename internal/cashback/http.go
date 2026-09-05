@@ -1383,14 +1383,15 @@ func RegisterHTTP(api huma.API, s *Service) {
 		Date     string `query:"date" doc:"YYYY-MM-DD; defaults to today"`
 	}) (*struct {
 		Body struct {
-			Category  CanonicalCategoryDTO `json:"category"`
-			Date      string               `json:"date"`
-			Ranked    []LookupEntryDTO     `json:"ranked" doc:"regular + super + special, marked by kind (invariant 6 amendment 2026-07-27)"`
-			Fallback  []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
-			Available []AvailableEntryDTO  `json:"available,omitempty" doc:"S3b: offered-but-unselected menu rows, actionable verdicts first"`
-			Blocked   []AvailableEntryDTO  `json:"blocked,omitempty" doc:"offered-but-unselected rows this period can no longer take (slots_full/locked)"`
-			Partner   []PartnerOfferDTO    `json:"partner,omitempty"`
-			Message   string               `json:"message,omitempty"`
+			Category        CanonicalCategoryDTO `json:"category"`
+			Date            string               `json:"date"`
+			Ranked          []LookupEntryDTO     `json:"ranked" doc:"regular + super + special, marked by kind (invariant 6 amendment 2026-07-27)"`
+			Fallback        []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
+			Available       []AvailableEntryDTO  `json:"available,omitempty" doc:"S3b: offered-but-unselected menu rows, actionable verdicts first"`
+			Blocked         []AvailableEntryDTO  `json:"blocked,omitempty" doc:"offered-but-unselected rows this period can no longer take (slots_full/locked)"`
+			FriendAvailable []AvailableEntryDTO  `json:"friend_available,omitempty" doc:"a friend's shared menu row they have not picked and still have room for — display only, no offer id"`
+			Partner         []PartnerOfferDTO    `json:"partner,omitempty"`
+			Message         string               `json:"message,omitempty"`
 		}
 	}, error) {
 		onDate := time.Now()
@@ -1406,14 +1407,15 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		out := &struct {
 			Body struct {
-				Category  CanonicalCategoryDTO `json:"category"`
-				Date      string               `json:"date"`
-				Ranked    []LookupEntryDTO     `json:"ranked" doc:"regular + super + special, marked by kind (invariant 6 amendment 2026-07-27)"`
-				Fallback  []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
-				Available []AvailableEntryDTO  `json:"available,omitempty" doc:"S3b: offered-but-unselected menu rows, actionable verdicts first"`
-				Blocked   []AvailableEntryDTO  `json:"blocked,omitempty" doc:"offered-but-unselected rows this period can no longer take (slots_full/locked)"`
-				Partner   []PartnerOfferDTO    `json:"partner,omitempty"`
-				Message   string               `json:"message,omitempty"`
+				Category        CanonicalCategoryDTO `json:"category"`
+				Date            string               `json:"date"`
+				Ranked          []LookupEntryDTO     `json:"ranked" doc:"regular + super + special, marked by kind (invariant 6 amendment 2026-07-27)"`
+				Fallback        []LookupEntryDTO     `json:"fallback,omitempty" doc:"selected «За все покупки» — pays when nothing ranks"`
+				Available       []AvailableEntryDTO  `json:"available,omitempty" doc:"S3b: offered-but-unselected menu rows, actionable verdicts first"`
+				Blocked         []AvailableEntryDTO  `json:"blocked,omitempty" doc:"offered-but-unselected rows this period can no longer take (slots_full/locked)"`
+				FriendAvailable []AvailableEntryDTO  `json:"friend_available,omitempty" doc:"a friend's shared menu row they have not picked and still have room for — display only, no offer id"`
+				Partner         []PartnerOfferDTO    `json:"partner,omitempty"`
+				Message         string               `json:"message,omitempty"`
 			}
 		}{}
 		out.Body.Category = CanonicalCategoryDTO{ID: res.Category.ID, Slug: res.Category.Slug, TitleRu: res.Category.TitleRu, Emoji: res.Category.Emoji}
@@ -1430,6 +1432,9 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		for _, a := range res.Blocked {
 			out.Body.Blocked = append(out.Body.Blocked, availableEntryDTO(a))
+		}
+		for _, a := range res.FriendAvailable {
+			out.Body.FriendAvailable = append(out.Body.FriendAvailable, availableEntryDTO(a))
 		}
 		for _, p := range res.Partner {
 			out.Body.Partner = append(out.Body.Partner, PartnerOfferDTO{
