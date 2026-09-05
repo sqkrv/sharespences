@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type LookupEntry, type Schemas } from "../api/client";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useBanks, useCards, useCategories } from "../hooks";
@@ -78,13 +78,27 @@ function addressHref(type: string | undefined | null, address: string): string |
 // their bank-card home.
 function useOpenEntry() {
   const navigate = useNavigate();
-  const overview = useQuery({
-    queryKey: ["overview"],
-    queryFn: async () => unwrap(await api.GET("/api/v1/cashback/overview")),
-    staleTime: 60_000,
-  });
-  const openClient = (clientID?: number) => {
-    const c = (overview.data?.clients ?? []).find((x) => x.bank_client_id === clientID);
+  const qc = useQueryClient();
+  // The roster is resolved when a row is TAPPED, not on mount: fetchQuery
+  // answers from the cache while it is fresh and fetches otherwise, so «the
+  // roster has not arrived yet» stops being a state a click can land in.
+  // Before this, a tap in that window sent every row to /banks — and this key
+  // is not the feed's ["overview", date], so nothing the feed fetched ever
+  // filled it.
+  const openClient = async (clientID?: number) => {
+    let clients: Schemas["OverviewClientDTO"][] = [];
+    try {
+      const data = await qc.fetchQuery({
+        queryKey: ["overview"],
+        queryFn: async () => unwrap(await api.GET("/api/v1/cashback/overview")),
+        staleTime: 60_000,
+      });
+      clients = data.clients ?? [];
+    } catch {
+      navigate("/banks"); // the roster is unreachable; its own screen is the honest destination
+      return;
+    }
+    const c = clients.find((x) => x.bank_client_id === clientID);
     // Same rule as the feed: a row with no client — a bank-wide партнёрка,
     // whose bank_client_id the API omits — has no one menu to open, so it
     // goes to the bank card instead of nowhere.
@@ -97,7 +111,7 @@ function useOpenEntry() {
   };
   const openEntry = (e: { bank_client_id?: number; friend_name?: string; kind?: string }) => {
     if (e.friend_name) navigate("/friends");
-    else openClient(e.bank_client_id);
+    else void openClient(e.bank_client_id);
   };
   return { openClient, openEntry };
 }
@@ -287,7 +301,10 @@ export function Leaderboard({ board, matches, sid }: { board: MccBoard; matches:
   const colorOf = (bank: string) => (banks.data ?? []).find((b) => b.name === bank)?.color_hex ?? undefined;
 
   const ranked = (board.ranked ?? []).filter((e) => withFriends || !e.friend_name);
-  const hasFriends = (board.ranked ?? []).some((e) => e.friend_name);
+  // The toggle has to know about every friend surface, not just the ranked
+  // one: a friend who has the row but has not picked it is exactly the case
+  // where their name would otherwise be unhideable.
+  const hasFriends = (board.ranked ?? []).some((e) => e.friend_name) || (board.friend_available ?? []).length > 0;
   const rows: BoardRow[] = [
     ...ranked.map((e, i): BoardRow => ({ key: `e${i}`, kind: "entry", percent: e.percent, e })),
     ...matches.map((m, i): BoardRow => ({ key: `p${i}`, kind: "partner", percent: m.percent, m })),
@@ -295,9 +312,12 @@ export function Leaderboard({ board, matches, sid }: { board: MccBoard; matches:
   ].sort((x, y) => pctOf(y.percent) - pctOf(x.percent));
   const base = board.base ?? [];
   const blocked = board.blocked ?? [];
-  const friendAvailable = board.friend_available ?? [];
+  const friendAvailable = withFriends ? (board.friend_available ?? []) : [];
 
-  if (rows.length === 0 && base.length === 0 && blocked.length === 0) {
+  // friendAvailable belongs in this guard: it is served independently of the
+  // viewer's own rows, so «your banks say nothing, a friend could pick it» is
+  // precisely the state that used to render «Точных ответов нет».
+  if (rows.length === 0 && base.length === 0 && blocked.length === 0 && friendAvailable.length === 0) {
     return (
       <Card className="space-y-1.5 p-4 text-center">
         <p className="text-sm font-semibold text-tx2">Точных ответов нет</p>
@@ -650,11 +670,13 @@ function CategoryScreen({ slug }: { slug: string }) {
 
           <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Остальные банки</p>
           <div className="space-y-1.5" data-sid="CB-11.c">
+            {/* Prefixed: the available list below keys by offer_id, and a
+                fresh install numbers offers from 1 — bare indices collided. */}
             {others.map((e, i) => {
               const st = stateOf(e);
               return (
                 <button
-                  key={i}
+                  key={`o${i}`}
                   type="button"
                   onClick={() => openEntry(e)}
                   className={`flex w-full items-center gap-2.5 rounded-2xl border px-3 py-2.5 text-left ${e.friend_name ? "border-acc/40 bg-srf" : "border-brd2 bg-srf"}`}

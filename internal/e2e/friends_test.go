@@ -661,11 +661,35 @@ func TestFriendsE2E(t *testing.T) {
 	}
 
 	// anna's unselected Рестораны row must not surface as boris's
-	// «Можно выбрать» — verdicts are owner actions.
+	// «Можно выбрать» — verdicts are owner actions. It DOES surface as
+	// friend_available, which is display-only: «Марина может это выбрать».
+	rawLookup := rawGet(t, boris, "/api/v1/cashback/lookup?category=restaurants")
+	for _, needle := range []string{"cap_value", "cap_per_category", "max_categories"} {
+		if strings.Contains(rawLookup, needle) {
+			t.Fatalf("lookup payload leaks %q for a friend row:\n%s", needle, rawLookup)
+		}
+	}
 	lookup = friendLookupJSON{}
-	boris.must("GET", "/api/v1/cashback/lookup?category=restaurants", nil, &lookup, http.StatusOK)
+	if err := json.Unmarshal([]byte(rawLookup), &lookup); err != nil {
+		t.Fatal(err)
+	}
 	if len(lookup.Ranked) != 0 || len(lookup.Available) != 0 {
 		t.Fatalf("restaurants lookup = %+v, want empty (friend menu rows never rank or offer)", lookup)
+	}
+	if len(lookup.FriendAvailable) != 1 {
+		t.Fatalf("restaurants friend_available = %+v, want anna's unpicked Рестораны row", lookup.FriendAvailable)
+	}
+	fa := lookup.FriendAvailable[0]
+	if fa.FriendName != "Аня" || fa.RawTitle != "Рестораны" {
+		t.Fatalf("friend_available row = %+v, want Аня's «Рестораны»", fa)
+	}
+	// No offer id travels: it is the friend's category_offer, and handing it
+	// over would invite a selection posted against someone else's row.
+	if fa.OfferID != 0 {
+		t.Fatalf("friend_available carries offer_id %d, want none", fa.OfferID)
+	}
+	if fa.CapValue != nil || fa.OfferCapValue != nil {
+		t.Fatalf("friend_available carries a cap: %+v", fa)
 	}
 	// anna's selected «За все покупки» must not reach boris's fallback.
 	annaAll := addOffer(anna, annaPeriod, "За все покупки", "1", "regular", catID("all-purchases"))
@@ -794,6 +818,17 @@ type friendLookupJSON struct {
 	} `json:"ranked"`
 	Fallback  []struct{} `json:"fallback"`
 	Available []struct{} `json:"available"`
+	// A friend's menu row they have NOT picked. Display only: it must name
+	// them and their rate, and carry no cap of theirs (invariant 4).
+	FriendAvailable []struct {
+		BankName      string  `json:"bank_name"`
+		RawTitle      string  `json:"raw_title"`
+		Percent       *string `json:"percent"`
+		FriendName    string  `json:"friend_name"`
+		OfferID       int64   `json:"offer_id"`
+		CapValue      *string `json:"cap_value"`
+		OfferCapValue *string `json:"offer_cap_value"`
+	} `json:"friend_available"`
 }
 
 // rawGet fetches a path and returns the raw body — for asserting what a

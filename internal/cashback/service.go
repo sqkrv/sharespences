@@ -1797,7 +1797,13 @@ func (s *Service) LookupByMCC(ctx context.Context, userID uuid.UUID, code int16,
 			if !countsForCode(r.BankID, r.BankCategoryID, r.CanonicalCategoryID) {
 				continue
 			}
-			if !rowRange(r.PeriodStart, r.PeriodEnd).Overlaps(window) {
+			// Same conjunction the feed path uses (friends.go): the window
+			// bounds what may ever be shown, onDate picks the period being
+			// asked about. With the window alone a next-month row answered
+			// «what pays today», and an explicit ?date= moved the viewer's
+			// own rows while leaving the friend's where they were.
+			period := rowRange(r.PeriodStart, r.PeriodEnd)
+			if !period.Overlaps(window) || !period.Contains(onDate) {
 				continue
 			}
 			f := owner[r.BankClientID]

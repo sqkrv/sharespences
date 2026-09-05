@@ -80,8 +80,11 @@ export default function PosNew() {
       ),
     onSuccess: (p) => {
       qc.invalidateQueries({ queryKey: ["pos-similar"] });
-      // The saved точка opens as CB-11 — расчёт карт живёт там.
-      navigate(`/pos?mcc=${p.mcc}&merchant=${encodeURIComponent(p.name)}`, { replace: true });
+      // The saved точка opens as CB-11 — расчёт карт живёт там. The id has
+      // to travel: since CB-11 takes the точка's identity from the API and
+      // not the URL, a link without it resolves to nothing and the screen
+      // says «такой точки в базе нет» about a row just created.
+      navigate(`/pos?mcc=${p.mcc}&merchant=${encodeURIComponent(p.name)}&pos=${p.id}`, { replace: true });
     },
   });
 
@@ -146,7 +149,7 @@ export default function PosNew() {
                   type="button"
                   variant="soft"
                   className="!px-2.5 !py-1.5 text-xs"
-                  onClick={() => navigate(`/pos?mcc=${dupe.mcc}&merchant=${encodeURIComponent(dupe.name)}`)}
+                  onClick={() => navigate(`/pos?mcc=${dupe.mcc}&merchant=${encodeURIComponent(dupe.name)}&pos=${dupe.id}`)}
                 >
                   Открыть
                 </Btn>
