@@ -407,6 +407,14 @@ export default function Overview() {
       .map((p) => p.bank_client_id),
   );
   const unfilled = roster.filter((c) => !filledClientIDs.has(c.id));
+  // Banks that have opened a selection whose menu is still empty. The rule is
+  // the server's (PendingMenu), the same field CB-09 marks its bank rows
+  // with, so both screens speak about one fact. A period for the month being
+  // viewed is left out: the list above already says that one.
+  const openings = (data.clients ?? [])
+    .filter((c) => c.pending_from != null && monthKey(c.pending_from) !== monthKey(monthDate))
+    .sort((a, b) => a.pending_from!.localeCompare(b.pending_from!) || a.bank_name.localeCompare(b.bank_name));
+  const openingMonths = new Set(openings.map((c) => monthKey(c.pending_from!)));
   const monthEmpty = roster.length > 0 && filledClientIDs.size === 0;
 
   const feed = mergeFeed(categories, data.partners ?? [], data.base ?? undefined, catsSort, friendsOn);
@@ -439,7 +447,7 @@ export default function Overview() {
       <div className="flex items-center justify-between gap-2.5" data-sid="CB-01.a">
         <h1 className="text-[23px] font-extrabold tracking-tight">Кешбек</h1>
         <div className="flex items-center gap-2">
-          {roster.length > 0 && <MonthPicker value={monthDate} onChange={setMonthDate} opensDay={data.selection_opens_day} />}
+          {roster.length > 0 && <MonthPicker value={monthDate} onChange={setMonthDate} />}
           <Link to="/banks" title="Банки и карты" className="flex h-[33px] w-[33px] items-center justify-center rounded-[11px] bg-inset">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--t-accl)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="6" width="18" height="13" rx="3" />
@@ -497,33 +505,73 @@ export default function Overview() {
         </>
       ) : (
         <>
-          {unfilled.length > 0 && (
+          {(unfilled.length > 0 || openings.length > 0) && (
             <Card className="border-acc/30 bg-acc/8 p-3.5" data-sid="CB-01.d">
-              <p className="text-[15px] font-extrabold tracking-tight">
-                {monthEmpty ? `${monthName[0].toUpperCase()}${monthName.slice(1)} ещё пуст` : "Меню занесены не везде"}
-              </p>
-              <p className="mt-1 text-[11.5px] leading-snug font-medium text-tx2">
-                {monthEmpty
-                  ? "Меню месяца не занесены — лента не знает ставок твоих банков."
-                  : "Часть банков без меню месяца — их ставок в ленте нет."}
-              </p>
-              <div className="mt-2.5 space-y-1.5">
-                {unfilled.map((c) => (
-                  <div key={c.id} className="flex items-center gap-2">
-                    <BankBadge name={c.bank_name ?? ""} size={20} />
-                    <span className="min-w-0 flex-1 text-xs font-semibold text-tx2">
-                      {c.bank_name} · {c.label ?? "Я"}
-                    </span>
-                    <Btn
-                      variant="soft"
-                      className="!px-2.5 !py-1.5 text-xs"
-                      onClick={() => navigate(`/periods/new?client=${c.id}&month=${monthKey(monthDate)}`)}
-                    >
-                      Заполнить
-                    </Btn>
+              {unfilled.length > 0 && (
+                <>
+                  <p className="text-[15px] font-extrabold tracking-tight">
+                    {monthEmpty ? `${monthName[0].toUpperCase()}${monthName.slice(1)} ещё пуст` : "Меню занесены не везде"}
+                  </p>
+                  <p className="mt-1 text-[11.5px] leading-snug font-medium text-tx2">
+                    {monthEmpty
+                      ? "Меню месяца не занесены — лента не знает ставок твоих банков."
+                      : "Часть банков без меню месяца — их ставок в ленте нет."}
+                  </p>
+                  <div className="mt-2.5 space-y-1.5">
+                    {unfilled.map((c) => (
+                      <div key={c.id} className="flex items-center gap-2">
+                        <BankBadge name={c.bank_name ?? ""} size={20} />
+                        <span className="min-w-0 flex-1 text-xs font-semibold text-tx2">
+                          {c.bank_name} · {c.label ?? "Я"}
+                        </span>
+                        <Btn
+                          variant="soft"
+                          className="!px-2.5 !py-1.5 text-xs"
+                          onClick={() => navigate(`/periods/new?client=${c.id}&month=${monthKey(monthDate)}`)}
+                        >
+                          Заполнить
+                        </Btn>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
+              {/* The 25th, where it is actionable. The ритуал used to be a
+                  sentence pointing at «Банки»; naming the banks that opened
+                  and handing each one its own button is the same hint with
+                  the trip removed. The month rides on the row when several
+                  differ (a quarterly program opens its own period). */}
+              {openings.length > 0 && (
+                <div className={unfilled.length > 0 ? "mt-3 border-t border-brd/60 pt-2.5" : ""}>
+                  <p className="text-[15px] font-extrabold tracking-tight">
+                    Открыт выбор
+                    {openingMonths.size === 1 ? ` на ${monthNameOf(openings[0].pending_from!)}` : ""}
+                  </p>
+                  <p className="mt-1 text-[11.5px] leading-snug font-medium text-tx2">
+                    Выбери категории в приложении банка и отметь здесь.
+                  </p>
+                  <div className="mt-2.5 space-y-1.5">
+                    {openings.map((c) => (
+                      <div key={c.bank_client_id} className="flex items-center gap-2">
+                        <BankBadge name={c.bank_name} size={20} />
+                        <span className="min-w-0 flex-1 text-xs font-semibold text-tx2">
+                          {c.bank_name} · {c.holder_label ?? "Я"}
+                          {openingMonths.size > 1 && (
+                            <span className="font-medium text-tx4"> · {monthNameOf(c.pending_from!)}</span>
+                          )}
+                        </span>
+                        <Btn
+                          variant="soft"
+                          className="!px-2.5 !py-1.5 text-xs"
+                          onClick={() => navigate(`/periods/new?client=${c.bank_client_id}&month=${monthKey(c.pending_from!)}`)}
+                        >
+                          Заполнить
+                        </Btn>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </Card>
           )}
 
@@ -611,11 +659,6 @@ export default function Overview() {
 
           </div>
 
-          {isCurrentMonth && data.selection_opens_day != null && (
-            <p className="text-center text-[10.5px] font-medium text-tx4">
-              Ритуал 25-го живёт в «Банках» — там же меню следующего месяца.
-            </p>
-          )}
         </>
       )}
     </>

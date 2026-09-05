@@ -6,7 +6,7 @@ import { useBanks, useClients, usePrograms, useTierMap } from "../hooks";
 import { BackButton, Badge, BankBadge, Btn, Card, Empty, ErrMsg, Field, Input, Pct, Select, Spinner } from "../components/ui";
 import { MonthPicker } from "../components/MonthPicker";
 import { PartnerChips, PartnerSheet } from "../components/Partners";
-import { capNote, monthKey, monthNameOf, opensStripParts, quarterNote, todayISO } from "../lib";
+import { capNote, monthKey, monthNameOf, quarterNote, todayISO } from "../lib";
 import { rememberMonth, viewedMonth } from "../month";
 
 // CB-09 «Банки и карты» — the fleet screen split out of the old CB-01
@@ -453,7 +453,6 @@ export default function Banks() {
   const banks = useBanks();
   const navigate = useNavigate();
   const monthName = monthNameOf(monthDate);
-  const isCurrentMonth = monthKey(monthDate) === monthKey(todayISO());
 
   const setGrouping = (g: BanksGrouping) => {
     localStorage.setItem(GROUP_KEY, g);
@@ -499,7 +498,7 @@ export default function Banks() {
       <div className="flex items-center gap-2.5">
         <BackButton />
         <h1 className="min-w-0 flex-1 text-xl font-extrabold tracking-tight">Банки и карты</h1>
-        <MonthPicker value={monthDate} onChange={setMonthDate} opensDay={data.selection_opens_day} />
+        <MonthPicker value={monthDate} onChange={setMonthDate} />
       </div>
 
       <div data-sid="CB-09.b" className="space-y-2.5">
@@ -515,17 +514,6 @@ export default function Banks() {
             data-sid="CB-09.e"
           />
         )}
-        {/* A quiet one-liner, not a banner (2e) — the ритуал hint repeats
-            monthly and had the visual weight of a warning. */}
-        {data.selection_opens_day != null && isCurrentMonth && (
-          <div className="mx-0.5 flex items-center gap-2" data-sid="CB-09.a">
-            <span className="h-[5px] w-[5px] flex-none rounded-full bg-acc" />
-            <span className="text-[11px] font-medium text-tx3">
-              {opensStripParts(data.selection_opens_day).text} <b className="font-bold text-tx2">{opensStripParts(data.selection_opens_day).date}</b>
-            </span>
-          </div>
-        )}
-
         {clients.length > 0 && (
           <div className="mx-0.5 flex items-center justify-between">
             <span className="text-[11px] font-semibold text-tx3">Меню на {monthName}</span>

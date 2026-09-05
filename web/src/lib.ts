@@ -132,20 +132,6 @@ export function fmtMonthYear(d = new Date()): string {
   return `${MONTHS_NOM[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-// «Меню на август банки откроют **~25 июля**» — passive display of the
-// program's selection_opens_day (spec: dates shown, never pushed). Returns
-// the date part separately: the design renders it bold.
-export function opensStripParts(day: number, now = new Date()): { text: string; date: string } {
-  let opens = new Date(now.getFullYear(), now.getMonth(), day);
-  if (opens < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
-    opens = new Date(now.getFullYear(), now.getMonth() + 1, day);
-  }
-  const target = new Date(opens.getFullYear(), opens.getMonth() + 1, 1);
-  return {
-    text: `Меню на ${MONTHS_NOM[target.getMonth()]} банки откроют`,
-    date: `~${day} ${MONTHS_GEN[opens.getMonth()]}`,
-  };
-}
 
 // «III квартал» — a quarter-aligned period named on the bank card (2e): a
 // three-month menu shown under a month chip needs saying why it spans the

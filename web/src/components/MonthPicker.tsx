@@ -13,11 +13,9 @@ import { MONTHS_NOM, fmtMonthYear, midMonthISO, monthKey, pad2, todayISO } from 
 export function MonthPicker({
   value,
   onChange,
-  opensDay,
 }: {
   value: string; // mid-month ISO the overview API's ?date= accepts
   onChange: (iso: string) => void;
-  opensDay?: number | null; // selection_opens_day — the future-month hint
 }) {
   const [open, setOpen] = useState(false);
   const [year, setYear] = useState(() => Number(value.slice(0, 4)));
@@ -126,13 +124,6 @@ export function MonthPicker({
                     {key === currentKey && (
                       <span className="ml-1.5 align-[2px]">
                         <Chip tone="friend">сейчас</Chip>
-                      </span>
-                    )}
-                    {/* The empty next month says when it stops being empty —
-                        a chip by the name, not a line of its own (5c v3). */}
-                    {isNext && filledCount === 0 && opensDay != null && (
-                      <span className="ml-1.5 align-[2px] normal-case">
-                        <Chip>с ~{opensDay}.{pad2(now.getMonth() + 1)}</Chip>
                       </span>
                     )}
                   </span>
