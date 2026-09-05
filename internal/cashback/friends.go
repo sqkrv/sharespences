@@ -34,7 +34,12 @@ type SharedFriend struct {
 // FriendOfferView is one menu row as a friend sees it — deliberately
 // without cap/limit fields.
 type FriendOfferView struct {
-	RawTitle     string
+	RawTitle string
+	// Emoji is the same icon every other screen shows for this row — the
+	// catalog row's, else the canonical's. It says nothing about the friend,
+	// so invariant 4 is untouched: a category's icon is taxonomy, not their
+	// data.
+	Emoji        string
 	Percent      *decimal.Decimal
 	Kind         OfferKind
 	CurrencyKind CurrencyKind
@@ -127,6 +132,7 @@ func friendClientView(clientID int64, rows []db.ListOffersForClientsRow, window 
 		}
 		row := FriendOfferView{
 			RawTitle:     r.RawTitle,
+			Emoji:        rowEmoji(r.BankCategoryEmoji, r.CanonicalEmoji),
 			Percent:      r.Percent,
 			Kind:         OfferKind(r.Kind),
 			CurrencyKind: currencyOf(db.ListUserOffersRow(r)),

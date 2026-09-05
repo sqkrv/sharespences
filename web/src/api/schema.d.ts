@@ -1956,6 +1956,8 @@ export interface components {
         };
         FriendOfferDTO: {
             currency_kind: string;
+            /** @description the row's icon — its catalog row's, else the canonical category's */
+            emoji?: string;
             kind: string;
             percent?: string;
             points_label?: string;

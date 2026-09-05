@@ -1782,6 +1782,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 // (friends-sharing invariant 4), enforced by shape, not filtering.
 type FriendOfferDTO struct {
 	RawTitle     string  `json:"raw_title"`
+	Emoji        string  `json:"emoji,omitempty" doc:"the row's icon — its catalog row's, else the canonical category's"`
 	Percent      *string `json:"percent,omitempty"`
 	Kind         string  `json:"kind"` // regular | super | special — the UI golds барабан/спец
 	CurrencyKind string  `json:"currency_kind"`
@@ -1821,7 +1822,7 @@ func friendCashbackDTO(v FriendView) FriendCashbackDTO {
 		dtos := make([]FriendOfferDTO, len(rows))
 		for i, r := range rows {
 			dtos[i] = FriendOfferDTO{
-				RawTitle: r.RawTitle, Percent: decToStr(r.Percent), Kind: string(r.Kind),
+				RawTitle: r.RawTitle, Emoji: r.Emoji, Percent: decToStr(r.Percent), Kind: string(r.Kind),
 				CurrencyKind: string(r.CurrencyKind), PointsLabel: r.PointsLabel,
 			}
 		}

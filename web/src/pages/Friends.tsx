@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, unwrap, type FriendCashback, type FriendOffer, type FriendPeriod, type FriendSharedClient } from "../api/client";
 import { BackButton, BankBadge, Card, Empty, ErrMsg, Pct, Spinner } from "../components/ui";
-import { coversToday, currencyBadge, fmtRange } from "../lib";
+import { FALLBACK_EMOJI, coversToday, currencyBadge, fmtRange } from "../lib";
 
 // CB-06 «Кешбек друзей» v2 (redesign 4a): each friend's picture in chips
 // tinted by the currency legend — мята рубли, сирень баллы, золото спец —
@@ -20,6 +20,7 @@ function OfferChip({ o, gold = false }: { o: FriendOffer; gold?: boolean }) {
       : "bg-mint/10";
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-tx2 ${wash}`}>
+      <span className="text-[12px] leading-none">{o.emoji || FALLBACK_EMOJI}</span>
       {o.raw_title}
       {gold && (
         <span className="rounded bg-gold/10 px-1 py-[1px] text-[9px] font-bold text-gold">
@@ -83,6 +84,7 @@ function PeriodBlock({ p }: { p: FriendPeriod }) {
               {menu.map((o, i) => (
                 <div key={i} className="flex items-center justify-between rounded-lg bg-inset px-2.5 py-1.5">
                   <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-tx2">
+                    <span className="mr-1">{o.emoji || FALLBACK_EMOJI}</span>
                     {o.raw_title}
                     <span className="ml-1 text-[9.5px] text-tx4">{currencyBadge(o.currency_kind, o.points_label)}</span>
                   </span>

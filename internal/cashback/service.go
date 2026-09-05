@@ -134,6 +134,20 @@ func rowRange(start, end time.Time) DateRange {
 
 // entryOf maps a ListUserOffers row into a lookup entry (shared by lookup,
 // overview and the base-rate fallback).
+
+// rowEmoji is the row's icon: the bank catalog row's own, else the canonical
+// category's, else nothing. Resolved in SQL and picked here so every screen
+// shows one icon for one row.
+func rowEmoji(bankCategory, canonical *string) string {
+	if bankCategory != nil {
+		return *bankCategory
+	}
+	if canonical != nil {
+		return *canonical
+	}
+	return ""
+}
+
 func entryOf(o db.ListUserOffersRow) LookupEntry {
 	var capScope CapScope
 	if o.TierCapScope.Valid {
@@ -143,12 +157,7 @@ func entryOf(o db.ListUserOffersRow) LookupEntry {
 	if o.PointsLabel != nil {
 		pointsLabel = *o.PointsLabel
 	}
-	emoji := ""
-	if o.BankCategoryEmoji != nil {
-		emoji = *o.BankCategoryEmoji
-	} else if o.CanonicalEmoji != nil {
-		emoji = *o.CanonicalEmoji
-	}
+	emoji := rowEmoji(o.BankCategoryEmoji, o.CanonicalEmoji)
 	return LookupEntry{
 		ClientID:       o.BankClientID,
 		ClientLabel:    clientLabel(o.BankName, o.HolderLabel),
