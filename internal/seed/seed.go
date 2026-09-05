@@ -192,7 +192,8 @@ var programs = []program{
 		// п. 3.4: a category chosen for the NEXT period runs from its first day,
 		// one chosen inside the current period «действует с момента выбора» —
 		// so activation is immediate, not next-day as summaries had it. The
-		// opening has no fixed day: it is «дата установления Банком Категорий».
+		// opening has no fixed day: it is «дата установления Банком Категорий»,
+		// observed landing on the 25th of the month before each quarter.
 		midPeriodAdd: "paid", activation: "immediate",
 		notes: mkbAsOf + "; баллами возвращают стоимость покупок прошлого месяца от 1 ₽ (1 б = 1 ₽), выплата до 20 числа; бонусируются покупки от 300 ₽ (кроме соц. карты); платная смена категории посреди квартала (п. 3.5), выбранная внутри квартала категория действует с момента выбора; ⚠️ с 30.06.25 банк следит, чтобы на повышенные категории приходилось не более 70% всех покупок, иначе ПЛ урезают",
 		tiers: []tier{
@@ -223,7 +224,7 @@ var programs = []program{
 		// a delay no `activation` value expresses — recorded as immediate,
 		// with the caveat in the notes.
 		midPeriodAdd: "locked_after_first", activation: "immediate",
-		notes: sberAsOf + "; предложение по активации категорий появляется в «Сбербанк Онлайн» с 00:00 28 числа предыдущего месяца, но не позднее 00:00 первого дня Расчетного периода (п. 23); Расчетный период = календарный месяц; начисление за каждые полные 100 ₽ с округлением вниз (п. 3.2.4); покупки в первые 15 минут после активации категории могут не учитываться (п. 2.1.9); ⚠️ курс бонуса к рублю устанавливается Уполномоченной компанией и в Правилах не зафиксирован",
+		notes: sberAsOf + "; предложение по активации категорий появляется в «Сбербанк Онлайн» с 00:00 28 числа предыдущего месяца, но не позднее 00:00 первого дня Расчетного периода (п. 23) — на практике набор чаще виден только с 1 числа;  Расчетный период = календарный месяц; начисление за каждые полные 100 ₽ с округлением вниз (п. 3.2.4); покупки в первые 15 минут после активации категории могут не учитываться (п. 2.1.9); ⚠️ курс бонуса к рублю устанавливается Уполномоченной компанией и в Правилах не зафиксирован",
 		tiers: []tier{
 			{name: "Детская СберКарта", capValue: "3000", capScope: "total", maxCategories: 2,
 				notes: sberAsOf + "; категории назначаются банком, самостоятельная активация не требуется; приоритет 1 независимо от других критериев"},
@@ -253,9 +254,11 @@ var programs = []program{
 		// Filling a still-empty slot later is allowed; whether a TAKEN slot can be
 		// swapped is a different question, and stays unknown. No opensDay: the
 		// help page says «выбрать категории можно в любой день в течение
-		// календарного месяца», with next month's set offered «в конце» this one.
+		// календарного месяца», with next month's set offered «в конце» this one
+		// — observed arriving on the 27th–28th every month since 2023, but the
+		// bank publishes no date, so the note carries it and the field does not.
 		midPeriodAdd: "allowed", activation: "immediate",
-		notes: tbankAsOf,
+		notes: tbankAsOf + "; набор категорий на следующий месяц появляется в приложении около 27–28 числа (по наблюдениям 2023–2026, банк даты не публикует); выбрать можно в любой день месяца",
 		tiers: []tier{
 			// The subscription buys cap, not slots — 4 on every tier.
 			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
@@ -369,7 +372,8 @@ var programs = []program{
 		bank: "Примсоцбанк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub", opensDay: 25,
 		// The rules document states no date; the bank's monthly announcements do,
-		// identically across 2026-02…08 («с 25 февраля … категории на март»).
+		// identically across 2026-02…08 («с 25 февраля … категории на март»), and
+		// the 25th is what independent monthly observation shows (12 of 13 months).
 		midPeriodAdd: "unknown", activation: "unknown",
 		notes: pskbAsOf + "; выбор категорий открывается 25 числа на следующий месяц; выплата до 15 числа, учёт по дате покупки; ⚠️ покупки округляются до 100 ₽ (кроме общественного транспорта); ⚠️ с 2026-05 весь кешбэк умножается на 0,8 — заявленная ставка не равна выплачиваемой; список категорий ОДИНАКОВ для всех клиентов, что среди банков редкость",
 		tiers: []tier{
@@ -384,9 +388,10 @@ var programs = []program{
 		currencyKind: "points", pointsLabel: "баллы Синары",
 		// opensDay stays unset on purpose: the published rule is relative —
 		// «за 5 календарных дней до начала нового месяца» — so the day of month
-		// moves with the month's length (27th in a 31-day month, 24th in February).
+		// moves with the month's length (27th in a 31-day month, 24th in February),
+		// which is exactly the 24th–28th spread observed month after month.
 		midPeriodAdd: "unknown", activation: "unknown",
-		notes: sinaraAsOf + "; выбор открывается за 5 календарных дней до начала месяца; карта «Та Самая», 4 категории из 11, список одинаков для всех клиентов; ⚠️ баллы меняются на рубли 1:1 ТОЛЬКО от 1 000 б — заработанное ниже порога нереализуемо; у кредитной карты своя ПЛ (1 категория с разбавлением 70/30, новые карты не выдают)",
+		notes: sinaraAsOf + "; выбор открывается за 5 календарных дней до начала месяца (наблюдения 2025–2026: 24–28 числа); карта «Та Самая», 4 категории из 11, список одинаков для всех клиентов; ⚠️ баллы меняются на рубли 1:1 ТОЛЬКО от 1 000 б — заработанное ниже порога нереализуемо; у кредитной карты своя ПЛ (1 категория с разбавлением 70/30, новые карты не выдают)",
 		tiers: []tier{
 			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 4,
 				notes: sinaraAsOf + "; до 15%; первые 3 месяца +5% по всем категориям в рамках продлеваемой акции"},
