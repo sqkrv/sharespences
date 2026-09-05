@@ -246,7 +246,7 @@ function FeedRow({
         </>
       }
       right={
-        <span className="flex flex-none flex-col items-end gap-0.5">
+        <span className="flex min-h-[34px] flex-none flex-col items-end justify-center gap-0.5">
           <span className="flex items-center gap-2">
             <BankStack banks={stackBanks} winner={e.bank_name} />
             <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
@@ -287,7 +287,10 @@ function PartnerFeedRow({ p, onOpen }: { p: PartnerFeed; onOpen: () => void }) {
         </>
       }
       right={
-        <span className="flex flex-none items-center gap-2">
+        // min-h matches the rows that carry a держатель/друг caption: the feed
+        // reads as a list, and a row that is 14px shorter than its neighbours
+        // makes the column ragged for a reason the user cannot see.
+        <span className="flex min-h-[34px] flex-none items-center gap-2">
           <BankBadge name={p.bank_name} size={18} />
           <Pct percent={p.percent} currency={p.currency_kind} className="text-base" />
         </span>
@@ -308,7 +311,7 @@ function BaseFeedRow({ b }: { b: Schemas["OverviewBaseDTO"] }) {
       onClick={() => navigate("/pos?cat=all-purchases")}
       title="За все покупки"
       right={
-        <span className="flex flex-none flex-col items-end gap-0.5">
+        <span className="flex min-h-[34px] flex-none flex-col items-end justify-center gap-0.5">
           <span className="flex items-center gap-2">
             <BankStack banks={(b.bank_stack ?? []).map((s) => s.bank_name)} winner={e.bank_name} />
             <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
@@ -666,7 +669,7 @@ export default function Overview() {
                       </>
                     }
                     right={
-                      <span className="flex flex-none flex-col items-end gap-0.5">
+                      <span className="flex min-h-[34px] flex-none flex-col items-end justify-center gap-0.5">
                         <span className="flex items-center gap-2">
                           <BankBadge name={e.bank_name} size={18} />
                           <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
