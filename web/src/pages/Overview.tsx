@@ -202,7 +202,7 @@ function FeedRow({
     state === "available"
       ? verdictNote(g.available!) || "свободен слот"
       : state === "friend-available"
-        ? "у друга не выбрано"
+        ? `${e.friend_name} · не выбрано`
         : "";
   // Shown even when the row is fronted by something else: CB-01 is the
   // inventory of what cashback exists, and «друг может это выбрать» is part
@@ -234,9 +234,14 @@ function FeedRow({
             <BankStack banks={stackBanks} winner={e.bank_name} />
             <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
           </span>
-          {state === "friend" || state === "friend-available" ? (
+          {/* The caption answers «чья карта платит», so it appears only when
+              one does. A friend's UNPICKED row has no payer — its chip names
+              her instead, and the держатель here would be hers, not the
+              viewer's, which is why this is a third branch and not a
+              fallthrough. */}
+          {state === "friend" ? (
             <span className="text-[10px] font-bold text-accl">друг · {e.friend_name}</span>
-          ) : (
+          ) : state === "friend-available" ? null : (
             e.holder_label && <span className="text-[10px] font-semibold text-tx4">{e.holder_label}</span>
           )}
         </span>
