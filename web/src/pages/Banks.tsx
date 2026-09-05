@@ -311,12 +311,19 @@ function ClientCard({
         <div className="flex items-center gap-2.5">
           {titleMode === "bank" && <BankBadge name={c.bank_name} />}
           <div className="min-w-0 flex-1">
-            <p className="text-[13.5px] font-bold text-tx3">
+            <p className="truncate text-[13.5px] font-bold text-tx3">
               {title} <span className="font-semibold text-tx4">{cardNums}</span>
             </p>
-            <p className="mt-px text-[10.5px] font-medium text-tx4">{monthName} не заполнен</p>
+            <p className="mt-px truncate text-[10.5px] font-medium text-tx4">{monthName} не заполнен</p>
           </div>
-          <Btn variant="soft" onClick={() => navigate(`/periods/new?client=${c.bank_client_id}&month=${monthKey(monthDate)}`)}>
+          {/* The card's one job is this button, so it carries the primary
+              weight (design 2026-09-05): a menu-less client is the only
+              thing on CB-09 asking to be acted on, and the tinted variant
+              read as one more chip among the slot badges. */}
+          <Btn
+            className="flex-none"
+            onClick={() => navigate(`/periods/new?client=${c.bank_client_id}&month=${monthKey(monthDate)}`)}
+          >
             Заполнить {monthName}
           </Btn>
           <button type="button" className="px-1 text-tx4" title="Держатель / тариф" onClick={onToggleEdit}>
