@@ -511,7 +511,7 @@ export default function Banks() {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Банк, держатель или ··1234"
-            data-sid="CB-09.e"
+            data-sid="CB-09.g"
           />
         )}
         {clients.length > 0 && (

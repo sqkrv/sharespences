@@ -1639,7 +1639,7 @@ export interface components {
             partners?: components["schemas"]["PartnerFeedDTO"][] | null;
             /** Format: int32 */
             selection_opens_day?: number;
-            /** @description «Только в одном банке»: selected canonical-less rows, shown collapsed */
+            /** @description the bank's own rows: selected menu rows with no canonical category, so nothing across banks compares with them */
             single_bank?: components["schemas"]["LookupEntryDTO"][] | null;
         };
         "Cashback-partner-offer-attachRequest": {

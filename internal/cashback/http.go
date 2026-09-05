@@ -1217,7 +1217,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Date              string                `json:"date"`
 			Categories        []OverviewCategoryDTO `json:"categories"`
 			Base              *OverviewBaseDTO      `json:"base,omitempty"`
-			SingleBank        []LookupEntryDTO      `json:"single_bank,omitempty" doc:"«Только в одном банке»: selected canonical-less rows, shown collapsed"`
+			SingleBank        []LookupEntryDTO      `json:"single_bank,omitempty" doc:"the bank's own rows: selected menu rows with no canonical category, so nothing across banks compares with them"`
 			Partners          []PartnerFeedDTO      `json:"partners,omitempty" doc:"alive партнёрки active on the date, ranked by the category-row key — interleave, points never above rubles"`
 			Clients           []OverviewClientDTO   `json:"clients"`
 			SelectionOpensDay *int32                `json:"selection_opens_day,omitempty"`
@@ -1239,7 +1239,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Date              string                `json:"date"`
 				Categories        []OverviewCategoryDTO `json:"categories"`
 				Base              *OverviewBaseDTO      `json:"base,omitempty"`
-				SingleBank        []LookupEntryDTO      `json:"single_bank,omitempty" doc:"«Только в одном банке»: selected canonical-less rows, shown collapsed"`
+				SingleBank        []LookupEntryDTO      `json:"single_bank,omitempty" doc:"the bank's own rows: selected menu rows with no canonical category, so nothing across banks compares with them"`
 				Partners          []PartnerFeedDTO      `json:"partners,omitempty" doc:"alive партнёрки active on the date, ranked by the category-row key — interleave, points never above rubles"`
 				Clients           []OverviewClientDTO   `json:"clients"`
 				SelectionOpensDay *int32                `json:"selection_opens_day,omitempty"`

@@ -2,9 +2,9 @@
 // version must still be applied. ADR-0007 puts work on short branches off
 // main, so two branches routinely take the same next number and whichever
 // merges second lands «in the past» of an already-deployed database — which
-// is what 00023 (foreign-key indexes) did: branched before 00036 (партнёрки v2, then numbered 00024) existed,
-// merged after 00028 was live, and stopped a deploy with «detected 1 missing
-// (out-of-order) migration lower than database version (28): version 23».
+// is what 00023 (foreign-key indexes) did: branched before the migrations
+// above it existed, merged after they were live, and stopped a deploy with
+// «detected 1 missing (out-of-order) migration lower than database version».
 //
 // A fresh-database run can never reach this state, which is why the failure
 // only ever showed up on the server.

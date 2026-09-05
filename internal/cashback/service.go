@@ -952,9 +952,10 @@ type OverviewResult struct {
 	Categories []OverviewCategoryGroup
 	Base       *OverviewBase
 	Clients    []OverviewClient
-	// SingleBank is the «Только в одном банке» tail (redesign 2026-08-06):
+	// SingleBank is the bank's-own-rows section at the end of the feed:
 	// selected canonical-less rows — a bank's own service categories that
-	// cannot group across banks. Ranked for a stable order, shown collapsed.
+	// cannot group across banks. Ranked for a stable order; the feed shows
+	// them as a labelled section at its end, not a fold.
 	SingleBank []LookupEntry
 	// Partners are the alive партнёрки active on the date, ranked by the
 	// same key as category rows (currency group → percent desc) so the SPA
@@ -1243,7 +1244,7 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		return res.Categories[i].TitleRu < res.Categories[j].TitleRu
 	})
 
-	// «Только в одном банке»: selected canonical-less rows — bank-own
+	// The bank's own rows: selected canonical-less rows — bank-own
 	// service categories («Альфа-Тревел», «ЖКУ») that no canonical groups.
 	// Unmapped rows used to be invisible here; the redesign shows them as a
 	// collapsed tail instead of dropping them from the feed.
