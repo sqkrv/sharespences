@@ -40,6 +40,12 @@ function storedCatsSort(): CatsSort {
 // Percent as a number for display ordering; unknown last. Nominal across
 // currencies — the same rule the боards use (2026-08-27): ordering is not
 // conversion.
+// Currency order is the server's (RankActiveSelections): rubles, then points,
+// then anything whose currency is unknown — honestly last.
+function currencyRank(kind?: string): number {
+  return kind === "rub" ? 0 : kind === "points" ? 1 : 2;
+}
+
 function pctNum(p?: string | null): number {
   return p != null ? parseFloat(p) : -1;
 }
@@ -128,21 +134,28 @@ function ExpandedCategory({
   // is where the per-bank picture lives, and «попроси Марину» is detail, not
   // the answer to «чем платить».
   const friendAvailable = friendsOn ? (d.friend_available ?? []) : [];
-  const currencies = new Set(ranked.map((e) => e.currency_kind));
+  const rows = [
+    ...ranked.map((e, i) => ({ key: `r-${e.bank_client_id}-${i}`, avail: false as const, unpicked: false, e })),
+    ...available.map((e) => ({ key: `a-${e.offer_id}`, avail: true as const, unpicked: false, e })),
+    ...friendAvailable.map((e, i) => ({ key: `f-${e.bank_client_id}-${i}`, avail: false as const, unpicked: true, e })),
+  ];
+  // The legend speaks for whatever is on screen, not only for the ranked
+  // rows: a points row that arrives as «свободный слот» needs it too.
+  const currencies = new Set(rows.map((r) => r.e.currency_kind));
 
   return (
     <div className="mt-2.5 ml-8 space-y-2 border-t border-brd/60 pt-2.5" data-sid="CB-01.f">
-      {/* One list, nominal percent descending (feedback 2026-08-28) — a
-          10% «свободный слот» must not hide under a 9% selected row. The
-          outlined dot + «свободный слот» is what tells the states apart;
-          every served available row is pickable (the API drops dead ends),
-          picking happens in the bank menu. */}
-      {[
-        ...ranked.map((e, i) => ({ key: `r-${e.bank_client_id}-${i}`, avail: false as const, unpicked: false, e })),
-        ...available.map((e) => ({ key: `a-${e.offer_id}`, avail: true as const, unpicked: false, e })),
-        ...friendAvailable.map((e, i) => ({ key: `f-${e.bank_client_id}-${i}`, avail: false as const, unpicked: true, e })),
-      ]
-        .sort((a, b) => pctNum(b.e.percent) - pctNum(a.e.percent))
+      {/* Invariant 5 reaches this list too: rubles first, points after, and
+          nominal percent orders WITHIN a currency. Sorting straight across
+          them opened «Образование» on a 9% в баллах under a headline of 4% ₽
+          — an order that implies the comparison the app refuses to make.
+          The 2026-08-28 rule survives untouched, because «a 10% свободный
+          слот must not hide under a 9% selected row» is about state, and
+          both of those rows sit in the same currency group. */}
+      {rows
+        .sort(
+          (a, b) => currencyRank(a.e.currency_kind) - currencyRank(b.e.currency_kind) || pctNum(b.e.percent) - pctNum(a.e.percent),
+        )
         .map(({ key, avail, unpicked, e }) => (
           <button
             key={key}
@@ -188,7 +201,7 @@ function ExpandedCategory({
         ))}
       {currencies.has("points") && currencies.size > 1 && (
         <p className="text-[10px] leading-snug font-medium text-tx4">
-          Баллы в рубли не пересчитываются — лиловый процент считается баллами.
+          Баллы в рубли не пересчитываются: сначала идут рублёвые строки, лиловый процент считается баллами.
         </p>
       )}
     </div>
