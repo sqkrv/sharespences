@@ -165,9 +165,12 @@ var programs = []program{
 		// GRANTED extra categories (мини-игра/Свои Плюсы), not from re-picking.
 		// No opensDay: п. 5.3.4 dates the window to the offer itself — «с момента
 		// предложения ему Категорий … на следующий календарный месяц до истечения
-		// календарного месяца», once per month.
+		// календарного месяца», once per month. «ему» is doing real work there:
+		// the set is rolled out per client rather than to everyone at once, which
+		// is why observation finds a 26th–1st band (28th–29th most often) instead
+		// of a date, and why users without it are told to look again tomorrow.
 		midPeriodAdd: "locked_after_first", activation: "immediate",
-		notes: asOf + "; баллы требуют активной подписки Яндекс Плюс; колесо фортуны — record-only",
+		notes: asOf + "; набор категорий на следующий месяц появляется в самом конце текущего — по наблюдениям 2023–2026 не раньше 26 числа, чаще 28–29-го — и раскатывается на клиентов не одновременно, так что у части он появляется позже остальных; баллы требуют активной подписки Яндекс Плюс; колесо фортуны — record-only",
 		tiers: []tier{
 			// 5 slots. The menu size varies (12–14) and is NOT the slot count.
 			{name: "Стандартный", capValue: "10000", capScope: "total", maxCategories: 5, notes: asOf + "; 5 слотов"},
