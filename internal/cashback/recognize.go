@@ -31,8 +31,9 @@ const (
 )
 
 var (
-	// ErrRecognitionBusy — one running job per user (decision):
-	// the backend is a single GPU and jobs run minutes.
+	// ErrRecognitionBusy — one running job per user: recognition is
+	// serialized on one backend and a job takes minutes, so a second
+	// request would queue behind the first rather than run.
 	ErrRecognitionBusy = errors.New("распознавание уже идёт — дождись окончания")
 	// ErrRecognitionImages — the 1–10 screenshot bound.
 	ErrRecognitionImages = errors.New("за раз можно распознать от 1 до 10 скриншотов")
@@ -287,7 +288,17 @@ func (s *Service) runRecognition(jobID uuid.UUID, attachmentIDs []uuid.UUID, tit
 				case errors.Is(err, vision.ErrBadImage):
 					ri.SkipNote = "не удалось декодировать изображение (HEIC и PDF не распознаются)"
 				default:
-					s.recognitions.fail(jobID, err.Error())
+					// The raw error is a developer diagnostic and can name the
+					// backend's own address; it belongs in the log, never in a
+					// field the client polls. Two rules meet here: user-facing
+					// text is Russian, and nothing about the deployment reaches
+					// a user.
+					log.Printf("recognition %s: %v", jobID, err)
+					if errors.Is(err, vision.ErrUnavailable) {
+						s.recognitions.fail(jobID, "распознавание сейчас недоступно — попробуй позже или заполни период вручную")
+					} else {
+						s.recognitions.fail(jobID, "не удалось распознать скриншоты — заполни период вручную")
+					}
 					return
 				}
 			}
