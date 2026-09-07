@@ -165,14 +165,12 @@ function RejectSheet({ row, published, busy, onConfirm, onClose }: {
         <Btn variant="ghost" className="flex-1" onClick={onClose}>
           Отмена
         </Btn>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onConfirm(note.trim())}
-          className="flex-1 rounded-[13px] bg-[linear-gradient(140deg,#FF7E9D,#E0426C)] py-2.5 text-[13.5px] font-bold text-white transition active:scale-[.98] disabled:opacity-40"
-        >
+        {/* The confirm carries the destructive tone from the theme, not a
+            pair of literal pinks: those two hex values were the only
+            hardcoded colours in the SPA and stayed the same in both themes. */}
+        <Btn variant="danger" className="flex-1" disabled={busy} onClick={() => onConfirm(note.trim())}>
           {published ? "Снять" : "Отклонить"}
-        </button>
+        </Btn>
       </div>
     </Sheet>
   );
