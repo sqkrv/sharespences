@@ -129,19 +129,19 @@ function chars(n: number): string {
 // `.type` reads «select-one»/«select-multiple» on a <select> and «textarea» on
 // a <textarea>, so one table covers all three elements.
 const MISSING: Record<string, string> = {
-  "select-one": "Выберите значение",
-  "select-multiple": "Выберите значение",
+  "select-one": "Выбери значение",
+  "select-multiple": "Выбери значение",
   checkbox: "Отметьте, чтобы продолжить",
-  radio: "Выберите вариант",
-  file: "Выберите файл",
-  date: "Укажите дату",
-  month: "Укажите месяц",
-  time: "Укажите время",
+  radio: "Выбери вариант",
+  file: "Выбери файл",
+  date: "Укажи дату",
+  month: "Укажи месяц",
+  time: "Укажи время",
 };
 
 const MISMATCH: Record<string, string> = {
-  email: "Введите адрес почты — например, name@example.com",
-  url: "Введите ссылку целиком — например, https://example.com",
+  email: "Введи адрес почты — например, name@example.com",
+  url: "Введи ссылку целиком — например, https://example.com",
 };
 
 // Empty when no native constraint failed. That also self-heals the one case
@@ -150,16 +150,16 @@ const MISMATCH: Record<string, string> = {
 // way (a controlled parent, a reset) clears it on the next validation pass.
 function validityMessage(el: Constrained): string {
   const v = el.validity;
-  if (v.valueMissing) return MISSING[el.type] ?? "Заполните поле";
-  if (v.typeMismatch) return MISMATCH[el.type] ?? "Проверьте формат";
+  if (v.valueMissing) return MISSING[el.type] ?? "Заполни поле";
+  if (v.typeMismatch) return MISMATCH[el.type] ?? "Проверь формат";
   // A pattern means nothing without its explanation — browsers append `title`
   // to their own message for the same reason.
-  if (v.patternMismatch) return el.title || "Проверьте формат";
+  if (v.patternMismatch) return el.title || "Проверь формат";
   if (v.tooShort && "minLength" in el) return `Не меньше ${chars(el.minLength)}`;
   if (v.tooLong && "maxLength" in el) return `Не больше ${chars(el.maxLength)}`;
   if (v.rangeUnderflow && "min" in el) return `Не меньше ${el.min}`;
   if (v.rangeOverflow && "max" in el) return `Не больше ${el.max}`;
-  if (v.stepMismatch || v.badInput) return "Проверьте формат";
+  if (v.stepMismatch || v.badInput) return "Проверь формат";
   return "";
 }
 

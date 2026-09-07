@@ -148,7 +148,7 @@ function PeriodForm() {
             <div className="min-w-0 flex-1">
               <p className="text-[17px] font-extrabold tracking-tight">Меню {monthGenOf(monthISO)}</p>
               <p className="mt-0.5 text-[11px] font-medium text-tx4">
-                {client ? "слоты и лимит из каталога" : "выберите банк — месяц уже известен"}
+                {client ? "слоты и лимит из каталога" : "выбери банк — месяц уже известен"}
               </p>
             </div>
             {isQuarter && (
@@ -159,7 +159,7 @@ function PeriodForm() {
           </div>
           <Field label="Банк · держатель">
             <Select required value={clientID} onChange={(e) => setClientID(e.target.value)}>
-              <option value="">— выберите —</option>
+              <option value="">— выбери —</option>
               {(clients.data ?? []).map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.bank_name}
@@ -171,7 +171,7 @@ function PeriodForm() {
           {isQuarter && (
             <p className="flex items-center gap-2 rounded-xl border border-acc/25 bg-acc/10 px-3 py-2 text-[11px] leading-snug font-medium text-tx2">
               <span className="h-1.5 w-1.5 flex-none rounded-full bg-acc" />
-              У {client?.bank_name} меню квартальное: заполните {monthNameOf(monthISO)} — весь квартал заполнится тем же меню
+              У {client?.bank_name} меню квартальное: заполни {monthNameOf(monthISO)} — весь квартал заполнится тем же меню
             </p>
           )}
           <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-dashed border-dash px-3 py-2.5">
@@ -571,7 +571,7 @@ function RecognizeReview({
           {monthMismatch && (
             <p className="flex items-center gap-2 rounded-[10px] border border-warn/35 bg-warn/5 px-2.5 py-2 text-[11px] leading-snug font-medium text-warn">
               <span className="h-[5px] w-[5px] flex-none rounded-full bg-warn" />
-              На скринах — {monthMismatch}. Записываем в {monthNameOf(state.start)}: проверьте, то ли это меню
+              На скринах — {monthMismatch}. Записываем в {monthNameOf(state.start)}: проверь, то ли это меню
             </p>
           )}
           {meta != null && meta.periodTexts.length > 0 && (

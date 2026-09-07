@@ -230,7 +230,7 @@ export default function Services() {
         )}
         {dev && isStale(serverBuild) && (
           <p className="mt-1 text-[12px] font-semibold text-warn">
-            ⚠️ приложение из кэша, на сервере новее — перезагрузите страницу
+            ⚠️ приложение из кэша, на сервере новее — перезагрузи страницу
           </p>
         )}
 

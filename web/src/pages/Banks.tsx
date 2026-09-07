@@ -221,7 +221,7 @@ function AddCardForm({ onDone }: { onDone: () => void }) {
   if (!clients.isPending && options.length === 0) {
     return (
       <Card className="space-y-3 p-4" data-sid="CB-09.c">
-        <p className="text-sm font-medium text-tx3">Сначала добавьте банк — карта появится под ним.</p>
+        <p className="text-sm font-medium text-tx3">Сначала добавь банк — карта появится под ним.</p>
         <div className="flex gap-2">
           <Btn type="button" onClick={() => navigate("/banks/new")}>
             Добавить банк
@@ -245,7 +245,7 @@ function AddCardForm({ onDone }: { onDone: () => void }) {
       >
         <Field label="Банк и держатель">
           <Select required value={clientID} onChange={(e) => setClientID(e.target.value)}>
-            <option value="">— выберите —</option>
+            <option value="">— выбери —</option>
             {options.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.bank_name} — {c.label ?? "Я"}

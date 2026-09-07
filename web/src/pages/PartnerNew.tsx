@@ -158,7 +158,7 @@ export default function PartnerNew() {
         >
           <Field label="Банк · держатель">
             <Select required value={subject} onChange={(e) => setSubject(e.target.value)}>
-              <option value="">— выберите —</option>
+              <option value="">— выбери —</option>
               {(banks.data ?? [])
                 .filter((b) => (clients.data ?? []).some((c) => c.bank_id === b.id))
                 .map((b) => (

@@ -816,7 +816,7 @@ var bankCategories = []struct {
 	{bank: "Альфа-Банк", title: "KASSIR.RU", emoji: "🎫"},
 	{bank: "Альфа-Банк", title: "Подели", emoji: "💳"},
 	// Rows carried by the bank's MCC appendix:
-	{bank: "Альфа-Банк", title: "Спорт и красота у партнера", emoji: "💪"}, // WellPass partner category
+	{bank: "Альфа-Банк", title: "Спорт и красота у партнёра", emoji: "💪"}, // WellPass partner category
 	// The umbrella duplicate of Фастфуд + Кафе и рестораны: seeded hidden so
 	// mcc-import can attach its codes while the picker and resolve keep showing
 	// only the two separate rows.
@@ -1441,7 +1441,7 @@ var bankCategories = []struct {
 	// Channel-bound rows pay only inside «Сбербанк Онлайн» / the Тревел
 	// section / a payment rail — no canonical, or the lookup would promise the
 	// rate at any merchant of that kind (the «… в Городе» rule).
-	{bank: "СберБанк", title: "ЖКХ в Сбербанк Онлайн", emoji: "💡"},
+	{bank: "СберБанк", title: "ЖКХ в СберБанк Онлайн", emoji: "💡"},
 	{bank: "СберБанк", title: "Транспортные карты", emoji: "🚌"},
 	{bank: "СберБанк", title: "Маркетплейс ОСАГО", emoji: "🛡️"},
 	{bank: "СберБанк", title: "СпасибоТревел", emoji: "🧳"},

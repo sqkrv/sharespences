@@ -187,7 +187,7 @@ export function AboutPoint({
       [
         source,
         Number(point.confirmations) > 0
-          ? `подтвердили ${point.confirmations} ${plural(Number(point.confirmations), "человек", "человека", "человек")}`
+          ? `${plural(Number(point.confirmations), "подтвердил", "подтвердили", "подтвердили")} ${point.confirmations} ${plural(Number(point.confirmations), "человек", "человека", "человек")}`
           : "пока без подтверждений",
         point.last_confirmed_at && `обновлено ${fmtDate(point.last_confirmed_at.slice(0, 10))}`,
       ]

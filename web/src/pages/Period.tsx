@@ -164,7 +164,7 @@ function AddOfferForm({
         {kind !== "regular" && (
           <p className="text-[10.5px] font-medium text-tx4">
             {kind === "super"
-              ? "барабан = суперкешбэк на весь период, суммируется с выбранной категорией"
+              ? "барабан = суперкешбек на весь период, суммируется с выбранной категорией"
               : "спец = Пятница / колесо / флеш-акция — с условием (день, сервис)"}
           </p>
         )}
@@ -282,7 +282,7 @@ function EditOfferForm({
         <Field label="Тип">
           <Select value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="regular">обычная</option>
-            <option value="super">барабан (суперкешбэк)</option>
+            <option value="super">барабан (суперкешбек)</option>
             <option value="special">спец (Пятница/колесо)</option>
           </Select>
         </Field>
@@ -657,7 +657,7 @@ export default function Period() {
       <div className="space-y-1.5">
         {(p.offers ?? []).length === 0 && (
           <p className="rounded-xl border border-brd bg-srf px-3 py-4 text-center text-sm font-medium text-tx3">
-            Введите категории из приложения банка — как на скриншоте.
+            Введи категории из приложения банка — как на скриншоте.
           </p>
         )}
         {(p.offers ?? []).map((offer) => {
@@ -769,7 +769,7 @@ export default function Period() {
                     <p className="mt-0.5 text-[9.5px] font-medium text-tx4">выбрано {new Date(offer.selected_at).toLocaleDateString("ru-RU")}</p>
                   )}
                   {offer.cap_value && (
-                    <p className="mt-0.5 text-[9.5px] font-medium text-tx4">кешбэк до {offer.cap_value} {currency === "points" ? "баллов" : "₽"}</p>
+                    <p className="mt-0.5 text-[9.5px] font-medium text-tx4">кешбек до {offer.cap_value} {currency === "points" ? "баллов" : "₽"}</p>
                   )}
                 </button>
                 {notesCount > 0 && !expanded && <span className="h-1.5 w-1.5 flex-none rounded-full bg-gold" title="есть предупреждения — тап по строке" />}

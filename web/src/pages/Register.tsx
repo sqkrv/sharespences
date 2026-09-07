@@ -63,7 +63,7 @@ export default function Register() {
               // means nothing to the user without its explanation).
               title={USERNAME_HINT}
             />
-            <p className="mt-1 text-[11px] font-medium text-tx4">{USERNAME_HINT}. По нему друзья найдут вас.</p>
+            <p className="mt-1 text-[11px] font-medium text-tx4">{USERNAME_HINT}. По нему друзья найдут тебя.</p>
           </Field>
           <Field label="Имя">
             <Input required maxLength={64} value={form.display_name} onChange={set("display_name")} />
