@@ -164,35 +164,41 @@ function ExpandedCategory({
             className={`flex w-full items-center gap-2 text-left ${unpicked ? "opacity-60" : ""}`}
           >
             <BankBadge name={e.bank_name} size={18} />
-            <span className="min-w-0 flex-1 truncate text-xs font-semibold text-tx2">
-              {e.bank_name}
-              {e.holder_label ? ` · ${e.holder_label}` : e.friend_name || e.kind === "partner" || avail ? "" : " · Я"}
+            {/* The name truncates, the markers do not: everything used to sit
+                in one truncating line, so a long friend name cut the currency
+                chip off the end. They wrap to a second line when they cannot
+                fit instead of disappearing. */}
+            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-xs font-semibold text-tx2">
+              <span className="min-w-0 truncate">
+                {e.bank_name}
+                {e.holder_label ? ` · ${e.holder_label}` : e.friend_name || e.kind === "partner" || avail ? "" : " · Я"}
+              </span>
               {avail && (
-                <span className="ml-1.5 inline-flex items-baseline gap-1 text-[10px] font-semibold text-tx3">
+                <span className="inline-flex flex-none items-baseline gap-1 text-[10px] font-semibold text-tx3">
                   <span className="h-1.5 w-1.5 flex-none self-center rounded-full border-[1.5px] border-tx4" />
                   свободный слот
                 </span>
               )}
               {avail && verdictNote(e as Schemas["AvailableEntryDTO"]) && (
-                <span className="ml-1 text-[10px] font-medium text-tx4">· {verdictNote(e as Schemas["AvailableEntryDTO"])}</span>
+                <span className="flex-none text-[10px] font-medium text-tx4">· {verdictNote(e as Schemas["AvailableEntryDTO"])}</span>
               )}
-              {!avail && e.friend_name && <span className="ml-1.5"><Chip tone="friend">друг · {e.friend_name}</Chip></span>}
+              {!avail && e.friend_name && <span className="flex-none"><Chip tone="friend">друг · {e.friend_name}</Chip></span>}
               {/* Same marker their own unpicked rows carry, so one legend
                   covers both: the outlined dot means «в меню, не выбрано». */}
               {unpicked && (
-                <span className="ml-1.5 inline-flex items-baseline gap-1 text-[10px] font-semibold text-tx3">
+                <span className="inline-flex flex-none items-baseline gap-1 text-[10px] font-semibold text-tx3">
                   <span className="h-1.5 w-1.5 flex-none self-center rounded-full border-[1.5px] border-tx4" />
                   не выбрано
                 </span>
               )}
               {!avail && e.kind === "partner" && (
-                <span className="ml-1.5">
+                <span className="flex-none">
                   <Chip tone="gold">партнёрка{e.partner_scope === "merchant" ? ` · только в «${e.raw_title}»` : ""}</Chip>
                 </span>
               )}
-              {e.currency_kind === "points" && <span className="ml-1.5"><Chip tone="points">{e.points_label || "баллы"}</Chip></span>}
+              {e.currency_kind === "points" && <span className="flex-none"><Chip tone="points">{e.points_label || "баллы"}</Chip></span>}
               {!avail && !e.friend_name && e.kind !== "partner" && capNote(e) && (
-                <span className="font-medium text-tx4"> · {capNote(e)}</span>
+                <span className="flex-none font-medium text-tx4">· {capNote(e)}</span>
               )}
             </span>
             <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
