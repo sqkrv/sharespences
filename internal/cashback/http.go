@@ -416,7 +416,7 @@ func partnerV2Params(in PartnerV2Input, prevActivatedAt *time.Time) (db.PartnerS
 	}
 	if scope == db.PartnerScopeCategory && in.CanonicalCategoryID == nil {
 		return "", db.NullPointOfSaleType{}, db.NullCashbackCurrencyKind{}, nil,
-			huma.Error422UnprocessableEntity("для акции на всю категорию укажите каноническую категорию")
+			huma.Error422UnprocessableEntity("для акции на всю категорию укажи каноническую категорию")
 	}
 	var mk db.NullPointOfSaleType
 	if in.MerchantKind != nil {
@@ -448,24 +448,24 @@ type partnerFields struct {
 func parsePartnerFields(percent, capValue, minAmount, validFrom, validTo *string) (partnerFields, error) {
 	var f partnerFields
 	var err error
-	if f.percent, err = strToDec(percent, "percent"); err != nil {
+	if f.percent, err = strToDec(percent, "процент"); err != nil {
 		return f, err
 	}
-	if f.cap, err = strToDec(capValue, "cap_value"); err != nil {
+	if f.cap, err = strToDec(capValue, "лимит"); err != nil {
 		return f, err
 	}
-	if f.min, err = strToDec(minAmount, "min_amount"); err != nil {
+	if f.min, err = strToDec(minAmount, "мин. сумма"); err != nil {
 		return f, err
 	}
 	if validFrom != nil {
-		t, err := parseDate(*validFrom, "valid_from")
+		t, err := parseDate(*validFrom, "начало действия")
 		if err != nil {
 			return f, err
 		}
 		f.from = &t
 	}
 	if validTo != nil {
-		t, err := parseDate(*validTo, "valid_to")
+		t, err := parseDate(*validTo, "окончание действия")
 		if err != nil {
 			return f, err
 		}
@@ -807,11 +807,11 @@ func RegisterHTTP(api huma.API, s *Service) {
 			AttachmentIDs []uuid.UUID `json:"attachment_ids,omitempty" maxItems:"10" doc:"скриншоты, уже загруженные через /attachments"`
 		}
 	}) (*struct{ Body OfferPeriodDTO }, error) {
-		start, err := parseDate(in.Body.PeriodStart, "period_start")
+		start, err := parseDate(in.Body.PeriodStart, "начало периода")
 		if err != nil {
 			return nil, err
 		}
-		end, err := parseDate(in.Body.PeriodEnd, "period_end")
+		end, err := parseDate(in.Body.PeriodEnd, "конец периода")
 		if err != nil {
 			return nil, err
 		}
@@ -977,11 +977,11 @@ func RegisterHTTP(api huma.API, s *Service) {
 			CapValue            *string `json:"cap_value,omitempty" doc:"per-offer КБ cap for the period (ВТБ «Кешбэк до N ₽»); static display, no tracking"`
 		}
 	}) (*struct{ Body CategoryOfferDTO }, error) {
-		pctVal, err := strToDec(in.Body.Percent, "percent")
+		pctVal, err := strToDec(in.Body.Percent, "процент")
 		if err != nil {
 			return nil, err
 		}
-		capVal, err := strToDec(in.Body.CapValue, "cap_value")
+		capVal, err := strToDec(in.Body.CapValue, "лимит")
 		if err != nil {
 			return nil, err
 		}
@@ -1008,11 +1008,11 @@ func RegisterHTTP(api huma.API, s *Service) {
 		ID   int64 `path:"id"`
 		Body categoryOfferBody
 	}) (*struct{ Body CategoryOfferDTO }, error) {
-		pctVal, err := strToDec(in.Body.Percent, "percent")
+		pctVal, err := strToDec(in.Body.Percent, "процент")
 		if err != nil {
 			return nil, err
 		}
-		capVal, err := strToDec(in.Body.CapValue, "cap_value")
+		capVal, err := strToDec(in.Body.CapValue, "лимит")
 		if err != nil {
 			return nil, err
 		}
@@ -1226,7 +1226,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		onDate := time.Now()
 		if in.Date != "" {
 			var err error
-			if onDate, err = parseDate(in.Date, "date"); err != nil {
+			if onDate, err = parseDate(in.Date, "дата"); err != nil {
 				return nil, err
 			}
 		}
@@ -1340,7 +1340,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		onDate := time.Now()
 		if in.Date != "" {
 			var err error
-			if onDate, err = parseDate(in.Date, "date"); err != nil {
+			if onDate, err = parseDate(in.Date, "дата"); err != nil {
 				return nil, err
 			}
 		}
@@ -1397,7 +1397,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		onDate := time.Now()
 		if in.Date != "" {
 			var err error
-			if onDate, err = parseDate(in.Date, "date"); err != nil {
+			if onDate, err = parseDate(in.Date, "дата"); err != nil {
 				return nil, err
 			}
 		}
@@ -1638,7 +1638,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		onDate := time.Now()
 		if in.Date != "" {
 			var err error
-			if onDate, err = parseDate(in.Date, "date"); err != nil {
+			if onDate, err = parseDate(in.Date, "дата"); err != nil {
 				return nil, err
 			}
 		}

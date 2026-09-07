@@ -58,7 +58,7 @@ var (
 	ErrUsernameFormat = fmt.Errorf(
 		"логин: от %d до %d символов — строчные латинские буквы и цифры, «.» и «_» внутри, начинается с буквы",
 		UsernameMinLen, UsernameMaxLen)
-	ErrUsernameReserved = errors.New("этот логин зарезервирован, выберите другой")
+	ErrUsernameReserved = errors.New("этот логин зарезервирован, выбери другой")
 	ErrDisplayNameLen   = fmt.Errorf("имя: от 1 до %d символов", DisplayNameMaxLen)
 )
 
