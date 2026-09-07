@@ -3,8 +3,8 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api, unwrap, type Schemas } from "../api/client";
 import { useCategories } from "../hooks";
-import { BankBadge, Card, ErrMsg, Pct, PosTypeIcon, SegTabs, Spinner } from "../components/ui";
-import { FALLBACK_EMOJI, POS_ORIGIN_MARK, normalizeTitle } from "../lib";
+import { BankBadge, Card, Chip, ErrMsg, Pct, PosTypeIcon, SegTabs, Spinner } from "../components/ui";
+import { FALLBACK_EMOJI, POS_ORIGIN_MARK, initWithFriends, normalizeTitle, winnerOf } from "../lib";
 import { recentEntries, type RecentEntry } from "../recent";
 
 // CB-04 v2 «Поиск» (redesign 2c/2i): one field, tabs filter the entered
@@ -55,6 +55,8 @@ function LoadMore({ onLoad, busy, remaining }: { onLoad: () => void; busy: boole
 
 export default function Search() {
   const navigate = useNavigate();
+  // Read, not owned: the toggle lives on the boards; Поиск only has to honour it.
+  const withFriends = initWithFriends();
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [tab, setTab] = useState<Tab>("all");
@@ -330,7 +332,11 @@ export default function Search() {
               <GroupLabel>Категории</GroupLabel>
               {matchedCats.map((c) => {
                 const g = catGroups.get(c.slug);
-                const winner = g?.friend_best ?? g?.best ?? g?.available;
+                // The same rule the feed uses, toggle included: this list used
+                // to prefer a friend's card unconditionally and show it even
+                // with «Карты друзей» off, unlabelled.
+                const w = g ? winnerOf(g, withFriends) : null;
+                const winner = w?.entry;
                 return (
                   <button
                     key={c.id}
@@ -345,6 +351,9 @@ export default function Search() {
                         <span className="mt-0.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-tx4">
                           <BankBadge name={winner.bank_name} size={16} />
                           {winner.bank_name}
+                          {(w?.state === "friend" || w?.state === "friend-available") && (
+                            <Chip tone="friend">друг · {winner.friend_name}</Chip>
+                          )}
                           {"stacked_super" in winner && winner.stacked_super != null && (
                             <span className="rounded-[5px] bg-gold/15 px-1.5 py-px text-[9.5px] font-bold text-gold">
                               {winner.stacked_regular} + {winner.stacked_super} барабан

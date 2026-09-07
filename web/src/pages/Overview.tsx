@@ -7,6 +7,10 @@ import { BankBadge, Btn, Card, Chip, ErrMsg, ListRow, Pct, Spinner } from "../co
 import { MonthPicker } from "../components/MonthPicker";
 import {
   FALLBACK_EMOJI,
+  currencyRank,
+  pctNum,
+  plural,
+  winnerOf,
   capNote,
   fmtDate,
   initWithFriends,
@@ -40,39 +44,6 @@ function storedCatsSort(): CatsSort {
 // Percent as a number for display ordering; unknown last. Nominal across
 // currencies — the same rule the боards use (2026-08-27): ordering is not
 // conversion.
-// Currency order is the server's (RankActiveSelections): rubles, then points,
-// then anything whose currency is unknown — honestly last.
-function currencyRank(kind?: string): number {
-  return kind === "rub" ? 0 : kind === "points" ? 1 : 2;
-}
-
-function pctNum(p?: string | null): number {
-  return p != null ? parseFloat(p) : -1;
-}
-
-// The row's displayed winner: the best rate the row can honestly show —
-// 9a's own rule, «передний логотип — банк с максимальным процентом, ему и
-// принадлежит цифра». A friend's 9% must not front a row that has a
-// still-pickable 10% below it (feedback 2026-08-28). Ties resolve by the
-// least action needed: an own selected card already pays, a friend's needs
-// asking, a «свободный слот» needs picking first.
-function winnerOf(g: CategoryGroup, friendsOn: boolean): { entry: LookupEntry; state: "friend" | "own" | "available" | "friend-available" } | null {
-  const candidates: { entry: LookupEntry; state: "friend" | "own" | "available"; prio: number }[] = [];
-  if (g.best) candidates.push({ entry: g.best, state: "own", prio: 0 });
-  if (friendsOn && g.friend_best) candidates.push({ entry: g.friend_best, state: "friend", prio: 1 });
-  if (g.available) candidates.push({ entry: g.available, state: "available", prio: 2 });
-  if (candidates.length === 0) {
-    // Nothing of the viewer's own, and no friend has picked here — but a
-    // friend still holds the category unpicked. It fronts the row rather than
-    // dropping it, and only here: a rate nobody has taken must never outrank
-    // a card that already pays.
-    if (friendsOn && g.friend_available) return { entry: g.friend_available, state: "friend-available" };
-    return null;
-  }
-  candidates.sort((a, b) => pctNum(b.entry.percent) - pctNum(a.entry.percent) || a.prio - b.prio);
-  return candidates[0];
-}
-
 // Gold mechanic chip for a winner row: the stacked барабан shows its parts
 // («7 + 7 барабан» — the sum is only trustworthy if it shows them), a bare
 // super is «барабан», a special carries its own title («спец · Остатки»).
@@ -214,6 +185,17 @@ function ExpandedCategory({
   );
 }
 
+// The caption line is part of every row's box, present or not: reserving it
+// with an invisible glyph makes captioned and captionless rows exactly the
+// same height, which a min-height could only approximate.
+function CaptionSlot() {
+  return (
+    <span aria-hidden className="invisible text-[10px] font-semibold">
+      ·
+    </span>
+  );
+}
+
 // One feed row — the final anatomy (9a, 8d-2): single line, no bank name.
 // Status chips ride the title's tail; the right side is the overlap logo
 // stack with the percent, and the держатель/друг caption sits under them.
@@ -252,7 +234,7 @@ function FeedRow({
         </>
       }
       right={
-        <span className="flex min-h-[34px] flex-none flex-col items-end justify-center gap-0.5">
+        <span className="flex flex-none flex-col items-end gap-0.5">
           <span className="flex items-center gap-2">
             <BankStack banks={stackBanks} winner={e.bank_name} />
             <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
@@ -263,9 +245,11 @@ function FeedRow({
               THEIR держатель, and falling through would print it as if the
               viewer had a card there. */}
           {state === "friend" || state === "friend-available" ? (
-            <span className="text-[10px] font-bold text-accl">друг · {e.friend_name}</span>
+            <span className="max-w-[9rem] truncate text-[10px] font-bold text-accl">друг · {e.friend_name}</span>
+          ) : e.holder_label ? (
+            <span className="max-w-[9rem] truncate text-[10px] font-semibold text-tx4">{e.holder_label}</span>
           ) : (
-            e.holder_label && <span className="text-[10px] font-semibold text-tx4">{e.holder_label}</span>
+            <CaptionSlot />
           )}
         </span>
       }
@@ -296,9 +280,12 @@ function PartnerFeedRow({ p, onOpen }: { p: PartnerFeed; onOpen: () => void }) {
         // min-h matches the rows that carry a держатель/друг caption: the feed
         // reads as a list, and a row that is 14px shorter than its neighbours
         // makes the column ragged for a reason the user cannot see.
-        <span className="flex min-h-[34px] flex-none items-center gap-2">
-          <BankBadge name={p.bank_name} size={18} />
-          <Pct percent={p.percent} currency={p.currency_kind} className="text-base" />
+        <span className="flex flex-none flex-col items-end gap-0.5">
+          <span className="flex items-center gap-2">
+            <BankBadge name={p.bank_name} size={18} />
+            <Pct percent={p.percent} currency={p.currency_kind} className="text-base" />
+          </span>
+          <CaptionSlot />
         </span>
       }
     />
@@ -317,12 +304,16 @@ function BaseFeedRow({ b }: { b: Schemas["OverviewBaseDTO"] }) {
       onClick={() => navigate("/pos?cat=all-purchases")}
       title="За все покупки"
       right={
-        <span className="flex min-h-[34px] flex-none flex-col items-end justify-center gap-0.5">
+        <span className="flex flex-none flex-col items-end gap-0.5">
           <span className="flex items-center gap-2">
             <BankStack banks={(b.bank_stack ?? []).map((s) => s.bank_name)} winner={e.bank_name} />
             <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
           </span>
-          {e.holder_label && <span className="text-[10px] font-semibold text-tx4">{e.holder_label}</span>}
+          {e.holder_label ? (
+            <span className="max-w-[9rem] truncate text-[10px] font-semibold text-tx4">{e.holder_label}</span>
+          ) : (
+            <CaptionSlot />
+          )}
         </span>
       }
     />
@@ -442,8 +433,19 @@ export default function Overview() {
   // the server's (PendingMenu), the same field CB-09 marks its bank rows
   // with, so both screens speak about one fact. A period for the month being
   // viewed is left out: the list above already says that one.
+  // ⚠️ `pending_from` is not «the bank opened its picker»: PendingMenu
+  // returns the CURRENT period whenever it is unfilled, before it consults
+  // the opens-day at all. Filtering on the month alone therefore announced
+  // «Открыт выбор на июль» for an unfilled МКБ quarter, and put banks with
+  // no known opens-day under a heading about opening — the very claim CB-09
+  // lost. Only a period that does not contain today is news.
   const openings = (data.clients ?? [])
-    .filter((c) => c.pending_from != null && monthKey(c.pending_from) !== monthKey(monthDate))
+    .filter(
+      (c) =>
+        c.pending_from != null &&
+        !(c.pending_from <= todayISO() && (c.pending_to ?? c.pending_from) >= todayISO()) &&
+        monthKey(c.pending_from) !== monthKey(monthDate),
+    )
     .sort((a, b) => a.pending_from!.localeCompare(b.pending_from!) || a.bank_name.localeCompare(b.bank_name));
   const openingMonths = new Set(openings.map((c) => monthKey(c.pending_from!)));
   const monthEmpty = roster.length > 0 && filledClientIDs.size === 0;
@@ -609,7 +611,7 @@ export default function Overview() {
           {(feed.length > 0 || singles.length > 0) && (
             <div className="mx-0.5 flex items-baseline justify-between" data-sid="CB-01.b">
               <span className="text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">
-                {monthEmpty ? "Доступно сейчас" : `${categories.length} категорий`}
+                {monthEmpty ? "Доступно сейчас" : `${categories.length} ${plural(categories.length, "категория", "категории", "категорий")}`}
               </span>
               <span className="flex gap-2.5">
                 {(
@@ -675,12 +677,16 @@ export default function Overview() {
                       </>
                     }
                     right={
-                      <span className="flex min-h-[34px] flex-none flex-col items-end justify-center gap-0.5">
+                      <span className="flex flex-none flex-col items-end gap-0.5">
                         <span className="flex items-center gap-2">
                           <BankBadge name={e.bank_name} size={18} />
                           <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
                         </span>
-                        {e.holder_label && <span className="text-[10px] font-semibold text-tx4">{e.holder_label}</span>}
+                        {e.holder_label ? (
+            <span className="max-w-[9rem] truncate text-[10px] font-semibold text-tx4">{e.holder_label}</span>
+          ) : (
+            <CaptionSlot />
+          )}
                       </span>
                     }
                   />

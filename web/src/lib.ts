@@ -1,3 +1,7 @@
+import type { LookupEntry, Schemas } from "./api/client";
+
+type CategoryGroup = Schemas["OverviewCategoryDTO"];
+
 // Small display helpers shared by screens. Domain language is Russian.
 
 // Latin lowercase letters that are pixel-identical to Cyrillic ones — real
@@ -308,4 +312,44 @@ export function unitWord(unit: string, n: number): string {
   if (t === 1 && h !== 11) return forms[0];
   if (t >= 2 && t <= 4 && (h < 12 || h > 14)) return forms[1];
   return forms[2];
+}
+
+export function currencyRank(kind?: string): number {
+  return kind === "rub" ? 0 : kind === "points" ? 1 : 2;
+}
+
+export function pctNum(p?: string | null): number {
+  return p != null ? parseFloat(p) : -1;
+}
+
+// The row's displayed winner: the best rate the row can honestly show —
+// 9a's own rule, «передний логотип — банк с максимальным процентом, ему и
+// принадлежит цифра». A friend's 9% must not front a row that has a
+// still-pickable 10% below it (feedback 2026-08-28). Ties resolve by the
+// least action needed: an own selected card already pays, a friend's needs
+// asking, a «свободный слот» needs picking first.
+export function winnerOf(g: CategoryGroup, friendsOn: boolean): { entry: LookupEntry; state: "friend" | "own" | "available" | "friend-available" } | null {
+  const candidates: { entry: LookupEntry; state: "friend" | "own" | "available"; prio: number }[] = [];
+  if (g.best) candidates.push({ entry: g.best, state: "own", prio: 0 });
+  if (friendsOn && g.friend_best) candidates.push({ entry: g.friend_best, state: "friend", prio: 1 });
+  if (g.available) candidates.push({ entry: g.available, state: "available", prio: 2 });
+  if (candidates.length === 0) {
+    // Nothing of the viewer's own, and no friend has picked here — but a
+    // friend still holds the category unpicked. It fronts the row rather than
+    // dropping it, and only here: a rate nobody has taken must never outrank
+    // a card that already pays.
+    if (friendsOn && g.friend_available) return { entry: g.friend_available, state: "friend-available" };
+    return null;
+  }
+  // Currency first, exactly as the server ranks and as the row expansion
+  // now sorts: a friend's 9% в баллах must not headline a row whose list
+  // opens on a 4% в рублях. Percent still decides inside a currency, and the
+  // prio tiebreak still favours the card that needs the least action.
+  candidates.sort(
+    (a, b) =>
+      currencyRank(a.entry.currency_kind) - currencyRank(b.entry.currency_kind) ||
+      pctNum(b.entry.percent) - pctNum(a.entry.percent) ||
+      a.prio - b.prio,
+  );
+  return candidates[0];
 }

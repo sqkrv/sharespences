@@ -580,7 +580,11 @@ function CategoryScreen({ slug }: { slug: string }) {
   }, [canon?.slug]);
 
   const rankedAll = lookup.data?.ranked ?? [];
-  const hasFriendCards = rankedAll.some((e) => e.friend_name);
+  // A friend's unpicked row counts as a friend card here too: without it the
+  // toggle vanished for a friend who has only those, leaving their name on
+  // screen with no way to hide it — the defect the MCC board had.
+  const friendAvailable = withFriends ? (lookup.data?.friend_available ?? []) : [];
+  const hasFriendCards = rankedAll.some((e) => e.friend_name) || (lookup.data?.friend_available ?? []).length > 0;
   const ranked = withFriends ? rankedAll : rankedAll.filter((e) => !e.friend_name);
   const best = ranked[0];
   const others = ranked.slice(1);
@@ -668,7 +672,11 @@ function CategoryScreen({ slug }: { slug: string }) {
             </button>
           )}
 
-          <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Остальные банки</p>
+          {/* Guarded like its twin above: with nothing to list it used to head
+              an empty div. */}
+          {others.length > 0 && (
+            <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Остальные банки</p>
+          )}
           <div className="space-y-1.5" data-sid="CB-11.c">
             {/* Prefixed: the available list below keys by offer_id, and a
                 fresh install numbers offers from 1 — bare indices collided. */}
@@ -724,7 +732,7 @@ function CategoryScreen({ slug }: { slug: string }) {
             ))}
           </div>
 
-          <BlockedRows rows={blocked} />
+          <BlockedRows rows={blocked} friendRows={friendAvailable} />
 
           {baseClients.length > 0 && (
             <div className="rounded-xl border border-brd bg-srf/60 px-3 py-2.5" data-sid="CB-11.f">
