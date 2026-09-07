@@ -6,7 +6,7 @@ import { useBanks, useClients, usePrograms, useTierMap } from "../hooks";
 import { BackButton, Badge, BankBadge, Btn, Card, Empty, ErrMsg, Field, Input, Pct, Select, Spinner } from "../components/ui";
 import { MonthPicker } from "../components/MonthPicker";
 import { PartnerChips, PartnerSheet } from "../components/Partners";
-import { capNote, monthKey, monthNameOf, quarterNote, todayISO } from "../lib";
+import { capNote, monthKey, monthNameOf, quarterNote } from "../lib";
 import { rememberMonth, viewedMonth } from "../month";
 
 // CB-09 «Банки и карты» — the fleet screen split out of the old CB-01
@@ -406,39 +406,19 @@ function ClientCard({
   );
 }
 
-// «выбор с 25-го» + the mark CB-09.b exists for: the bank has opened its
-// selection and the menu behind it is still empty. Accented state names the
-// period and offers to fill it; quiet state is just the ритуал date, so
-// «когда откроется ВТБ?» has an answer before it is too late (owner
-// 2026-08-27). A bank whose opens-day is unknown (Газпромбанк) shows nothing
-// rather than a guessed date.
-function OpensLine({ clients, viewedMonth }: { clients: OverviewClient[]; viewedMonth: string }) {
-  const navigate = useNavigate();
+// The per-bank ритуал date, and only that: «когда откроется ВТБ?» has an
+// answer before it is too late (2026-08-27). A bank whose opens-day is
+// unknown shows nothing rather than a guessed date.
+//
+// It used to also carry an accent pill about a month with an empty menu —
+// which, on a screen whose picker says «Август» and whose cards say «август
+// не заполнен», announced «сентябрь не заполнен» beside them. That nudge now
+// lives on CB-01.d, where it names the month and carries a button per
+// клиент; here it only contradicted the month being viewed.
+function OpensLine({ clients }: { clients: OverviewClient[] }) {
   const day = clients.find((c) => c.selection_opens_day != null)?.selection_opens_day;
-  // The pending period is per client; the bank line speaks for the first one
-  // that has something to fill — its «Заполнить» goes to that держатель.
-  const due = clients.find((c) => c.pending_from != null);
-  // Nothing to add when the card below already says it: the mark exists to
-  // warn about a month the user is NOT looking at.
-  const mark = due != null && monthKey(due.pending_from!) !== monthKey(viewedMonth) ? due : null;
-  if (day == null && mark == null) return null;
-  if (mark == null) {
-    return <span className="text-[10.5px] font-medium text-tx4">выбор с {day}-го</span>;
-  }
-  const month = monthNameOf(mark.pending_from!);
-  // «открыт с N-го» is only true of the NEXT period — the 25th opens
-  // September, not August. A current period that is simply empty says so.
-  const isNext = monthKey(mark.pending_from!) !== monthKey(todayISO());
-  return (
-    <button
-      type="button"
-      onClick={() => navigate(`/periods/new?client=${mark.bank_client_id}&month=${monthKey(mark.pending_from!)}`)}
-      className="flex flex-none items-center gap-1.5 rounded-full border border-acc/30 bg-acc/10 px-2 py-[3px] text-[10.5px] font-bold text-accl"
-    >
-      <span className="h-[5px] w-[5px] flex-none rounded-full bg-acc" />
-      {isNext && day != null ? `${month} открыт с ${day}-го — пусто` : `${month} не заполнен`}
-    </button>
-  );
+  if (day == null) return null;
+  return <span className="text-[10.5px] font-medium text-tx4">выбор с {day}-го</span>;
 }
 
 export default function Banks() {
@@ -559,7 +539,7 @@ export default function Banks() {
                     {/* Grouped by держатель there is no bank header to hang the
                         ритуал date on, so it sits under its own card. */}
                     <div className="mx-0.5 flex justify-end">
-                      <OpensLine clients={[c]} viewedMonth={monthDate} />
+                      <OpensLine clients={[c]} />
                     </div>
                   </div>
                 ))}
@@ -572,7 +552,7 @@ export default function Banks() {
                 <div className="mx-0.5 flex items-center gap-2 pt-1">
                   <BankBadge name={group[0].bank_name} size={22} color={bankColor.get(bankID)} />
                   <p className="min-w-0 flex-1 truncate text-[11px] font-bold text-tx2">{group[0].bank_name}</p>
-                  <OpensLine clients={group} viewedMonth={monthDate} />
+                  <OpensLine clients={group} />
                 </div>
                 {group.map((c) => clientCard(c, "holder"))}
               </div>
