@@ -35,7 +35,11 @@ export function PartnerChips({ offers, onOpen }: { offers: PartnerChipOffer[]; o
         e.stopPropagation();
         onOpen(p.id);
       }}
-      className={`rounded-lg border px-2 py-1 text-[10.5px] font-semibold whitespace-nowrap ${
+      // No nowrap: a merchant title is free text, and one longer than the
+      // card used to run straight out of it — flex-wrap can wrap chips, but
+      // not a chip that is itself wider than the row. It wraps its own text
+      // instead, so the percent and the term stay visible.
+      className={`max-w-full rounded-lg border px-2 py-1 text-left text-[10.5px] font-semibold ${
         muted ? "border-brd2 text-tx4" : "border-gold/30 bg-gold/10 text-gold"
       }`}
     >
