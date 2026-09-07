@@ -113,12 +113,19 @@ export default function Search() {
   // Categories filter client-side over the canonical list; the winner line
   // comes from the cached feed (best → friend → available, same fallback
   // order the feed itself renders).
-  const nq = normalizeTitle(debouncedQ);
+  // Words, not one string: «рестораны кафе» has to find what «кафе и
+  // рестораны» finds. This is the rule the точки search already follows —
+  // each word is its own required pattern, order irrelevant — and the
+  // categories tab was the one place still matching the query whole.
+  const nqWords = normalizeTitle(debouncedQ).split(" ").filter(Boolean);
   const catGroups = new Map<string, Schemas["OverviewCategoryDTO"]>(
     (overview.data?.categories ?? []).map((g) => [g.slug, g]),
   );
   const matchedCats = active
-    ? (categories.data ?? []).filter((c) => normalizeTitle(c.title_ru).includes(nq))
+    ? (categories.data ?? []).filter((c) => {
+        const title = normalizeTitle(c.title_ru);
+        return nqWords.every((w) => title.includes(w));
+      })
     : [];
 
   const recent = recentEntries();
