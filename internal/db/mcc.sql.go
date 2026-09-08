@@ -12,6 +12,113 @@ import (
 	"github.com/google/uuid"
 )
 
+const createUserPointOfSale = `-- name: CreateUserPointOfSale :one
+insert into point_of_sale (name, merchant_title, mcc_code, type, address, status, author_user_id, origin)
+values ($1, $2, $3, $4, $5, 'pending', $6, 'user_manual')
+returning id, name, merchant_title, mcc_code, type, address, confirmations, created_at, last_confirmed_at, location, status, author_user_id, origin, user_confirmations, moderation_note, moderated_at
+`
+
+type CreateUserPointOfSaleParams struct {
+	Name          string
+	MerchantTitle *string
+	MccCode       *int16
+	Type          NullPointOfSaleType
+	Address       *string
+	AuthorUserID  *uuid.UUID
+}
+
+func (q *Queries) CreateUserPointOfSale(ctx context.Context, arg CreateUserPointOfSaleParams) (PointOfSale, error) {
+	row := q.db.QueryRow(ctx, createUserPointOfSale,
+		arg.Name,
+		arg.MerchantTitle,
+		arg.MccCode,
+		arg.Type,
+		arg.Address,
+		arg.AuthorUserID,
+	)
+	var i PointOfSale
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.MerchantTitle,
+		&i.MccCode,
+		&i.Type,
+		&i.Address,
+		&i.Confirmations,
+		&i.CreatedAt,
+		&i.LastConfirmedAt,
+		&i.Location,
+		&i.Status,
+		&i.AuthorUserID,
+		&i.Origin,
+		&i.UserConfirmations,
+		&i.ModerationNote,
+		&i.ModeratedAt,
+	)
+	return i, err
+}
+
+const findSimilarPointsOfSale = `-- name: FindSimilarPointsOfSale :many
+select id, name, merchant_title, mcc_code
+from point_of_sale
+where mcc_code = $1
+  and (status = 'approved' or (author_user_id = $2::uuid and status = 'pending'))
+  -- Point-of-sale type filter: empty means «any». The same merchant is often
+  -- a different MCC at the till than in its app, so «где я плачу» is a real
+  -- question the base can answer.
+  and ($3::text = '' or coalesce(type::text, '') = $3::text)
+  and (name ilike '%' || $4::text || '%'
+    or $4::text ilike '%' || name || '%')
+order by confirmations desc nulls last, name
+limit 3
+`
+
+type FindSimilarPointsOfSaleParams struct {
+	MccCode *int16
+	UserID  uuid.UUID
+	PosType string
+	Name    string
+}
+
+type FindSimilarPointsOfSaleRow struct {
+	ID            uuid.UUID
+	Name          string
+	MerchantTitle *string
+	MccCode       *int16
+}
+
+// The 5e duplicate net: same MCC and either name contains the other —
+// «Хлебник» must catch a new «Пекарня Хлебник» before a copy is created.
+func (q *Queries) FindSimilarPointsOfSale(ctx context.Context, arg FindSimilarPointsOfSaleParams) ([]FindSimilarPointsOfSaleRow, error) {
+	rows, err := q.db.Query(ctx, findSimilarPointsOfSale,
+		arg.MccCode,
+		arg.UserID,
+		arg.PosType,
+		arg.Name,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FindSimilarPointsOfSaleRow
+	for rows.Next() {
+		var i FindSimilarPointsOfSaleRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MerchantTitle,
+			&i.MccCode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMCC = `-- name: GetMCC :one
 
 select code, name, description
@@ -28,6 +135,68 @@ func (q *Queries) GetMCC(ctx context.Context, code int16) (Mcc, error) {
 	row := q.db.QueryRow(ctx, getMCC, code)
 	var i Mcc
 	err := row.Scan(&i.Code, &i.Name, &i.Description)
+	return i, err
+}
+
+const getPointOfSale = `-- name: GetPointOfSale :one
+select id,
+       name,
+       merchant_title,
+       mcc_code,
+       coalesce(type::text, '')::text as pos_type,
+       address,
+       confirmations,
+       user_confirmations,
+       last_confirmed_at,
+       status,
+       origin::text as origin
+from point_of_sale
+where id = $1
+  and (status = 'approved' or (author_user_id = $2::uuid and status = 'pending'))
+  -- Point-of-sale type filter: empty means «any». The same merchant is often
+  -- a different MCC at the till than in its app, so «где я плачу» is a real
+  -- question the base can answer.
+  and ($3::text = '' or coalesce(type::text, '') = $3::text)
+`
+
+type GetPointOfSaleParams struct {
+	ID      uuid.UUID
+	UserID  uuid.UUID
+	PosType string
+}
+
+type GetPointOfSaleRow struct {
+	ID                uuid.UUID
+	Name              string
+	MerchantTitle     *string
+	MccCode           *int16
+	PosType           string
+	Address           *string
+	Confirmations     *int64
+	UserConfirmations int64
+	LastConfirmedAt   *time.Time
+	Status            PointOfSaleStatus
+	Origin            string
+}
+
+// The «О точке» card (8b): one row by id — approved, or the caller's own
+// pending submission (the same visibility rule the search applies).
+func (q *Queries) GetPointOfSale(ctx context.Context, arg GetPointOfSaleParams) (GetPointOfSaleRow, error) {
+	row := q.db.QueryRow(ctx, getPointOfSale, arg.ID, arg.UserID, arg.PosType)
+	var i GetPointOfSaleRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.MerchantTitle,
+		&i.MccCode,
+		&i.PosType,
+		&i.Address,
+		&i.Confirmations,
+		&i.UserConfirmations,
+		&i.LastConfirmedAt,
+		&i.Status,
+		&i.Origin,
+	)
 	return i, err
 }
 
@@ -92,6 +261,269 @@ func (q *Queries) ListMCCChanges(ctx context.Context, limit int32) ([]ListMCCCha
 	return items, nil
 }
 
+const listMerchantsByCode = `-- name: ListMerchantsByCode :many
+select id,
+       name,
+       merchant_title,
+       mcc_code,
+       coalesce(type::text, '')::text as pos_type,
+       address,
+       confirmations,
+       user_confirmations,
+       last_confirmed_at,
+       status,
+       origin::text as origin
+from point_of_sale
+where mcc_code = $1
+  and (status = 'approved' or (author_user_id = $2::uuid and status = 'pending'))
+order by confirmations desc nulls last, name, id
+limit $3
+`
+
+type ListMerchantsByCodeParams struct {
+	MccCode *int16
+	UserID  uuid.UUID
+	MaxRows int32
+}
+
+type ListMerchantsByCodeRow struct {
+	ID                uuid.UUID
+	Name              string
+	MerchantTitle     *string
+	MccCode           *int16
+	PosType           string
+	Address           *string
+	Confirmations     *int64
+	UserConfirmations int64
+	LastConfirmedAt   *time.Time
+	Status            PointOfSaleStatus
+	Origin            string
+}
+
+// «Точки с кодом NNNN» (13a): the known points carrying a code,
+// confirmations first — the search's visibility rule applies.
+func (q *Queries) ListMerchantsByCode(ctx context.Context, arg ListMerchantsByCodeParams) ([]ListMerchantsByCodeRow, error) {
+	rows, err := q.db.Query(ctx, listMerchantsByCode, arg.MccCode, arg.UserID, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMerchantsByCodeRow
+	for rows.Next() {
+		var i ListMerchantsByCodeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MerchantTitle,
+			&i.MccCode,
+			&i.PosType,
+			&i.Address,
+			&i.Confirmations,
+			&i.UserConfirmations,
+			&i.LastConfirmedAt,
+			&i.Status,
+			&i.Origin,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const moderationApprovePOS = `-- name: ModerationApprovePOS :execrows
+update point_of_sale
+set status       = 'approved',
+    moderated_at = now()
+where id = $1
+  and status = 'pending'
+`
+
+func (q *Queries) ModerationApprovePOS(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, moderationApprovePOS, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const moderationListPendingPOS = `-- name: ModerationListPendingPOS :many
+
+select p.id,
+       p.name,
+       p.merchant_title,
+       p.mcc_code,
+       m.name as mcc_name,
+       coalesce(p.type::text, '')::text as pos_type,
+       p.address,
+       p.origin::text                   as origin,
+       p.created_at,
+       count(*) over ()::bigint         as total
+from point_of_sale p
+         left join mcc m on m.code = p.mcc_code
+where p.status = 'pending'
+order by p.created_at, p.id
+limit $2 offset $1
+`
+
+type ModerationListPendingPOSParams struct {
+	Skip    int32
+	MaxRows int32
+}
+
+type ModerationListPendingPOSRow struct {
+	ID            uuid.UUID
+	Name          string
+	MerchantTitle *string
+	MccCode       *int16
+	MccName       *string
+	PosType       string
+	Address       *string
+	Origin        string
+	CreatedAt     time.Time
+	Total         int64
+}
+
+// Moderation (roles-moderation.md). The queue is ANONYMOUS by column
+// selection: author_user_id is deliberately never selected here — the
+// moderator-facing DTO cannot carry what the query never returns
+// (invariant 1). Writes are scoped to non-scrape rows: the 62k imported
+// rows are the operator's domain (sidecar), not the moderators'.
+func (q *Queries) ModerationListPendingPOS(ctx context.Context, arg ModerationListPendingPOSParams) ([]ModerationListPendingPOSRow, error) {
+	rows, err := q.db.Query(ctx, moderationListPendingPOS, arg.Skip, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ModerationListPendingPOSRow
+	for rows.Next() {
+		var i ModerationListPendingPOSRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MerchantTitle,
+			&i.MccCode,
+			&i.MccName,
+			&i.PosType,
+			&i.Address,
+			&i.Origin,
+			&i.CreatedAt,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const moderationListPublishedPOS = `-- name: ModerationListPublishedPOS :many
+select p.id,
+       p.name,
+       p.merchant_title,
+       p.mcc_code,
+       m.name as mcc_name,
+       coalesce(p.type::text, '')::text as pos_type,
+       p.address,
+       p.origin::text                   as origin,
+       p.created_at,
+       p.moderated_at,
+       count(*) over ()::bigint         as total
+from point_of_sale p
+         left join mcc m on m.code = p.mcc_code
+where p.status = 'approved'
+  and p.origin <> 'mcc_codes'
+order by coalesce(p.moderated_at, p.created_at) desc, p.id
+limit $2 offset $1
+`
+
+type ModerationListPublishedPOSParams struct {
+	Skip    int32
+	MaxRows int32
+}
+
+type ModerationListPublishedPOSRow struct {
+	ID            uuid.UUID
+	Name          string
+	MerchantTitle *string
+	MccCode       *int16
+	MccName       *string
+	PosType       string
+	Address       *string
+	Origin        string
+	CreatedAt     time.Time
+	ModeratedAt   *time.Time
+	Total         int64
+}
+
+// The review stream: recently published non-scrape rows — what keeps the
+// instant-publish path (user_transaction) supervised after the fact. A
+// manual row's publish moment is its approval (moderated_at), not its
+// creation, so the order coalesces.
+func (q *Queries) ModerationListPublishedPOS(ctx context.Context, arg ModerationListPublishedPOSParams) ([]ModerationListPublishedPOSRow, error) {
+	rows, err := q.db.Query(ctx, moderationListPublishedPOS, arg.Skip, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ModerationListPublishedPOSRow
+	for rows.Next() {
+		var i ModerationListPublishedPOSRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MerchantTitle,
+			&i.MccCode,
+			&i.MccName,
+			&i.PosType,
+			&i.Address,
+			&i.Origin,
+			&i.CreatedAt,
+			&i.ModeratedAt,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const moderationRejectPOS = `-- name: ModerationRejectPOS :execrows
+update point_of_sale
+set status          = 'rejected',
+    moderated_at    = now(),
+    moderation_note = $2
+where id = $1
+  and status in ('pending', 'approved')
+  and origin <> 'mcc_codes'
+`
+
+type ModerationRejectPOSParams struct {
+	ID   uuid.UUID
+	Note *string
+}
+
+// Reject doubles as the review stream's prune: a published non-scrape row
+// can be pulled back. Rejected rows are kept for audit; the note is the
+// reviewer's reason FOR THE OPERATOR — it never travels to the author.
+func (q *Queries) ModerationRejectPOS(ctx context.Context, arg ModerationRejectPOSParams) (int64, error) {
+	result, err := q.db.Exec(ctx, moderationRejectPOS, arg.ID, arg.Note)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const resolveMCC = `-- name: ResolveMCC :many
 select b.id     as bank_id,
        b.name   as bank_name,
@@ -101,6 +533,7 @@ select b.id     as bank_id,
        bc.kind,
        bc.emoji as bank_emoji,
        cc.emoji as canonical_emoji,
+       cc.id    as canonical_category_id,
        cc.slug  as canonical_slug,
        cc.title_ru as canonical_title,
        bcm.note
@@ -120,17 +553,18 @@ type ResolveMCCParams struct {
 }
 
 type ResolveMCCRow struct {
-	BankID         int32
-	BankName       string
-	ColorHex       *string
-	BankCategoryID int64
-	Title          string
-	Kind           CashbackOfferKind
-	BankEmoji      *string
-	CanonicalEmoji *string
-	CanonicalSlug  *string
-	CanonicalTitle *string
-	Note           *string
+	BankID              int32
+	BankName            string
+	ColorHex            *string
+	BankCategoryID      int64
+	Title               string
+	Kind                CashbackOfferKind
+	BankEmoji           *string
+	CanonicalEmoji      *string
+	CanonicalCategoryID *int64
+	CanonicalSlug       *string
+	CanonicalTitle      *string
+	Note                *string
 }
 
 func (q *Queries) ResolveMCC(ctx context.Context, arg ResolveMCCParams) ([]ResolveMCCRow, error) {
@@ -151,6 +585,7 @@ func (q *Queries) ResolveMCC(ctx context.Context, arg ResolveMCCParams) ([]Resol
 			&i.Kind,
 			&i.BankEmoji,
 			&i.CanonicalEmoji,
+			&i.CanonicalCategoryID,
 			&i.CanonicalSlug,
 			&i.CanonicalTitle,
 			&i.Note,
@@ -211,33 +646,79 @@ select id,
        coalesce(type::text, '')::text as pos_type,
        address,
        confirmations,
-       last_confirmed_at
+       user_confirmations,
+       last_confirmed_at,
+       status,
+       origin::text as origin,
+       count(*) over ()::bigint as total_rows
 from point_of_sale
 where mcc_code is not null -- a merchant row without an MCC answers nothing here
-  and (name ilike '%' || $1::text || '%'
-    or merchant_title ilike '%' || $1::text || '%')
-order by confirmations desc nulls last, last_confirmed_at desc nulls last, name
-limit $2
+  and (status = 'approved' or (author_user_id = $1::uuid and status = 'pending'))
+  -- Point-of-sale type filter: empty means «any». The same merchant is often
+  -- a different MCC at the till than in its app, so «где я плачу» is a real
+  -- question the base can answer.
+  and ($2::text = '' or coalesce(type::text, '') = $2::text)
+  -- The first word, per column and without coalesce, is the clause the two
+  -- gin_trgm_ops indexes can serve: a BitmapOr over name/merchant_title
+  -- instead of a 62k-row scan (11 ms vs 115 ms on the live base). It is
+  -- implied by the ALL below, so it changes no result — only the plan.
+  and (name ilike $3::text or merchant_title ilike $3::text)
+  -- Every word, against the two fields joined. Matching the concatenation is
+  -- the same as matching either column, because the words come from a
+  -- whitespace split: a spaceless pattern cannot straddle the joining space.
+  and name || ' ' || coalesce(merchant_title, '') ilike all ($4::text[])
+order by confirmations desc nulls last, last_confirmed_at desc nulls last, name, id
+limit $6 offset $5
 `
 
 type SearchMerchantsParams struct {
-	Query   string
-	MaxRows int32
+	UserID   uuid.UUID
+	PosType  string
+	Head     string
+	Patterns []string
+	SkipRows int32
+	MaxRows  int32
 }
 
 type SearchMerchantsRow struct {
-	ID              uuid.UUID
-	Name            string
-	MerchantTitle   *string
-	MccCode         *int16
-	PosType         string
-	Address         *string
-	Confirmations   *int64
-	LastConfirmedAt *time.Time
+	ID                uuid.UUID
+	Name              string
+	MerchantTitle     *string
+	MccCode           *int16
+	PosType           string
+	Address           *string
+	Confirmations     *int64
+	UserConfirmations int64
+	LastConfirmedAt   *time.Time
+	Status            PointOfSaleStatus
+	Origin            string
+	TotalRows         int64
 }
 
+// Pending user submissions are visible to their author only (5e): the общий
+// каталог serves approved rows. Rejected rows are invisible to everyone,
+// the author included (roles-moderation invariant 3).
+// Every word of the query must appear somewhere in the row, in any order:
+// «доставка яндекс» and «яндекс доставка» are the same question. The words
+// arrive already wrapped in %…% (the service builds them).
+//
+// total_rows rides along as a window count over the whole match set: the
+// caller pages with offset, and «яндекс» matches 500+ rows — without the
+// count the list would silently end at the page size, which is exactly the
+// bug this replaced (a row found by «яндекс доставка» was missing from
+// «яндекс», buried past row 20 by the confirmations order).
+// id last: offset paging needs a total order, or a row can repeat or vanish
+// between pages when confirmations tie (they tie constantly — most rows sit
+// at 0).
 func (q *Queries) SearchMerchants(ctx context.Context, arg SearchMerchantsParams) ([]SearchMerchantsRow, error) {
-	rows, err := q.db.Query(ctx, searchMerchants, arg.Query, arg.MaxRows)
+	rows, err := q.db.Query(ctx, searchMerchants,
+		arg.UserID,
+		arg.PosType,
+		arg.Head,
+		arg.Patterns,
+		arg.SkipRows,
+		arg.MaxRows,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +734,11 @@ func (q *Queries) SearchMerchants(ctx context.Context, arg SearchMerchantsParams
 			&i.PosType,
 			&i.Address,
 			&i.Confirmations,
+			&i.UserConfirmations,
 			&i.LastConfirmedAt,
+			&i.Status,
+			&i.Origin,
+			&i.TotalRows,
 		); err != nil {
 			return nil, err
 		}

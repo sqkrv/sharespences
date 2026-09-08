@@ -4,7 +4,7 @@ import { useRegisterSW } from "virtual:pwa-register/react";
 import { api, unwrap } from "./api/client";
 import { midMonthISO, STATUS_URL } from "./lib";
 
-// PWA glue per docs/specs/pwa.md (meta-repo): offline indicator, prompt-style
+// PWA glue per docs/specs/pwa.md: offline indicator, prompt-style
 // update toast, install affordances, and the offline-read cache warm-up.
 
 // «Offline» = the server didn't answer a probe. navigator.onLine alone can't

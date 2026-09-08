@@ -105,12 +105,23 @@ from offer_period op
 where op.id = $1
   and cl.user_id = $2;
 
+-- ListOfferPeriodsForUser carries fill counts so the month picker can render
+-- «заполнен/нет» per client without N+1 period fetches. selection is unique
+-- per category_offer, so the left joins cannot fan out the counts.
 -- name: ListOfferPeriodsForUser :many
-select op.*, cl.bank_id, cl.label as holder_label, b.name as bank_name
+select op.*,
+       cl.bank_id,
+       cl.label          as holder_label,
+       b.name            as bank_name,
+       count(co.id)::int as offer_count,
+       count(s.id)::int  as selected_count
 from offer_period op
          join bank_client cl on cl.id = op.bank_client_id
          join bank b on b.id = cl.bank_id
+         left join category_offer co on co.offer_period_id = op.id
+         left join selection s on s.category_offer_id = co.id
 where cl.user_id = $1
+group by op.id, cl.bank_id, cl.label, b.name
 order by op.period_start desc, op.id;
 
 -- name: AttachToOfferPeriod :exec
@@ -252,13 +263,19 @@ select co.id                     as category_offer_id,
        co.percent,
        co.kind,
        co.cap_value              as offer_cap_value,
+       co.bank_category_id,
        op.id                     as offer_period_id,
        op.bank_client_id,
        op.period_start,
        op.period_end,
        op.max_categories_override,
        cl.label                  as holder_label,
+       b.id                      as bank_id,
        b.name                    as bank_name,
+       -- The row's icon (9a/12a): its catalog row's emoji, else the
+       -- canonical's — resolved here so every reader shows the same icon.
+       bc.emoji                  as bank_category_emoji,
+       cc.emoji                  as canonical_emoji,
        pt.cap_value,
        pt.cap_scope              as tier_cap_scope,
        pt.cap_per_category,
@@ -285,6 +302,8 @@ from category_offer co
          join bank_client cl on cl.id = op.bank_client_id
          join bank b on b.id = cl.bank_id
          left join selection s on s.category_offer_id = co.id
+         left join bank_category bc on bc.id = co.bank_category_id
+         left join canonical_category cc on cc.id = co.canonical_category_id
          left join program_tier pt on pt.id = cl.program_tier_id
          left join cashback_program cp on cp.id = pt.program_id
 where cl.user_id = $1;
@@ -302,13 +321,19 @@ select co.id                     as category_offer_id,
        co.percent,
        co.kind,
        co.cap_value              as offer_cap_value,
+       co.bank_category_id,
        op.id                     as offer_period_id,
        op.bank_client_id,
        op.period_start,
        op.period_end,
        op.max_categories_override,
        cl.label                  as holder_label,
+       b.id                      as bank_id,
        b.name                    as bank_name,
+       -- The row's icon (9a/12a): its catalog row's emoji, else the
+       -- canonical's — resolved here so every reader shows the same icon.
+       bc.emoji                  as bank_category_emoji,
+       cc.emoji                  as canonical_emoji,
        pt.cap_value,
        pt.cap_scope              as tier_cap_scope,
        pt.cap_per_category,
@@ -330,44 +355,87 @@ from category_offer co
          join bank_client cl on cl.id = op.bank_client_id
          join bank b on b.id = cl.bank_id
          left join selection s on s.category_offer_id = co.id
+         left join bank_category bc on bc.id = co.bank_category_id
+         left join canonical_category cc on cc.id = co.canonical_category_id
          left join program_tier pt on pt.id = cl.program_tier_id
          left join cashback_program cp on cp.id = pt.program_id
 where op.bank_client_id = any (sqlc.arg(client_ids)::bigint[]);
 
 -- name: CreatePartnerOffer :one
 insert into partner_offer (user_id, bank_id, bank_client_id, merchant_title, percent,
-                           valid_from, valid_to, cap_value, notes, min_amount)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                           valid_from, valid_to, cap_value, notes, min_amount,
+                           scope_kind, canonical_category_id, merchant_kind,
+                           currency_kind, requires_activation, activated_at)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 returning *;
 
+-- Partner rows carry their canonical (when hinted/scoped) and the program's
+-- points label so lookup/feed can group by currency and name the balance
+-- without a second query.
 -- name: ListPartnerOffersForUser :many
-select po.*, b.name as bank_name
+select po.*,
+       b.name       as bank_name,
+       cc.slug      as canonical_slug,
+       cc.title_ru  as canonical_title_ru,
+       cl.label     as holder_label,
+       cp.points_label
 from partner_offer po
          join bank b on b.id = po.bank_id
+         left join canonical_category cc on cc.id = po.canonical_category_id
+         left join bank_client cl on cl.id = po.bank_client_id
+         left join cashback_program cp on cp.bank_id = po.bank_id
 where po.user_id = $1
 order by po.id;
 
 -- name: GetPartnerOfferForUser :one
-select po.*, b.name as bank_name
+select po.*,
+       b.name       as bank_name,
+       cc.slug      as canonical_slug,
+       cc.title_ru  as canonical_title_ru,
+       cl.label     as holder_label,
+       cp.points_label
 from partner_offer po
          join bank b on b.id = po.bank_id
+         left join canonical_category cc on cc.id = po.canonical_category_id
+         left join bank_client cl on cl.id = po.bank_client_id
+         left join cashback_program cp on cp.bank_id = po.bank_id
 where po.id = $1
   and po.user_id = $2;
 
 -- name: UpdatePartnerOfferForUser :one
 update partner_offer
-set bank_id        = $3,
-    bank_client_id = $4,
-    merchant_title = $5,
-    percent        = $6,
-    valid_from     = $7,
-    valid_to       = $8,
-    cap_value      = $9,
-    notes          = $10,
-    min_amount     = $11
+set bank_id               = $3,
+    bank_client_id        = $4,
+    merchant_title        = $5,
+    percent               = $6,
+    valid_from            = $7,
+    valid_to              = $8,
+    cap_value             = $9,
+    notes                 = $10,
+    min_amount            = $11,
+    scope_kind            = $12,
+    canonical_category_id = $13,
+    merchant_kind         = $14,
+    currency_kind         = $15,
+    requires_activation   = $16,
+    activated_at          = $17
 where id = $1
   and user_id = $2
 returning *;
+
+-- «Завершить» is a dated event, idempotent on repeat; valid_to is never
+-- rewritten — it stays the recorded bank term. Reopen is the undo.
+-- name: EndPartnerOfferForUser :execrows
+update partner_offer
+set ended_at = coalesce(ended_at, now())
+where id = $1
+  and user_id = $2;
+
+-- name: ReopenPartnerOfferForUser :execrows
+update partner_offer
+set ended_at = null
+where id = $1
+  and user_id = $2;
 
 -- name: DeletePartnerOfferForUser :execrows
 delete

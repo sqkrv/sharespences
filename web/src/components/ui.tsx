@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { STATUS_URL } from "../lib";
+import { POS_TYPE_RU, STATUS_URL } from "../lib";
 
 // Components mirror the Claude Design «Кэшбеки - Модуль» idiom: srf cards
 // with brd borders, the accent gradient for the primary action, mint for
@@ -129,19 +129,19 @@ function chars(n: number): string {
 // `.type` reads «select-one»/«select-multiple» on a <select> and «textarea» on
 // a <textarea>, so one table covers all three elements.
 const MISSING: Record<string, string> = {
-  "select-one": "Выберите значение",
-  "select-multiple": "Выберите значение",
+  "select-one": "Выбери значение",
+  "select-multiple": "Выбери значение",
   checkbox: "Отметьте, чтобы продолжить",
-  radio: "Выберите вариант",
-  file: "Выберите файл",
-  date: "Укажите дату",
-  month: "Укажите месяц",
-  time: "Укажите время",
+  radio: "Выбери вариант",
+  file: "Выбери файл",
+  date: "Укажи дату",
+  month: "Укажи месяц",
+  time: "Укажи время",
 };
 
 const MISMATCH: Record<string, string> = {
-  email: "Введите адрес почты — например, name@example.com",
-  url: "Введите ссылку целиком — например, https://example.com",
+  email: "Введи адрес почты — например, name@example.com",
+  url: "Введи ссылку целиком — например, https://example.com",
 };
 
 // Empty when no native constraint failed. That also self-heals the one case
@@ -150,16 +150,16 @@ const MISMATCH: Record<string, string> = {
 // way (a controlled parent, a reset) clears it on the next validation pass.
 function validityMessage(el: Constrained): string {
   const v = el.validity;
-  if (v.valueMissing) return MISSING[el.type] ?? "Заполните поле";
-  if (v.typeMismatch) return MISMATCH[el.type] ?? "Проверьте формат";
+  if (v.valueMissing) return MISSING[el.type] ?? "Заполни поле";
+  if (v.typeMismatch) return MISMATCH[el.type] ?? "Проверь формат";
   // A pattern means nothing without its explanation — browsers append `title`
   // to their own message for the same reason.
-  if (v.patternMismatch) return el.title || "Проверьте формат";
+  if (v.patternMismatch) return el.title || "Проверь формат";
   if (v.tooShort && "minLength" in el) return `Не меньше ${chars(el.minLength)}`;
   if (v.tooLong && "maxLength" in el) return `Не больше ${chars(el.maxLength)}`;
   if (v.rangeUnderflow && "min" in el) return `Не меньше ${el.min}`;
   if (v.rangeOverflow && "max" in el) return `Не больше ${el.max}`;
-  if (v.stepMismatch || v.badInput) return "Проверьте формат";
+  if (v.stepMismatch || v.badInput) return "Проверь формат";
   return "";
 }
 
@@ -285,6 +285,9 @@ export function bankLogo(name: string): string | undefined {
 // they carry their own background. Banks without a file keep the two-letter
 // avatar («АБ», «ОЗ»…), lilac on soft accent or tinted with the brand color.
 export function BankBadge({ name, size = 33, color }: { name: string; size?: number; color?: string | null }) {
+  // Squircle at every size (redesign: radius ≈38% of the tile) — the old
+  // fixed 10px turned a 16px badge into a near-circle.
+  const radius = Math.round(size * 0.38);
   const logo = bankLogo(name);
   if (logo) {
     return (
@@ -294,18 +297,18 @@ export function BankBadge({ name, size = 33, color }: { name: string; size?: num
         width={size}
         height={size}
         loading="lazy"
-        className="flex-none rounded-[10px] object-contain"
-        style={{ width: size, height: size }}
+        className="flex-none object-contain"
+        style={{ width: size, height: size, borderRadius: radius }}
       />
     );
   }
-  const style: React.CSSProperties = { width: size, height: size, fontSize: Math.max(8, Math.round(size / 3)) };
+  const style: React.CSSProperties = { width: size, height: size, fontSize: Math.max(8, Math.round(size / 3)), borderRadius: radius };
   if (color) {
     style.background = `${color}26`; // ~15% alpha tint
     style.color = color;
   }
   return (
-    <span className="flex flex-none items-center justify-center rounded-[10px] bg-acc/15 font-bold text-accl" style={style}>
+    <span className="flex flex-none items-center justify-center bg-acc/15 font-bold text-accl" style={style}>
       {bankAbbrev(name)}
     </span>
   );
@@ -342,6 +345,73 @@ export function bankAbbrev(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
+
+// One list row in the redesign's shape (ТУР 2, строки как в 1a): lead icon
+// column, bold title, muted second line, value column on the right. The
+// variant is the state legend — solid (active), friend (accent border),
+// dashed («можно выбрать»), dim (unavailable, with a reason in `sub`),
+// gold (партнёрка). `children` render as an expansion panel under the row.
+export function ListRow({
+  emoji,
+  lead,
+  title,
+  sub,
+  right,
+  variant = "solid",
+  onClick,
+  className = "",
+  children,
+  ...rest
+}: {
+  emoji?: string;
+  lead?: ReactNode; // replaces the emoji column (mono MCC code, BankBadge…)
+  title: ReactNode;
+  sub?: ReactNode;
+  right?: ReactNode;
+  variant?: "solid" | "friend" | "dashed" | "dim" | "gold";
+  onClick?: () => void;
+  className?: string;
+  children?: ReactNode;
+} & Omit<React.HTMLAttributes<HTMLDivElement>, "title" | "onClick">) {
+  const variants = {
+    solid: "border border-brd bg-srf",
+    friend: "border border-acc/40 bg-srf",
+    dashed: "border border-dashed border-dash bg-srf/50",
+    dim: "border border-brd bg-srf/45 opacity-65",
+    gold: "border border-gold/30 bg-srf",
+  }[variant];
+  const row = (
+    <div className="flex items-center gap-2.5">
+      {emoji != null && <span className="w-[21px] flex-none text-center text-base leading-none">{emoji}</span>}
+      {lead}
+      <div className="min-w-0 flex-1">
+        <div className="text-sm leading-tight font-bold tracking-[-.01em]">{title}</div>
+        {sub != null && (
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-[11.5px] font-semibold text-tx4">{sub}</div>
+        )}
+      </div>
+      {right}
+    </div>
+  );
+  const cls = `rounded-2xl px-3 py-2.5 ${variants} ${className}`;
+  if (onClick) {
+    return (
+      <div {...rest} className={cls}>
+        <button type="button" onClick={onClick} className="block w-full text-left">
+          {row}
+        </button>
+        {children}
+      </div>
+    );
+  }
+  return (
+    <div {...rest} className={cls}>
+      {row}
+      {children}
+    </div>
+  );
+}
+
 // Percent colored by currency: mint = rubles, lilac = points (the design's
 // core legend). Unknown currency stays muted.
 export function Pct({
@@ -359,10 +429,12 @@ export function Pct({
   );
 }
 
-// The mint check-in-circle used for selected menu rows.
+// The mint check-in-circle used for selected menu rows. Both variants need
+// an explicit display: a bare <span> is inline, ignores width, and its
+// border collapses into a strange clickable vertical bar.
 export function CheckDot({ checked }: { checked: boolean }) {
   if (!checked) {
-    return <span className="h-[21px] w-[21px] flex-none rounded-full border-[1.5px] border-dash" />;
+    return <span className="block h-[21px] w-[21px] flex-none rounded-full border-[1.5px] border-dash" />;
   }
   return (
     <span className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-full bg-mint/15">
@@ -430,5 +502,41 @@ export function Spinner() {
 export function Empty({ children }: { children: ReactNode }) {
   return (
     <p className="rounded-xl border border-brd bg-srf px-3 py-4 text-center text-sm font-medium text-tx3">{children}</p>
+  );
+}
+
+// Point-of-sale channel icon (redesign 2b/2c rows; shared with MD-01). The
+// paths mirror the design canvas's offline/online/app/other glyph set.
+const POS_TYPE_PATH: Record<string, ReactNode> = {
+  offline: (
+    <>
+      <path d="M12 21s-6.8-5.4-6.8-11a6.8 6.8 0 0 1 13.6 0c0 5.6-6.8 11-6.8 11Z" />
+      <circle cx="12" cy="10.5" r="2.4" />
+    </>
+  ),
+  online: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17" />
+      <path d="M12 3.5c2.4 2.6 3.6 5.4 3.6 8.5S14.4 18.4 12 20.5c-2.4-2.6-3.6-5.4-3.6-8.5S9.6 5.6 12 3.5z" />
+    </>
+  ),
+  app: (
+    <>
+      <rect x="7" y="2.5" width="10" height="19" rx="2.6" />
+      <path d="M10.8 18.4h2.4" />
+    </>
+  ),
+  other: <path d="M4.5 19.5h4L18 10a2.7 2.7 0 0 0-3.8-3.8L4.5 15.5v4z" />,
+};
+
+export function PosTypeIcon({ type }: { type?: string | null }) {
+  const label = (type && POS_TYPE_RU[type]) || "тип неизвестен";
+  return (
+    <span title={label} aria-label={label} className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[9px] bg-inset text-tx3">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        {(type && POS_TYPE_PATH[type]) || <path d="M8 12h8" />}
+      </svg>
+    </span>
   );
 }

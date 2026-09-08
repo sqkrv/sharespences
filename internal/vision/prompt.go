@@ -6,13 +6,12 @@ import (
 )
 
 // PromptVersion identifies the prompt+schema revision stored alongside
-// results. Bump on ANY change here, and re-run the eval harness
-// (docs/research/recognizer-eval, private meta-repo) before shipping —
-// the numbers below were measured against this exact wording:
-// qwen3-vl:4b on the 13-image set: 93/93 rows, 93/93 percent, 4/4 caps,
-// zero hallucinations (run 5, prod GPU) — measured against 2026-07-28.
-// ⚠️ 2026-07-31 added subtitle/section and the duplicate-title rule; the
-// numbers above have NOT been re-measured against that wording.
+// results. Bump on ANY change here, and re-run the evaluation before
+// shipping: recorded scores belong to one exact wording and stop being
+// true of another.
+// ⚠️ 2026-07-31 added subtitle/section and the duplicate-title rule. The
+// scores on file predate that wording and were never re-measured against
+// it.
 const PromptVersion = "2026-07-31"
 
 // rowPromptBase is bench.py ROW_PROMPT, verbatim.

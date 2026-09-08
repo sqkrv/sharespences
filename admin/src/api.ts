@@ -160,6 +160,9 @@ export interface POS {
   confirmations?: number;
   created_at: string;
   last_confirmed_at?: string;
+  status: "approved" | "pending" | "rejected";
+  author?: string;
+  moderation_note?: string;
 }
 
 export interface Page<T> {

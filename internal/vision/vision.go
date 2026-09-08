@@ -1,5 +1,4 @@
-// Package vision is the VLM adapter for the screenshot recognizer
-// (docs/specs/cashback-recognizer.md, private meta-repo). It is
+// Package vision is the VLM adapter for the screenshot recognizer. It is
 // infrastructure only, and holds three invariants:
 //
 //   - It never dials at construction — the `openapi` CI gate runs the full
@@ -12,9 +11,9 @@
 //   - It imports nothing from the project. A leaf package by construction.
 //
 // The prompts, JSON schemas, the tolerant extractor and the 3-rung retry
-// ladder are ports of the benchmarked eval harness (meta-repo
-// docs/research/recognizer-eval/bench.py) — the ladder is the measured
-// difference between 5/13 and 13/13 images on the same model weights.
+// ladder are ports of an offline evaluation of the same model weights. The
+// ladder is not defensive coding: a single attempt loses images that a
+// retry at different settings reads cleanly.
 package vision
 
 import (

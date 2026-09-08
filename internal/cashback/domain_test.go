@@ -676,7 +676,9 @@ func TestAssessAvailability(t *testing.T) {
 }
 
 // TestRankAvailable: actionable verdicts first, then the ranked ordering
-// (currency group, percent desc) within.
+// (currency group, percent desc) within. Blocked verdicts (slots_full,
+// locked) rank too since 2026-08-28 — the lookup boards show them apart —
+// and always land after everything still pickable.
 func TestRankAvailable(t *testing.T) {
 	mk := func(v AvailabilityVerdict, pctStr string, cur CurrencyKind, bank string) AvailableEntry {
 		return AvailableEntry{
@@ -685,20 +687,40 @@ func TestRankAvailable(t *testing.T) {
 		}
 	}
 	got := RankAvailable([]AvailableEntry{
-		mk(AvailLocked, "10", CurrencyRub, "ВТБ"),
+		mk(AvailUnknown, "10", CurrencyRub, "Газпромбанк"),
 		mk(AvailFree, "5", CurrencyRub, "А"),
+		mk(AvailSlotsFull, "20", CurrencyRub, "ВТБ"),
 		mk(AvailFree, "8", CurrencyRub, "Б"),
 		mk(AvailFree, "7", CurrencyPoints, "Яндекс Пэй"),
+		mk(AvailLocked, "15", CurrencyRub, "Ozon Банк"),
 		mk(AvailPaid, "9", CurrencyRub, "МКБ"),
-		mk(AvailSlotsFull, "12", CurrencyRub, "В"),
 	})
-	wantOrder := []string{"8", "5", "7", "9", "12", "10"} // free rub desc, free points, paid, slots_full, locked
+	// free rub desc, free points, paid, unknown — then the blocked pair,
+	// however high their percent (they pay nothing this period).
+	wantOrder := []string{"8", "5", "7", "9", "10", "20", "15"}
 	if len(got) != len(wantOrder) {
 		t.Fatalf("RankAvailable() len = %d, want %d", len(got), len(wantOrder))
 	}
 	for i, w := range wantOrder {
 		if got[i].Entry.Percent.String() != w {
 			t.Errorf("RankAvailable()[%d].Percent = %s, want %s", i, got[i].Entry.Percent.String(), w)
+		}
+	}
+}
+
+// TestVerdictPickable pins the CTA rule (2026-08-07): a row whose slot
+// window is gone can never come back — no bank lets a pick be removed — so
+// slots_full and locked carry no call to action, everything else does. Since
+// 2026-08-28 that no longer means invisible: the lookup boards serve blocked
+// rows in their own section, only the feed still drops them.
+func TestVerdictPickable(t *testing.T) {
+	want := map[AvailabilityVerdict]bool{
+		AvailFree: true, AvailPaid: true, AvailUnknown: true,
+		AvailSlotsFull: false, AvailLocked: false,
+	}
+	for v, w := range want {
+		if v.Pickable() != w {
+			t.Errorf("%s.Pickable() = %v, want %v", v, v.Pickable(), w)
 		}
 	}
 }
@@ -884,6 +906,116 @@ func TestRankActiveSelectionsWithFriends(t *testing.T) {
 	}
 }
 
+// TestSplitFeedWinner covers the feed's friend rule (redesign 2026-08-06):
+// a friend enters a category row only by winning the ranking or filling a
+// hole, and the own winner survives alongside so the row can fall back when
+// friends are hidden or the share is revoked.
+func TestSplitFeedWinner(t *testing.T) {
+	on := Date(2026, time.July, 15)
+	own5 := LookupEntry{ClientID: 1, BankName: "ВТБ", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026}
+	own7pts := LookupEntry{ClientID: 4, BankName: "Яндекс Пэй", Percent: pct("7"), CurrencyKind: CurrencyPoints, Kind: OfferRegular, Period: july2026}
+	friend10 := LookupEntry{ClientID: 2, BankName: "Т-Банк", Percent: pct("10"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, FriendName: "Кирилл", FriendUsername: "kirill"}
+	friend5 := LookupEntry{ClientID: 3, BankName: "Альфа-Банк", Percent: pct("5"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: july2026, FriendName: "Кирилл", FriendUsername: "kirill"}
+	friend9pts := LookupEntry{ClientID: 5, BankName: "Яндекс Пэй", Percent: pct("9"), CurrencyKind: CurrencyPoints, Kind: OfferRegular, Period: july2026, FriendName: "Стас", FriendUsername: "stas"}
+
+	cases := []struct {
+		name       string
+		entries    []LookupEntry
+		wantOwn    string // BankName; "" = nil
+		wantFriend string // BankName; "" = nil
+	}{
+		{"own only", []LookupEntry{own5}, "ВТБ", ""},
+		{"friend wins same currency, own retained", []LookupEntry{own5, friend10}, "ВТБ", "Т-Банк"},
+		{"tie goes to own, friend hidden", []LookupEntry{own5, friend5}, "ВТБ", ""},
+		{"friend fills a hole", []LookupEntry{friend10}, "", "Т-Банк"},
+		{"friend points never beat own rubles", []LookupEntry{own5, friend9pts}, "ВТБ", ""},
+		{"friend rubles rank above own points by position", []LookupEntry{own7pts, friend5}, "Яндекс Пэй", "Альфа-Банк"},
+		{"empty", nil, "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			own, friend := SplitFeedWinner(RankActiveSelections(on, tc.entries).Ranked)
+			gotOwn, gotFriend := "", ""
+			if own != nil {
+				gotOwn = own.BankName
+			}
+			if friend != nil {
+				gotFriend = friend.BankName
+			}
+			if gotOwn != tc.wantOwn || gotFriend != tc.wantFriend {
+				t.Fatalf("SplitFeedWinner: own=%q friend=%q, want own=%q friend=%q", gotOwn, gotFriend, tc.wantOwn, tc.wantFriend)
+			}
+		})
+	}
+}
+
+// TestPartnerStatus covers the партнёрки v2 lifecycle chip: «Завершить» is
+// a dated event that wins over the calendar; the validity bounds say the
+// rest; nil bounds mean an open offer.
+func TestPartnerStatus(t *testing.T) {
+	now := Date(2026, time.August, 6)
+	from := Date(2026, time.August, 1)
+	to := Date(2026, time.August, 31)
+	past := Date(2026, time.July, 31)
+	future := Date(2026, time.September, 1)
+	ended := Date(2026, time.August, 3)
+	cases := []struct {
+		name              string
+		from, to, endedAt *time.Time
+		want              string
+	}{
+		{"open-ended active", nil, nil, nil, "active"},
+		{"inside the window", &from, &to, nil, "active"},
+		{"future start", &future, nil, nil, "scheduled"},
+		{"past end", nil, &past, nil, "expired"},
+		{"ended wins over active", &from, &to, &ended, "ended"},
+		{"ended wins over expired", nil, &past, &ended, "ended"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := PartnerStatus(now, tc.from, tc.to, tc.endedAt); got != tc.want {
+				t.Fatalf("PartnerStatus = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRankWithPartner pins the партнёрки v2 ranking rules: invariant 5 keeps
+// a points партнёрка below every ruble row regardless of percent; a partner
+// entry never merges into stackSupers; unknown currency ranks last; and a
+// partner entry is never a friend's (the sharing seam never reads partner
+// tables — the zero FriendName here is what the serializer relies on).
+func TestRankWithPartner(t *testing.T) {
+	on := Date(2026, time.August, 6)
+	openPeriod := PartnerPeriod(nil, nil)
+	ownRub := LookupEntry{ClientID: 1, BankName: "Альфа-Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferRegular, Period: august2026}
+	drum := LookupEntry{ClientID: 1, BankName: "Альфа-Банк", Percent: pct("7"), CurrencyKind: CurrencyRub, Kind: OfferSuper, Period: august2026}
+	partnerPts := LookupEntry{PartnerID: 5, RawTitle: "Яндекс Лавка", BankName: "Яндекс Пэй", Percent: pct("10"), CurrencyKind: CurrencyPoints, Kind: OfferPartner, Period: openPeriod, PartnerScope: PartnerScopeMerchant}
+	partnerUnknown := LookupEntry{PartnerID: 6, RawTitle: "Акция", BankName: "Газпромбанк", Percent: pct("25"), CurrencyKind: CurrencyUnknown, Kind: OfferPartner, Period: openPeriod}
+
+	got := RankActiveSelections(on, []LookupEntry{partnerUnknown, partnerPts, ownRub, drum}).Ranked
+	if len(got) != 3 {
+		t.Fatalf("Ranked has %d entries, want 3 (барабан merged into the pick, partners intact)", len(got))
+	}
+	// The stacked 14% rub row first — the 10% points партнёрка must not
+	// outrank it by number (invariant 5), and the барабан must not have
+	// merged into the partner entry.
+	if got[0].Kind != OfferRegular || got[0].Percent.String() != "14" {
+		t.Fatalf("Ranked[0] = %s %s%%, want the stacked 14%% rub pick", got[0].Kind, got[0].Percent)
+	}
+	if got[1].PartnerID != 5 || got[1].StackedSuper != nil {
+		t.Fatalf("Ranked[1] = %+v, want the points партнёрка, unstacked", got[1])
+	}
+	if got[2].PartnerID != 6 {
+		t.Fatalf("Ranked[2] = %+v, want the unknown-currency партнёрка last", got[2])
+	}
+	for _, e := range got {
+		if e.PartnerID != 0 && e.FriendName != "" {
+			t.Fatalf("partner entry carries FriendName %q — partner offers are never shared", e.FriendName)
+		}
+	}
+}
+
 // TestFriendShareWindow covers friends-sharing invariant 8: a granted
 // friend reads periods overlapping [today .. the end of next month] — the
 // current picture plus the next-month coordination window, never history.
@@ -913,5 +1045,108 @@ func TestFriendShareWindow(t *testing.T) {
 	w := FriendShareWindow(Date(2026, time.August, 1))
 	if w.Overlaps(DateRange{Start: Date(2026, time.July, 1), End: Date(2026, time.July, 31)}) {
 		t.Fatal("window overlaps last month")
+	}
+}
+
+// TestPendingMenu covers what CB-09.b marks (owner 2026-08-27): the period a
+// bank client still has to fill — today's, or the next one once the bank has
+// opened its selection.
+func TestPendingMenu(t *testing.T) {
+	const alfaOpens = int32(25)
+	opens := func(d int32) *int32 { return &d }
+	filled := func(r DateRange) PeriodFill { return PeriodFill{Range: r, Offers: 4} }
+	empty := func(r DateRange) PeriodFill { return PeriodFill{Range: r, Offers: 0} }
+	august := DateRange{Start: Date(2026, time.August, 1), End: Date(2026, time.August, 31)}
+	september := DateRange{Start: Date(2026, time.September, 1), End: Date(2026, time.September, 30)}
+
+	tests := []struct {
+		name       string
+		now        time.Time
+		periodType PeriodType
+		opensDay   *int32
+		filled     []PeriodFill
+		want       *DateRange
+	}{
+		{
+			name: "nothing recorded → today's period is pending",
+			now:  Date(2026, time.August, 10), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			want: &august,
+		},
+		{
+			name: "period exists but holds no menu rows → still pending (owner: «начал и бросил»)",
+			now:  Date(2026, time.August, 10), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{empty(august)}, want: &august,
+		},
+		{
+			name: "current filled, window not open yet → nothing pending",
+			now:  Date(2026, time.August, 10), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(august)}, want: nil,
+		},
+		{
+			name: "current filled, window open, next missing → next is pending",
+			now:  Date(2026, time.August, 25), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(august)}, want: &september,
+		},
+		{
+			name: "current filled, window open, next empty → next is pending",
+			now:  Date(2026, time.August, 27), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(august), empty(september)}, want: &september,
+		},
+		{
+			name: "both filled → nothing pending",
+			now:  Date(2026, time.August, 27), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(august), filled(september)}, want: nil,
+		},
+		{
+			name: "unknown opens-day (Газпромбанк) → the next period is never claimed to be open",
+			now:  Date(2026, time.August, 31), periodType: PeriodCalendarMonth, opensDay: nil,
+			filled: []PeriodFill{filled(august)}, want: nil,
+		},
+		{
+			name: "current month unfilled outranks the next-month window",
+			now:  Date(2026, time.August, 27), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(september)}, want: &august,
+		},
+		{
+			name: "quarter (МКБ): the window opens in the quarter's LAST month, not every month",
+			now:  Date(2026, time.August, 27), periodType: PeriodQuarter, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(DateRange{Start: Date(2026, time.July, 1), End: Date(2026, time.September, 30)})},
+			want:   nil,
+		},
+		{
+			name: "quarter: in the last month past the opens-day the next quarter is pending",
+			now:  Date(2026, time.September, 26), periodType: PeriodQuarter, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(DateRange{Start: Date(2026, time.July, 1), End: Date(2026, time.September, 30)})},
+			want:   &DateRange{Start: Date(2026, time.October, 1), End: Date(2026, time.December, 31)},
+		},
+		{
+			name: "a shifted bank period covering today counts as recorded (Ozon расчётный период)",
+			now:  Date(2026, time.August, 10), periodType: PeriodCalendarMonth, opensDay: opens(alfaOpens),
+			filled: []PeriodFill{filled(DateRange{Start: Date(2026, time.July, 20), End: Date(2026, time.August, 19)})},
+			want:   nil,
+		},
+		{
+			name: "rolling/week programs have no calendar window → never marked",
+			now:  Date(2026, time.August, 27), periodType: PeriodRolling, opensDay: opens(alfaOpens),
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := PendingMenu(tt.now, tt.periodType, tt.opensDay, tt.filled)
+			switch {
+			case tt.want == nil && got != nil:
+				t.Fatalf("PendingMenu() = %s…%s, want nothing pending",
+					got.Start.Format("2006-01-02"), got.End.Format("2006-01-02"))
+			case tt.want != nil && got == nil:
+				t.Fatalf("PendingMenu() = nil, want %s…%s",
+					tt.want.Start.Format("2006-01-02"), tt.want.End.Format("2006-01-02"))
+			case tt.want != nil && (!got.Start.Equal(tt.want.Start) || !got.End.Equal(tt.want.End)):
+				t.Fatalf("PendingMenu() = %s…%s, want %s…%s",
+					got.Start.Format("2006-01-02"), got.End.Format("2006-01-02"),
+					tt.want.Start.Format("2006-01-02"), tt.want.End.Format("2006-01-02"))
+			}
+		})
 	}
 }

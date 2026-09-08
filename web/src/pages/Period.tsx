@@ -1,12 +1,45 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api, unwrap, attachmentURL, uploadAttachment, ApiError, type CanonicalCategory, type CategoryOffer, type HelperRow } from "../api/client";
 import { useBankCategories, useBanks, useCards, useCategories, useClients, useTierMap } from "../hooks";
-import { Badge, Btn, Card, CheckDot, ErrMsg, errorText, Field, GradientCard, Input, Pct, Select, Spinner } from "../components/ui";
+import { BackButton, Badge, Btn, Card, CheckDot, ErrMsg, errorText, Field, GradientCard, Input, Pct, Select, Spinner, useGoBack } from "../components/ui";
 import { CategoryPicker, type PickedCategory } from "../components/CategoryPicker";
 import { Lightbox } from "../components/Lightbox";
-import { currencyBadge, fmtRange, midPeriodAddNote } from "../lib";
+import { PartnerChips, PartnerSheet } from "../components/Partners";
+import { Sheet } from "../components/Sheet";
+import { FALLBACK_EMOJI, coversToday, currencyBadge, fmtRange } from "../lib";
+
+// «↑» when a neighbor's rate beats this row's (2d v3) — the number alone
+// doesn't say which side wins.
+function betterMark(neighbor?: string | null, own?: string | null): string {
+  if (neighbor == null || own == null) return "";
+  return parseFloat(neighbor) > parseFloat(own) ? " ↑" : "";
+}
+
+// The expansion's neighbor list, one row per client: a neighbor who SELECTED
+// the category arrives as a collision (cap note attached) AND as a plain
+// menu comparison — merged here, the mint dot carrying the «выбрано и у
+// них» fact. client_label is already «Банк · Держатель» composed
+// server-side — never prepend the bank again. Sorted by percent desc,
+// unknown last.
+type NeighborRow = { label: string; capNote?: string; percent?: string | null; selected: boolean };
+function neighborRows(hrow?: HelperRow): NeighborRow[] {
+  const rows: NeighborRow[] = (hrow?.collisions ?? []).map((c) => ({
+    label: c.client_label || c.bank_name,
+    capNote: c.cap_note,
+    percent: c.percent,
+    selected: true,
+  }));
+  const seen = new Set(rows.map((r) => r.label));
+  for (const cmp of hrow?.comparisons ?? []) {
+    const label = cmp.client_label || cmp.bank_name;
+    if (seen.has(label)) continue;
+    rows.push({ label, percent: cmp.percent, selected: false });
+  }
+  const pct = (p?: string | null) => (p != null ? parseFloat(p) : -1);
+  return rows.sort((a, b) => pct(b.percent) - pct(a.percent) || a.label.localeCompare(b.label, "ru"));
+}
 
 function usePeriod(id: number) {
   return useQuery({
@@ -131,7 +164,7 @@ function AddOfferForm({
         {kind !== "regular" && (
           <p className="text-[10.5px] font-medium text-tx4">
             {kind === "super"
-              ? "барабан = суперкэшбэк на весь период, суммируется с выбранной категорией"
+              ? "барабан = суперкешбек на весь период, суммируется с выбранной категорией"
               : "спец = Пятница / колесо / флеш-акция — с условием (день, сервис)"}
           </p>
         )}
@@ -249,7 +282,7 @@ function EditOfferForm({
         <Field label="Тип">
           <Select value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="regular">обычная</option>
-            <option value="super">барабан (суперкэшбэк)</option>
+            <option value="super">барабан (суперкешбек)</option>
             <option value="special">спец (Пятница/колесо)</option>
           </Select>
         </Field>
@@ -448,9 +481,22 @@ export default function Period() {
   const categories = useCategories();
   const banks = useBanks();
   const bankCats = useBankCategories(period.data?.bank_id);
-  const [backfill, setBackfill] = useState(false);
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [editingID, setEditingID] = useState<number | null>(null);
+  // 2d: neighbor comparisons and collision details live behind a tap on the
+  // row — the list stays scannable, the sticky bar still counts collisions.
+  const [expandedID, setExpandedID] = useState<number | null>(null);
+  const [partnerID, setPartnerID] = useState<number | null>(null);
+  // 2j: on a one-shot bank a toggle after fixation asks for confirmation
+  // first — the offer whose change is waiting for it.
+  const [confirmOffer, setConfirmOffer] = useState<CategoryOffer | null>(null);
+  const goBack = useGoBack();
+  // Партнёрки live on the bank, not on the month menu — but this screen is
+  // where their bank is open, so they are visible and editable here too.
+  const partnerOffers = useQuery({
+    queryKey: ["partner-offers"],
+    queryFn: async () => unwrap(await api.GET("/api/v1/cashback/partner-offers")) ?? [],
+  });
 
   const helperByOffer = useMemo(() => {
     const m = new Map<number, HelperRow>();
@@ -465,6 +511,11 @@ export default function Period() {
     qc.invalidateQueries({ queryKey: ["overview"] });
   };
 
+  // A selection dated today falls outside any period that doesn't cover
+  // today — backfill follows from the period, no switch to remember (the
+  // recognizer commit derives it the same way).
+  const backfill = period.data != null && !coversToday(period.data.period_start, period.data.period_end);
+
   const select = useMutation({
     mutationFn: async (offerID: number) =>
       unwrap(
@@ -477,12 +528,7 @@ export default function Period() {
       invalidate();
     },
     onError: (err, offerID) => {
-      const msg =
-        err instanceof ApiError && err.status === 409
-          ? err.message
-          : err instanceof ApiError && err.status === 422
-            ? `${err.message} — для ввода истории включите «задним числом»`
-            : String(err);
+      const msg = err instanceof ApiError ? err.message : String(err);
       setRowErrors((e) => ({ ...e, [offerID]: msg }));
     },
   });
@@ -533,18 +579,43 @@ export default function Period() {
   const client = (clients.data ?? []).find((c) => c.id === p.bank_client_id);
   const tierInfo = client?.program_tier_id != null ? tierMap.data?.get(client.program_tier_id) : undefined;
   const currency = tierInfo ? tierInfo.program.currency_kind : undefined;
+  // 2j: a one-shot bank fixes the selection at the first confirm — later
+  // edits are real only if the bank's app already shows them, so a toggle
+  // asks first. Re-pick banks never see the sheet.
+  const oneShotLocked = tierInfo?.program.mid_period_add === "locked_after_first" && h.slots_used > 0;
+  const runToggle = (offer: CategoryOffer) =>
+    offer.selection_id != null
+      ? unselect.mutate({ selectionID: offer.selection_id, offerID: offer.id })
+      : select.mutate(offer.id);
+  const requestToggle = (offer: CategoryOffer) => {
+    if (oneShotLocked && offer.kind === "regular") {
+      setConfirmOffer(offer);
+      return;
+    }
+    // Unmarking is the only irreversible gesture on this screen: the row
+    // stays, the record that the bank paid on it does not, and there is no
+    // undo. The prompt restates what the screen is, too — a mirror, so
+    // unmarking here unpicks nothing in the bank.
+    if (
+      offer.selection_id != null &&
+      !window.confirm(`Снять отметку с «${offer.raw_title}»? В банке выбор останется — здесь только запись.`)
+    ) {
+      return;
+    }
+    runToggle(offer);
+  };
   // The client's plastics — any of them pays with this period's selection.
   const clientCards = (cards.data ?? []).filter((c) => c.bank_client_id === p.bank_client_id);
   const cardChips = clientCards.map((c) => `··${String(c.last_4_digits).padStart(4, "0")}`).join(" ");
+  // This client's партнёрки, plus the bank-wide ones of the same bank.
+  const clientPartners = (partnerOffers.data ?? []).filter(
+    (o) => o.bank_client_id === p.bank_client_id || (o.bank_client_id == null && o.bank_id === p.bank_id),
+  );
 
   return (
     <>
       <div className="flex items-center gap-2.5">
-        <Link to="/" className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-brd bg-srf">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-tx2">
-            <path d="M14.5 5 8 12l6.5 7" />
-          </svg>
-        </Link>
+        <BackButton small />
         <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">{p.bank_name}</h1>
         {tierInfo && <Badge tone="indigo">{tierInfo.tier.name}</Badge>}
       </div>
@@ -561,14 +632,6 @@ export default function Period() {
               <p className="mt-2 text-[11px] font-semibold text-white/85">
                 {[client?.label, cardChips].filter(Boolean).join(" · ") || "любая карта"} · {currencyBadge(currency, tierInfo.program.points_label ?? undefined) === "₽" ? "рубли" : currencyBadge(currency, tierInfo.program.points_label ?? undefined)}
               </p>
-              {/* Whether a slot can still be filled in a live period — the
-                  same policy S3b «Можно выбрать» keys on, shown where the
-                  user is actually filling slots. */}
-              {midPeriodAddNote(tierInfo.program.mid_period_add, tierInfo.program.activation) && (
-                <p className="mt-1 text-[11px] font-semibold text-white/70">
-                  Категории: {midPeriodAddNote(tierInfo.program.mid_period_add, tierInfo.program.activation)}
-                </p>
-              )}
             </div>
             <div className="text-right">
               <p className="text-[9.5px] font-bold uppercase tracking-[.1em] text-white/70">Лимит</p>
@@ -594,7 +657,7 @@ export default function Period() {
       <div className="space-y-1.5">
         {(p.offers ?? []).length === 0 && (
           <p className="rounded-xl border border-brd bg-srf px-3 py-4 text-center text-sm font-medium text-tx3">
-            Введите категории из приложения банка — как на скриншоте.
+            Введи категории из приложения банка — как на скриншоте.
           </p>
         )}
         {(p.offers ?? []).map((offer) => {
@@ -617,37 +680,36 @@ export default function Period() {
             return (
               <div key={offer.id} className="rounded-xl border border-dashed border-gold/30 bg-gold/5 px-3 py-2.5">
                 <div className="flex items-center gap-2.5">
-                  <span className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md bg-gold/15 text-[11px] font-extrabold text-gold">★</span>
+                  {/* The star is the toggle (2d: «кнопки исчезли») — filled
+                      when the grant is marked, outlined when not. */}
+                  <button
+                    type="button"
+                    disabled={select.isPending || unselect.isPending}
+                    title={selected ? "Снять отметку" : "Отметить — банк начислил этот бонус"}
+                    onClick={() => requestToggle(offer)}
+                    className={`flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md text-[11px] font-extrabold ${
+                      selected ? "bg-gold/25 text-gold" : "border border-gold/40 text-gold/50"
+                    }`}
+                  >
+                    ★
+                  </button>
                   <div className="min-w-0 flex-1">
                     <p className="text-[12.5px] font-semibold text-gold">
                       {offerEmoji(offer) && <span className="mr-1">{offerEmoji(offer)}</span>}
                       {offer.raw_title} · {offer.kind === "super" ? "барабан" : "спец"}
                     </p>
                     <p className="text-[9.5px] font-medium text-tx4">
-                      не занимает слот · {offer.kind === "super" ? "ранжируется в «Какой картой?»" : "сверх меню"}
+                      выдано банком · не занимает слот
                       {offer.cap_value && ` · до ${offer.cap_value} ${currency === "points" ? "баллов" : "₽"}`}
                     </p>
                     {unmapped && (
                       <p className="mt-0.5 flex items-center gap-1.5 text-[9.5px] font-semibold text-warn">
                         <span className="h-[5px] w-[5px] rounded-full bg-warn" />
-                        сопоставьте категорию — не попадёт в «Какой картой?»
+                        канона нет — попадёт в «Только в одном банке», не в подбор по категории
                       </p>
                     )}
                   </div>
-                  {selected ? (
-                    <Btn
-                      variant="danger"
-                      className="!px-2.5 !py-1.5 text-xs"
-                      onClick={() => unselect.mutate({ selectionID: offer.selection_id!, offerID: offer.id })}
-                      disabled={unselect.isPending}
-                    >
-                      Снять
-                    </Btn>
-                  ) : (
-                    <Btn variant="soft" className="!px-2.5 !py-1.5 text-xs" onClick={() => select.mutate(offer.id)} disabled={select.isPending}>
-                      Отметить
-                    </Btn>
-                  )}
+                  <Pct percent={offer.percent} currency={currency} className="text-[14px]" />
                   <button type="button" className="px-1 text-tx4" onClick={() => setEditingID(editingID === offer.id ? null : offer.id)} title="Редактировать">
                     ✎
                   </button>
@@ -664,11 +726,33 @@ export default function Period() {
               </div>
             );
           }
+          const notesCount = (hrow?.collisions ?? []).length + ((hrow?.comparisons ?? []).length > 0 ? 1 : 0);
+          const expanded = expandedID === offer.id;
           return (
-            <div key={offer.id} className={`rounded-xl border px-3 py-2.5 ${selected ? "border-brd bg-srf" : "border-brd2 bg-transparent"}`}>
+            <div
+              key={offer.id}
+              className={`rounded-xl border px-3 py-2.5 ${
+                blocked ? "border-brd2 bg-srf/45 opacity-65" : selected ? "border-brd bg-srf" : "border-brd2 bg-transparent"
+              }`}
+            >
               <div className="flex items-center gap-2.5">
-                <CheckDot checked={selected} />
-                <div className="min-w-0 flex-1">
+                {/* The dot IS the switch (2d): tap records / removes the
+                    selection made in the bank app — a mirror, not a plan. */}
+                <button
+                  type="button"
+                  disabled={select.isPending || unselect.isPending || (!selected && blocked)}
+                  title={
+                    !selected && blocked
+                      ? "Слоты заняты — в этом месяце уже не выбрать"
+                      : selected
+                        ? "Снять отметку"
+                        : "Отметить — выбрано в банке"
+                  }
+                  onClick={() => requestToggle(offer)}
+                >
+                  <CheckDot checked={selected} />
+                </button>
+                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setExpandedID(expanded ? null : offer.id)}>
                   <p className="truncate text-[13px] font-semibold">
                     {offerEmoji(offer) && <span className="mr-1">{offerEmoji(offer)}</span>}
                     {offer.raw_title}
@@ -677,58 +761,46 @@ export default function Period() {
                   {unmapped && (
                     <p className="mt-0.5 flex items-center gap-1.5 text-[9.5px] font-semibold text-warn">
                       <span className="h-[5px] w-[5px] rounded-full bg-warn" />
-                      сопоставьте категорию — не попадёт в «Какой картой?»
+                      канона нет — попадёт в «Только в одном банке», не в подбор по категории
                     </p>
                   )}
+                  {blocked && <p className="mt-0.5 text-[9.5px] font-medium text-tx4">слоты {h.slots_used}/{h.max_categories} — в этом месяце уже не выбрать</p>}
                   {selected && offer.selected_at && (
                     <p className="mt-0.5 text-[9.5px] font-medium text-tx4">выбрано {new Date(offer.selected_at).toLocaleDateString("ru-RU")}</p>
                   )}
                   {offer.cap_value && (
-                    <p className="mt-0.5 text-[9.5px] font-medium text-tx4">кешбэк до {offer.cap_value} {currency === "points" ? "баллов" : "₽"}</p>
+                    <p className="mt-0.5 text-[9.5px] font-medium text-tx4">кешбек до {offer.cap_value} {currency === "points" ? "баллов" : "₽"}</p>
                   )}
-                </div>
-                {selected ? (
-                  <>
-                    <Pct percent={offer.percent} currency={currency} className="text-[14px]" />
-                    <Btn
-                      variant="danger"
-                      className="!px-2.5 !py-1.5 text-xs"
-                      onClick={() => unselect.mutate({ selectionID: offer.selection_id!, offerID: offer.id })}
-                      disabled={unselect.isPending}
-                    >
-                      Снять
-                    </Btn>
-                  </>
-                ) : (
-                  <>
-                    <Pct percent={offer.percent} currency={currency} className="text-[14px]" />
-                    <Btn
-                      variant="soft"
-                      className="!px-2.5 !py-1.5 text-xs whitespace-nowrap"
-                      onClick={() => select.mutate(offer.id)}
-                      disabled={select.isPending || blocked}
-                      title={blocked ? "Лимит категорий исчерпан" : undefined}
-                    >
-                      выбрать
-                    </Btn>
-                  </>
-                )}
+                </button>
+                {notesCount > 0 && !expanded && <span className="h-1.5 w-1.5 flex-none rounded-full bg-gold" title="есть предупреждения — тап по строке" />}
+                <Pct percent={offer.percent} currency={currency} className="text-[14px]" />
+                {/* The chevron says the row unfolds (2d v4) — a tappable
+                    row with no affordance read as inert. */}
+                <span className="flex-none text-[9px] text-tx4">{expanded ? "▲" : "▼"}</span>
                 <button type="button" className="px-1 text-tx4" onClick={() => setEditingID(editingID === offer.id ? null : offer.id)} title="Редактировать">
                   ✎
                 </button>
               </div>
-              {blocked && <p className="mt-1 ml-8 text-[10px] font-medium text-tx4">лимит категорий исчерпан</p>}
               {rowErrors[offer.id] && <p className="mt-1.5 ml-8 rounded-lg bg-warn/10 px-2 py-1 text-[10.5px] font-medium text-warn">{rowErrors[offer.id]}</p>}
-              {(hrow?.collisions ?? []).map((c, i) => (
-                <p key={i} className="mt-1.5 ml-8 flex items-center gap-1.5 rounded-lg border border-gold/25 bg-gold/10 px-2 py-1 text-[10px] font-medium text-gold">
-                  <span className="h-[5px] w-[5px] flex-none rounded-full bg-gold" />
-                  {c.message}
-                </p>
-              ))}
-              {(hrow?.comparisons ?? []).length > 0 && (
-                <p className="mt-1.5 ml-8 text-[10px] font-medium text-tx4">
-                  Сравнение: {(hrow?.comparisons ?? []).map((cmp) => `${cmp.client_label} — ${cmp.percent != null ? cmp.percent + "%" : "—"}`).join(" · ")}
-                </p>
+              {/* Collision + neighbor comparison unfold on tap (2d
+                  «развёрнуто тапом») — the gold dot above flags they exist. */}
+              {/* Neighbors as plain rows (2d v3) — one per client, percent
+                  desc, no admonishing sentence; the mint dot = «выбрано и у
+                  них», ↑ marks a better rate. */}
+              {expanded && (
+                <div className="mt-1.5 ml-8 space-y-1.5 border-t border-brd/60 pt-1.5">
+                  {neighborRows(hrow).map((n) => (
+                    <p key={n.label} className="flex items-center gap-1.5 text-[10.5px] font-medium text-tx3">
+                      {n.selected && <span className="h-1.5 w-1.5 flex-none rounded-full bg-mint" title="выбрано и у них" />}
+                      <span className="min-w-0 flex-1 truncate">
+                        {n.label}
+                        {n.capNote && <span className="text-tx4"> — {n.capNote}</span>}
+                      </span>
+                      <span className="font-bold">{n.percent != null ? `${n.percent}%` : "—"}{betterMark(n.percent, offer.percent)}</span>
+                    </p>
+                  ))}
+                  {notesCount === 0 && <p className="text-[10px] font-medium text-tx4">Совпадений с другими банками нет.</p>}
+                </div>
               )}
               {editingID === offer.id && (
                 <EditOfferForm offer={offer} categories={categories.data ?? []} bankID={p.bank_id} bankName={p.bank_name} bankColor={bankColor} onDone={() => setEditingID(null)} />
@@ -752,13 +824,34 @@ export default function Period() {
           </>
         )}
         <span className="flex-1" />
-        <label className="flex items-center gap-1 text-[10px] font-medium text-tx4">
-          <input type="checkbox" checked={backfill} onChange={(e) => setBackfill(e.target.checked)} />
-          задним числом
-        </label>
-        <Btn className="!px-4 !py-1.5 text-xs" onClick={() => navigate("/")}>
+        <Btn className="!px-4 !py-1.5 text-xs" onClick={goBack}>
           Готово
         </Btn>
+      </div>
+
+      <p className="px-0.5 text-[10px] leading-snug font-medium text-tx4">
+        Отметки фиксируют выбор, уже сделанный в приложении банка.
+        {backfill && " Период не покрывает сегодня — отметки запишутся задним числом."}
+      </p>
+
+      <div data-sid="CB-03.e">
+        <div className="flex items-baseline justify-between px-0.5">
+          <span className="text-[13px] font-bold">Партнёрки</span>
+          <button
+            type="button"
+            className="text-[10.5px] font-semibold text-tx4"
+            onClick={() => navigate(`/partners/new?client=${p.bank_client_id}`)}
+          >
+            + партнёрка
+          </button>
+        </div>
+        {clientPartners.length > 0 ? (
+          <PartnerChips offers={clientPartners} onOpen={setPartnerID} />
+        ) : (
+          <p className="mt-1.5 text-[10.5px] font-medium text-tx4">
+            У этого банка нет партнёрских предложений — они живут у банка, не у меню месяца.
+          </p>
+        )}
       </div>
 
       <AddOfferForm periodID={id} bankID={p.bank_id} bankName={p.bank_name} bankColor={bankColor} />
@@ -774,6 +867,38 @@ export default function Period() {
           Удалить период
         </Btn>
       </div>
+
+      {partnerID != null && <PartnerSheet id={partnerID} onClose={() => setPartnerID(null)} />}
+
+      {/* 2j: the one-shot confirmation. Cancel changes nothing. */}
+      {confirmOffer && (
+        <Sheet onClose={() => setConfirmOffer(null)} sid="CB-03.f" title="Выбор в банке уже зафиксирован">
+          <div className="space-y-3 pb-1">
+            <p className="text-[12.5px] leading-snug font-medium text-tx2">
+              Этот банк не даёт менять выбор до конца периода. Здесь — зеркало банка: меняй, только если в приложении банка уже так.
+            </p>
+            <div className="flex items-center gap-2.5 rounded-xl border border-brd bg-srf2 px-3 py-2.5">
+              <span className="w-[21px] flex-none text-center text-base leading-none">{offerEmoji(confirmOffer) || FALLBACK_EMOJI}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{confirmOffer.raw_title}</span>
+              <Pct percent={confirmOffer.percent} currency={currency} className="text-[14px]" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Btn
+                onClick={() => {
+                  const offer = confirmOffer;
+                  setConfirmOffer(null);
+                  runToggle(offer);
+                }}
+              >
+                В банке уже так — записать
+              </Btn>
+              <Btn variant="ghost" onClick={() => setConfirmOffer(null)}>
+                Отмена
+              </Btn>
+            </div>
+          </div>
+        </Sheet>
+      )}
     </>
   );
 }

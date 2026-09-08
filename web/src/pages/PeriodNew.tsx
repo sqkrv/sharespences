@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, api, attachmentURL, unwrap, uploadAttachment } from "../api/client";
 import { useBankCategories, useCategories, useClients, useTierMap } from "../hooks";
-import { Badge, Btn, Card, ErrMsg, errorText, Field, Input, Select, Spinner } from "../components/ui";
+import { BackButton, Badge, Btn, Card, ErrMsg, errorText, Field, Input, Select, Spinner } from "../components/ui";
 import { CategoryPicker, type PickedCategory } from "../components/CategoryPicker";
 import { Lightbox } from "../components/Lightbox";
 import {
@@ -18,12 +18,13 @@ import {
   type ReviewRow,
 } from "../recognition";
 import ProgressRing from "../components/ProgressRing";
-import { fmtRange, monthRange, quarterRange } from "../lib";
+import { isoDate, monthGenOf, monthNameOf, monthRange, parseMonthHints, plural, quarterRange } from "../lib";
 
-// S1 step 1, design screen 07 header: «Новый период» — pick the bank client
-// (person × bank; all its cards share the selection), the range defaults
-// from the program's period_type (МКБ → quarter), screenshots are optional
-// evidence.
+// CB-02 «Меню месяца» (redesign 2h): dates are gone from the UI — the month
+// is known from context (?month=, else today) and the program's period_type
+// derives the range silently (МКБ quarter: filling August fills the whole
+// quarter, one offer_period spanning it). The API still takes explicit
+// dates; this screen just stops asking the user to retype the calendar.
 //
 // Recognize mode (spec cashback-recognizer.md, CB-02): the same screen is
 // also the recognizer flow — form → recognizing → review. The job id lives
@@ -55,19 +56,17 @@ function PeriodForm() {
   );
 
   const [clientID, setClientID] = useState(params.get("client") ?? "");
-  const [start, setStart] = useState(monthRange(baseDate).start);
-  const [end, setEnd] = useState(monthRange(baseDate).end);
   const [files, setFiles] = useState<File[]>([]);
 
   const client = (clients.data ?? []).find((c) => String(c.id) === clientID);
 
-  // Default the range from the viewed month + the client's program period type.
-  useEffect(() => {
-    const info = client?.program_tier_id != null ? tierMap.data?.get(client.program_tier_id) : undefined;
-    const range = info?.program.period_type === "quarter" ? quarterRange(baseDate) : monthRange(baseDate);
-    setStart(range.start);
-    setEnd(range.end);
-  }, [clientID, clients.data, tierMap.data, baseDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The range never shows as dates: month + the program's period_type derive
+  // it (МКБ → the month's whole quarter, one period covering all three).
+  const info = client?.program_tier_id != null ? tierMap.data?.get(client.program_tier_id) : undefined;
+  const isQuarter = info?.program.period_type === "quarter";
+  const range = isQuarter ? quarterRange(baseDate) : monthRange(baseDate);
+  const { start, end } = range;
+  const monthISO = isoDate(baseDate);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -91,7 +90,9 @@ function PeriodForm() {
       // The month picker's dots come from ["periods"] — refresh so the new
       // month is marked immediately, not after staleness kicks in.
       qc.invalidateQueries({ queryKey: ["periods"] });
-      navigate(`/periods/${p.id}`);
+      // replace: the spent form must not sit in history — «назад» from the
+      // created period returns to where the flow started, not to the form.
+      navigate(`/periods/${p.id}`, { replace: true });
     },
   });
 
@@ -130,12 +131,8 @@ function PeriodForm() {
   return (
     <>
       <div className="flex items-center gap-2.5">
-        <Link to="/" className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-brd bg-srf">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-tx2">
-            <path d="M14.5 5 8 12l6.5 7" />
-          </svg>
-        </Link>
-        <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">Новый период</h1>
+        <BackButton small />
+        <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">Меню месяца</h1>
         {client && <Badge tone="indigo">{client.bank_name}</Badge>}
       </div>
 
@@ -147,9 +144,22 @@ function PeriodForm() {
             create.mutate();
           }}
         >
+          <div className="flex items-center gap-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-[17px] font-extrabold tracking-tight">Меню {monthGenOf(monthISO)}</p>
+              <p className="mt-0.5 text-[11px] font-medium text-tx4">
+                {client ? "слоты и лимит из каталога" : "выбери банк — месяц уже известен"}
+              </p>
+            </div>
+            {isQuarter && (
+              <Badge tone="amber">
+                квартал · {monthNameOf(start)}–{monthNameOf(end)}
+              </Badge>
+            )}
+          </div>
           <Field label="Банк · держатель">
             <Select required value={clientID} onChange={(e) => setClientID(e.target.value)}>
-              <option value="">— выберите —</option>
+              <option value="">— выбери —</option>
               {(clients.data ?? []).map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.bank_name}
@@ -158,39 +168,37 @@ function PeriodForm() {
               ))}
             </Select>
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Начало">
-              <Input type="date" required value={start} onChange={(e) => setStart(e.target.value)} />
-            </Field>
-            <Field label="Конец">
-              <Input type="date" required value={end} onChange={(e) => setEnd(e.target.value)} />
-            </Field>
-          </div>
+          {isQuarter && (
+            <p className="flex items-center gap-2 rounded-xl border border-acc/25 bg-acc/10 px-3 py-2 text-[11px] leading-snug font-medium text-tx2">
+              <span className="h-1.5 w-1.5 flex-none rounded-full bg-acc" />
+              У {client?.bank_name} меню квартальное: заполни {monthNameOf(monthISO)} — весь квартал заполнится тем же меню
+            </p>
+          )}
           <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-dashed border-dash px-3 py-2.5">
             <span className="h-[26px] w-[26px] flex-none rounded-md" style={{ background: "repeating-linear-gradient(120deg, var(--t-inset) 0 5px, var(--t-srf2) 5px 10px)" }} />
             <span className="min-w-0 flex-1">
-              <span className="block text-[11px] font-semibold text-tx2">Скрин меню из банка</span>
-              <span className="block text-[9px] font-medium text-tx4">{files.length > 0 ? `${files.length} фото` : "необязательно"}</span>
+              <span className="block text-[11px] font-semibold text-tx2">Скрины меню из банка</span>
+              <span className="block text-[9px] font-medium text-tx4">{files.length > 0 ? `${files.length} фото` : "пока нет"}</span>
             </span>
             {/* The recognizer decodes PNG/JPEG/WebP; HEIC and PDF would only
                 skip with a note, so the picker doesn't offer them. */}
             <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={(e) => setFiles([...(e.target.files ?? [])])} />
           </label>
-          <Btn type="submit" disabled={create.isPending || recognize.isPending || !clientID} className="w-full">
-            {create.isPending ? "Создание…" : "Открыть период"}
-          </Btn>
-          {/* Shown even with no files picked (disabled): the button IS how
-              one learns the screenshots can be read automatically — hidden
-              until a file was chosen, it was only ever found by accident. */}
+          {/* Recognize leads (the ritual's main path); manual is the honest
+              fallback and creates the period straight away. The recognize
+              button shows even with no files picked (disabled): it IS how
+              one learns the screenshots can be read automatically. */}
           <Btn
             type="button"
-            variant="soft"
             disabled={create.isPending || recognize.isPending || !clientID || files.length === 0}
             className="w-full"
             onClick={() => recognize.mutate()}
             title={files.length === 0 ? "Сначала приложи скрины меню выше" : undefined}
           >
             {recognize.isPending ? "Загрузка скриншотов…" : "Распознать со скриншотов"}
+          </Btn>
+          <Btn type="submit" variant="soft" disabled={create.isPending || recognize.isPending || !clientID} className="w-full">
+            {create.isPending ? "Создание…" : "Заполнить вручную"}
           </Btn>
           <ErrMsg error={create.error} />
           <ErrMsg error={recognizeError} />
@@ -232,11 +240,7 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
 
   const header = (
     <div className="flex items-center gap-2.5">
-      <Link to="/" className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-brd bg-srf">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-tx2">
-          <path d="M14.5 5 8 12l6.5 7" />
-        </svg>
-      </Link>
+      <BackButton small />
       <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">Распознавание</h1>
       {client && <Badge tone="indigo">{client.bank_name}</Badge>}
     </div>
@@ -285,13 +289,13 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">Распознаём скриншоты</p>
                 <p className="mt-0.5 text-[11px] font-medium text-tx3">
-                  {[client && [client.bank_name, client.label].filter(Boolean).join(" · "), fmtRange(state.start, state.end)]
+                  {[client && [client.bank_name, client.label].filter(Boolean).join(" · "), `меню ${monthGenOf(state.start)}`]
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
                 <p className="mt-0.5 text-[12px] font-semibold text-acc">{phaseCaption(poll.data)}</p>
                 <p className="mt-0.5 text-[12px] font-medium text-tx3">
-                  Локальная модель читает меню ≈2–3 минуты на скриншот. Можно уйти с экрана — плашка внизу покажет, когда будет
+                  Локальная модель читает меню ≈30 секунд на скриншот. Можно уйти с экрана — плашка внизу покажет, когда будет
                   готово. Если закрыть приложение совсем, результат ждёт на сервере 30 минут.
                 </p>
                 <button type="button" className="mt-1.5 text-[11.5px] font-semibold text-tx4 underline" onClick={discard}>
@@ -300,6 +304,75 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
               </div>
             </div>
           )}
+        </Card>
+      </>
+    );
+  }
+
+  // 7a: the partial-result gate — some screenshots were skipped, say so in
+  // the same card before review. Nothing is written until review confirms;
+  // the draft survives reload. Re-recognizing with extra screens stays out
+  // (recognizer decision: no «дораспознать») — the re-shoot path starts
+  // over from the form.
+  const skippedIdx = (state.meta?.images ?? [])
+    .map((im, i) => (im.skipped ? i : -1))
+    .filter((i) => i >= 0);
+  if (skippedIdx.length > 0 && !state.ackPartial) {
+    const readCount = (state.rows ?? []).filter((r) => r.title.trim()).length;
+    const list = skippedIdx.map((i) => i + 1).join(" и ");
+    return (
+      <>
+        {header}
+        <Card className="space-y-3 p-4" data-sid="CB-02.d">
+          <div className="flex items-center gap-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-[16px] font-extrabold tracking-tight">Меню {monthGenOf(state.start)}</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-warn">распознавание · не всё получилось</p>
+            </div>
+            <span className="flex-none rounded-lg bg-inset px-2 py-1 text-[11px] font-bold text-tx3">
+              {state.attachmentIDs.length} {plural(state.attachmentIDs.length, "скрин", "скрина", "скринов")}
+            </span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto">
+            {state.attachmentIDs.map((aid, i) => (
+              <div key={aid} className="relative flex-none">
+                <img
+                  src={attachmentURL(aid)}
+                  alt={`скрин ${i + 1}`}
+                  className={`h-20 rounded-xl border object-cover ${skippedIdx.includes(i) ? "border-warn/40 opacity-50" : "border-brd"}`}
+                />
+                {skippedIdx.includes(i) && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-warn/40 bg-srf text-[10px] font-bold text-warn">
+                    ✕
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-[12px] leading-snug font-medium text-tx2">
+            {skippedIdx.length === 1 ? `Скрин ${list} не похож` : `Скрины ${list} не похожи`} на меню банка — возможно, это не
+            тот экран или текст размыт.{" "}
+            {readCount > 0
+              ? `Из остальных ${readCount === 1 ? "прочитана 1 категория" : `прочитано ${readCount} ${plural(readCount, "категория", "категории", "категорий")}`}, черновик сохранён.`
+              : "Прочитать не удалось ничего."}
+          </p>
+          {readCount > 0 ? (
+            <>
+              <Btn className="w-full" onClick={() => persist({ ...state, ackPartial: true })}>
+                Продолжить с {readCount} {plural(readCount, "категорией", "категориями", "категориями")}
+              </Btn>
+              <Btn variant="ghost" className="w-full" onClick={discard}>
+                Переснять заново
+              </Btn>
+            </>
+          ) : (
+            <Btn variant="soft" className="w-full" onClick={discard}>
+              К форме — переснять или заполнить вручную
+            </Btn>
+          )}
+          <p className="text-[10px] leading-snug font-medium text-tx4">
+            Ничего не записано, пока не пройдена проверка распознанного.
+          </p>
         </Card>
       </>
     );
@@ -316,7 +389,7 @@ function RecognizeFlow({ jobID }: { jobID: string }) {
         clearJob(jobID);
         qc.invalidateQueries({ queryKey: ["overview"] });
         qc.invalidateQueries({ queryKey: ["periods"] });
-        navigate(`/periods/${periodID}`);
+        navigate(`/periods/${periodID}`, { replace: true });
       }}
     />
   );
@@ -367,6 +440,24 @@ function RecognizeReview({
     () => [...new Set((state.meta?.slotCandidates ?? []).map((c) => c.value))],
     [state.meta],
   );
+
+  // «На скринах — июль, записываем в август»: month names hinted by the
+  // screenshots vs the months the period covers (a quarter covers three).
+  // Warn-only; the target month never changes silently.
+  const monthMismatch = useMemo(() => {
+    const hints = parseMonthHints(state.meta?.periodTexts ?? []);
+    if (hints.length === 0) return null;
+    const covered = new Set<number>();
+    let d = new Date(Number(state.start.slice(0, 4)), Number(state.start.slice(5, 7)) - 1, 1);
+    const endD = new Date(Number(state.end.slice(0, 4)), Number(state.end.slice(5, 7)) - 1, 1);
+    while (d <= endD) {
+      covered.add(d.getMonth());
+      d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    }
+    const foreign = hints.filter((m) => !covered.has(m));
+    if (foreign.length === 0 || foreign.length < hints.length) return null; // some hint agrees → no alarm
+    return foreign.map((m) => monthNameOf(`0000-${String(m + 1).padStart(2, "0")}-01`)).join(", ");
+  }, [state.meta, state.start, state.end]);
 
   // A selection dated today would fall outside a backfilled period —
   // mirror the Period screen's «задним числом» switch automatically.
@@ -454,25 +545,35 @@ function RecognizeReview({
     <>
       <div className="flex items-center gap-2.5">
         {/* Leaving keeps the draft — the shell chip brings you back. */}
-        <Link to="/" className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-brd bg-srf">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-tx2">
-            <path d="M14.5 5 8 12l6.5 7" />
-          </svg>
-        </Link>
+        <BackButton small />
         <h1 className="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight">Проверь распознанное</h1>
         {client && <Badge tone="indigo">{client.bank_name}</Badge>}
       </div>
 
       <Card className="p-4" data-sid="CB-02.c">
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Начало">
-              <Input type="date" value={state.start} onChange={(e) => persist({ ...state, start: e.target.value })} />
-            </Field>
-            <Field label="Конец">
-              <Input type="date" value={state.end} onChange={(e) => persist({ ...state, end: e.target.value })} />
-            </Field>
+          <div className="flex items-center gap-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-[16px] font-extrabold tracking-tight">Меню {monthGenOf(state.start)}</p>
+              <p className="mt-0.5 text-[11px] font-medium text-tx4">
+                {[client && [client.bank_name, client.label].filter(Boolean).join(" · "), "слоты и лимит из каталога"]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+            <span className="flex-none rounded-lg bg-inset px-2 py-1 text-[11px] font-bold text-tx3">
+              {state.attachmentIDs.length} {plural(state.attachmentIDs.length, "скрин", "скрина", "скринов")}
+            </span>
           </div>
+          {/* Month check without date fields (3b): the verbatim screenshot
+              hints are compared against the month being written — a warning
+              to read, never a silent change of the target month. */}
+          {monthMismatch && (
+            <p className="flex items-center gap-2 rounded-[10px] border border-warn/35 bg-warn/5 px-2.5 py-2 text-[11px] leading-snug font-medium text-warn">
+              <span className="h-[5px] w-[5px] flex-none rounded-full bg-warn" />
+              На скринах — {monthMismatch}. Записываем в {monthNameOf(state.start)}: проверь, то ли это меню
+            </p>
+          )}
           {meta != null && meta.periodTexts.length > 0 && (
             <p className="text-[11px] font-medium text-tx3">На скриншотах: {meta.periodTexts.join(" · ")}</p>
           )}

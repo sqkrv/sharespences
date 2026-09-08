@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { api, unwrap } from "../api/client";
 import { useMe, useLogout } from "../auth";
 import { useTheme, type ThemeSetting } from "../theme";
 import { useInstallPrompt } from "../pwa";
@@ -16,6 +18,42 @@ const built = new Date(BUILD);
 const buildLabel = Number.isNaN(built.getTime())
   ? null
   : built.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+
+// SYS-03.g (design4 board 1a, roles ≠ user only): a compact accent row —
+// shield squircle, name, subtitle, and the queue-size badge. Moderators get
+// no notifications by design (in-app visibility only, как у друзей) — this
+// badge IS the whole push. Query key shares the ["moderation"] prefix, so
+// acting in MD-01 refreshes it. SYS-03.f is the «Модули» card below —
+// this row was drawn against the same id before that card shipped.
+function ModerationCard() {
+  const queue = useQuery({
+    queryKey: ["moderation", "badge"],
+    queryFn: async () =>
+      unwrap(await api.GET("/api/v1/moderation/pos", { params: { query: { state: "pending", limit: 1 } } })),
+    staleTime: 30_000,
+  });
+  const total = queue.data?.total ?? 0;
+  return (
+    <Link
+      to="/moderation"
+      className="flex items-center gap-3 rounded-2xl border border-acc bg-srf2 px-3.5 py-3 shadow-[0_10px_26px_-16px_rgba(139,111,255,.5)]"
+      data-sid="SYS-03.g"
+    >
+      <span className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[13px] bg-inset text-[17px]">
+        🛡️
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold">Модерация</span>
+        <span className="block text-[11px] font-medium text-tx3">точки продаж на проверке</span>
+      </span>
+      {total > 0 && (
+        <span className="flex h-6 min-w-6 flex-none items-center justify-center rounded-[9px] bg-acc px-1.5 text-xs font-extrabold text-bg">
+          {total}
+        </span>
+      )}
+    </Link>
+  );
+}
 
 // SYS-03.f «Модули» (design4 «Perks - Module», board C). The spec asks for one
 // «Привилегии» item; the design widens it to a card, because Друзья is built
@@ -148,6 +186,10 @@ export default function Services() {
         </Card>
       )}
 
+      {/* The card is navigation sugar: the server re-checks the role on
+          every moderation call, so hiding it is UX, not security. */}
+      {me.data?.role && me.data.role !== "user" && <ModerationCard />}
+
       <Card className="p-4" data-sid="SYS-03.f">
         <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">Модули</p>
         <div className="mt-2.5 space-y-1.5">
@@ -188,7 +230,7 @@ export default function Services() {
         )}
         {dev && isStale(serverBuild) && (
           <p className="mt-1 text-[12px] font-semibold text-warn">
-            ⚠️ приложение из кэша, на сервере новее — перезагрузите страницу
+            ⚠️ приложение из кэша, на сервере новее — перезагрузи страницу
           </p>
         )}
 

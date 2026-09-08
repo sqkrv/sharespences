@@ -1,6 +1,8 @@
-// AD-07 Точки продаж: debounced search over the 47K-row merchant base,
-// server-side pagination with a windowed total; create/edit/delete without
-// the location geometry (v1 has no map widget).
+// AD-07 Точки продаж: debounced search over the merchant base, server-side
+// pagination with a windowed total; create/edit/delete without the location
+// geometry (v1 has no map widget). «Модерация» narrows to the pending queue
+// of user submissions (5e) — approve promotes into the общий каталог,
+// удалить rejects.
 import { useState } from "react";
 import { request, useFetch, type POS, type Page } from "../api";
 import { Btn, Card, ErrMsg, Field, Pager, SearchInput, Spinner, TableWrap, Td, Th, inputCls } from "../ui";
@@ -93,11 +95,12 @@ function RowForm({ initial, onDone }: { initial?: POS; onDone: () => void }) {
 export default function Pos() {
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
+  const [pending, setPending] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [delErr, setDelErr] = useState<unknown>(null);
   const { data, error, reload } = useFetch<Page<POS>>(
-    `/api/pos?query=${encodeURIComponent(query)}&limit=${PAGE}&offset=${offset}`,
+    `/api/pos?query=${encodeURIComponent(query)}&limit=${PAGE}&offset=${offset}&pending=${pending}`,
   );
   return (
     <>
@@ -110,6 +113,15 @@ export default function Pos() {
               setOffset(0);
             }}
           />
+          <Btn
+            kind={pending ? "primary" : undefined}
+            onClick={() => {
+              setPending(!pending);
+              setOffset(0);
+            }}
+          >
+            Модерация
+          </Btn>
           <Btn onClick={() => setCreating(!creating)}>{creating ? "Скрыть форму" : "Новая точка"}</Btn>
           {data && <p className="text-sm text-tx3">всего {data.total.toLocaleString("ru")}</p>}
         </div>
@@ -137,6 +149,7 @@ export default function Pos() {
                   <Th>MCC</Th>
                   <Th>Тип</Th>
                   <Th>Адрес</Th>
+                  <Th>Статус</Th>
                   <Th>Подтв.</Th>
                   <Th></Th>
                 </tr>
@@ -152,9 +165,37 @@ export default function Pos() {
                       </Td>
                       <Td className="text-tx3">{p.type ?? ""}</Td>
                       <Td className="max-w-72 truncate text-tx3">{p.address ?? ""}</Td>
+                      <Td className="text-tx3">
+                        {p.status === "pending" && (
+                          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-500">
+                            модерация{p.author ? ` · @${p.author}` : ""}
+                          </span>
+                        )}
+                        {p.status === "rejected" && (
+                          <span title={p.moderation_note} className="rounded bg-inset px-1.5 py-0.5 text-xs font-semibold text-warn">
+                            отклонена{p.moderation_note ? ` · ${p.moderation_note}` : ""}
+                          </span>
+                        )}
+                      </Td>
                       <Td className="tabular-nums text-tx3">{p.confirmations ?? ""}</Td>
                       <Td>
                         <span className="flex gap-1">
+                          {p.status === "pending" && (
+                            <Btn
+                              kind="primary"
+                              onClick={async () => {
+                                setDelErr(null);
+                                try {
+                                  await request("POST", `/api/pos/${p.id}/approve`);
+                                  reload();
+                                } catch (e) {
+                                  setDelErr(e);
+                                }
+                              }}
+                            >
+                              одобрить
+                            </Btn>
+                          )}
                           <Btn onClick={() => setEditing(editing === p.id ? null : p.id)}>изменить</Btn>
                           <Btn
                             kind="danger"
@@ -176,7 +217,7 @@ export default function Pos() {
                     </tr>
                     {editing === p.id && (
                       <tr key={`e${p.id}`}>
-                        <td colSpan={7} className="p-2">
+                        <td colSpan={8} className="p-2">
                           <RowForm
                             initial={p}
                             onDone={() => {

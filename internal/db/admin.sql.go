@@ -12,6 +12,21 @@ import (
 	"github.com/google/uuid"
 )
 
+const adminApprovePOS = `-- name: AdminApprovePOS :execrows
+update point_of_sale
+set status = 'approved'
+where id = $1
+  and status = 'pending'
+`
+
+func (q *Queries) AdminApprovePOS(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, adminApprovePOS, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const adminCounts = `-- name: AdminCounts :one
 
 select (select count(*) from bank)                                  as banks,
@@ -124,8 +139,8 @@ func (q *Queries) AdminCreateMCCChange(ctx context.Context, arg AdminCreateMCCCh
 }
 
 const adminCreatePOS = `-- name: AdminCreatePOS :one
-insert into point_of_sale (name, merchant_title, mcc_code, type, address)
-values ($1, $2, $3, $4, $5)
+insert into point_of_sale (name, merchant_title, mcc_code, type, address, origin)
+values ($1, $2, $3, $4, $5, 'admin')
 returning id
 `
 
@@ -137,6 +152,8 @@ type AdminCreatePOSParams struct {
 	Address       *string
 }
 
+// origin is literal, not a parameter: a row created through the sidecar was
+// created by an operator, and nothing else may claim otherwise (00027).
 func (q *Queries) AdminCreatePOS(ctx context.Context, arg AdminCreatePOSParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, adminCreatePOS,
 		arg.Name,
@@ -252,6 +269,27 @@ func (q *Queries) AdminGetBankCategoryWithBank(ctx context.Context, id int64) (A
 		&i.Title,
 		&i.IsCustom,
 	)
+	return i, err
+}
+
+const adminGetUserRole = `-- name: AdminGetUserRole :one
+
+select username, role
+from "user"
+where username = $1
+`
+
+type AdminGetUserRoleRow struct {
+	Username string
+	Role     UserRole
+}
+
+// Roles (AD-08, roles-moderation.md): exact-username promote/demote only —
+// deliberately NO user-listing query, so the sidecar never grows one.
+func (q *Queries) AdminGetUserRole(ctx context.Context, username string) (AdminGetUserRoleRow, error) {
+	row := q.db.QueryRow(ctx, adminGetUserRole, username)
+	var i AdminGetUserRoleRow
+	err := row.Scan(&i.Username, &i.Role)
 	return i, err
 }
 
@@ -529,28 +567,34 @@ func (q *Queries) AdminListMCCChanges(ctx context.Context, arg AdminListMCCChang
 }
 
 const adminSearchPOS = `-- name: AdminSearchPOS :many
-select id,
-       name,
-       merchant_title,
-       mcc_code,
-       type,
-       address,
-       confirmations,
-       created_at,
-       last_confirmed_at,
+select p.id,
+       p.name,
+       p.merchant_title,
+       p.mcc_code,
+       p.type,
+       p.address,
+       p.confirmations,
+       p.created_at,
+       p.last_confirmed_at,
+       p.status,
+       p.moderation_note,
+       u.username               as author,
        count(*) over ()::bigint as total
-from point_of_sale
-where $1::text = ''
-   or name ilike '%' || $1::text || '%'
-   or merchant_title ilike '%' || $1::text || '%'
-order by confirmations desc nulls last, name, id
-limit $3 offset $2
+from point_of_sale p
+         left join "user" u on u.id = p.author_user_id
+where (not $1::bool or p.status = 'pending')
+  and ($2::text = ''
+    or p.name ilike '%' || $2::text || '%'
+    or p.merchant_title ilike '%' || $2::text || '%')
+order by (p.status = 'pending') desc, p.confirmations desc nulls last, p.name, p.id
+limit $4 offset $3
 `
 
 type AdminSearchPOSParams struct {
-	Query   string
-	Skip    int32
-	MaxRows int32
+	PendingOnly bool
+	Query       string
+	Skip        int32
+	MaxRows     int32
 }
 
 type AdminSearchPOSRow struct {
@@ -563,11 +607,20 @@ type AdminSearchPOSRow struct {
 	Confirmations   *int64
 	CreatedAt       time.Time
 	LastConfirmedAt *time.Time
+	Status          PointOfSaleStatus
+	ModerationNote  *string
+	Author          *string
 	Total           int64
 }
 
+// pending_only narrows to the 5e moderation queue (user submissions).
 func (q *Queries) AdminSearchPOS(ctx context.Context, arg AdminSearchPOSParams) ([]AdminSearchPOSRow, error) {
-	rows, err := q.db.Query(ctx, adminSearchPOS, arg.Query, arg.Skip, arg.MaxRows)
+	rows, err := q.db.Query(ctx, adminSearchPOS,
+		arg.PendingOnly,
+		arg.Query,
+		arg.Skip,
+		arg.MaxRows,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -585,6 +638,9 @@ func (q *Queries) AdminSearchPOS(ctx context.Context, arg AdminSearchPOSParams) 
 			&i.Confirmations,
 			&i.CreatedAt,
 			&i.LastConfirmedAt,
+			&i.Status,
+			&i.ModerationNote,
+			&i.Author,
 			&i.Total,
 		); err != nil {
 			return nil, err
@@ -595,6 +651,30 @@ func (q *Queries) AdminSearchPOS(ctx context.Context, arg AdminSearchPOSParams) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const adminSetUserRole = `-- name: AdminSetUserRole :one
+update "user"
+set role = $2
+where username = $1
+returning username, role
+`
+
+type AdminSetUserRoleParams struct {
+	Username string
+	Role     UserRole
+}
+
+type AdminSetUserRoleRow struct {
+	Username string
+	Role     UserRole
+}
+
+func (q *Queries) AdminSetUserRole(ctx context.Context, arg AdminSetUserRoleParams) (AdminSetUserRoleRow, error) {
+	row := q.db.QueryRow(ctx, adminSetUserRole, arg.Username, arg.Role)
+	var i AdminSetUserRoleRow
+	err := row.Scan(&i.Username, &i.Role)
+	return i, err
 }
 
 const adminUpdateCustomBankCategory = `-- name: AdminUpdateCustomBankCategory :one

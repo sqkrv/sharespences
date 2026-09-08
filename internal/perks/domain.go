@@ -31,7 +31,7 @@ var (
 	ErrNestingTooDeep    = errors.New("вложенность только двухуровневая: у периода-родителя не может быть своего родителя")
 	ErrChildOutsideParen = errors.New("период должен помещаться внутрь родительского")
 	ErrChildMismatch     = errors.New("период и родительский период должны принадлежать одной привилегии")
-	ErrSizeLocked        = errors.New("у периода уже есть история — меняйте размер событием «resize»")
+	ErrSizeLocked        = errors.New("у периода уже есть история — изменяй размер событием «Пересчёт»")
 	ErrQtyPositive       = errors.New("количество должно быть больше нуля")
 	ErrQtyNonNegative    = errors.New("новый размер не может быть отрицательным")
 	ErrQtyNonZero        = errors.New("корректировка на ноль ничего не меняет")

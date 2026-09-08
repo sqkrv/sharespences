@@ -156,6 +156,9 @@ type POSDTO struct {
 	Confirmations   *int64    `json:"confirmations,omitempty"`
 	CreatedAt       string    `json:"created_at"`
 	LastConfirmedAt *string   `json:"last_confirmed_at,omitempty"`
+	Status          string    `json:"status" enum:"approved,pending,rejected"`
+	Author          *string   `json:"author,omitempty" doc:"username подавшего (5e); null у импорта и админских строк"`
+	ModerationNote  *string   `json:"moderation_note,omitempty" doc:"причина отклонения от модератора (1c) — операторская заметка"`
 }
 
 type posBody struct {
@@ -619,14 +622,19 @@ func RegisterHTTP(api huma.API, s *Service) {
 	huma.Register(api, huma.Operation{
 		OperationID: "admin-pos-list", Method: http.MethodGet,
 		Path: "/api/pos", Summary: "Search points of sale", Tags: []string{"pos"},
-	}, func(ctx context.Context, in *pageParams) (*struct {
+	}, func(ctx context.Context, in *struct {
+		Query       string `query:"query" required:"false" doc:"подстрока названия или мерчанта"`
+		Limit       int32  `query:"limit" default:"50" minimum:"1" maximum:"500"`
+		Offset      int32  `query:"offset" default:"0" minimum:"0"`
+		PendingOnly bool   `query:"pending" required:"false" doc:"только очередь модерации (5e)"`
+	}) (*struct {
 		Body struct {
 			Total int64    `json:"total"`
 			Items []POSDTO `json:"items"`
 		}
 	}, error) {
 		rows, err := s.Q.AdminSearchPOS(ctx, db.AdminSearchPOSParams{
-			Query: in.Query, MaxRows: in.Limit, Skip: in.Offset,
+			Query: in.Query, MaxRows: in.Limit, Skip: in.Offset, PendingOnly: in.PendingOnly,
 		})
 		if err != nil {
 			return nil, err
@@ -644,6 +652,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				ID: p.ID, Name: p.Name, MerchantTitle: p.MerchantTitle,
 				MccCode: p.MccCode, Address: p.Address, Confirmations: p.Confirmations,
 				CreatedAt: p.CreatedAt.Format("2006-01-02"),
+				Status:    string(p.Status), Author: p.Author, ModerationNote: p.ModerationNote,
 			}
 			if p.Type.Valid {
 				t := string(p.Type.PointOfSaleType)
@@ -656,6 +665,23 @@ func RegisterHTTP(api huma.API, s *Service) {
 			out.Body.Items[i] = d
 		}
 		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "admin-pos-approve", Method: http.MethodPost,
+		Path: "/api/pos/{id}/approve", Summary: "Approve a pending point (5e moderation)", Tags: []string{"pos"},
+		DefaultStatus: http.StatusNoContent,
+	}, func(ctx context.Context, in *struct {
+		ID uuid.UUID `path:"id"`
+	}) (*struct{}, error) {
+		n, err := s.Q.AdminApprovePOS(ctx, in.ID)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		if n == 0 {
+			return nil, huma.Error404NotFound("не найдено или уже одобрено")
+		}
+		return &struct{}{}, nil
 	})
 
 	huma.Register(api, huma.Operation{
@@ -714,6 +740,47 @@ func RegisterHTTP(api huma.API, s *Service) {
 		}
 		return &struct{}{}, nil
 	})
+
+	// --- roles (AD-08, roles-moderation.md): exact-username promote/demote,
+	// deliberately no user listing — appointment is operator work ---
+
+	huma.Register(api, huma.Operation{
+		OperationID: "admin-user-role-get", Method: http.MethodGet,
+		Path: "/api/users/{username}/role", Summary: "A user's role, by exact username", Tags: []string{"roles"},
+	}, func(ctx context.Context, in *struct {
+		Username string `path:"username"`
+	}) (*struct{ Body UserRoleDTO }, error) {
+		u, err := s.Q.AdminGetUserRole(ctx, in.Username)
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{ Body UserRoleDTO }{UserRoleDTO{Username: u.Username, Role: string(u.Role)}}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "admin-user-role-set", Method: http.MethodPut,
+		Path: "/api/users/{username}/role", Summary: "Promote or demote, by exact username", Tags: []string{"roles"},
+	}, func(ctx context.Context, in *struct {
+		Username string `path:"username"`
+		Body     struct {
+			Role string `json:"role" enum:"user,moderator,admin"`
+		}
+	}) (*struct{ Body UserRoleDTO }, error) {
+		u, err := s.Q.AdminSetUserRole(ctx, db.AdminSetUserRoleParams{
+			Username: in.Username, Role: db.UserRole(in.Body.Role),
+		})
+		if err != nil {
+			return nil, httpErr(err)
+		}
+		return &struct{ Body UserRoleDTO }{UserRoleDTO{Username: u.Username, Role: string(u.Role)}}, nil
+	})
+}
+
+// UserRoleDTO answers the AD-08 screen; the username in, the role out —
+// never a list.
+type UserRoleDTO struct {
+	Username string `json:"username"`
+	Role     string `json:"role" enum:"user,moderator,admin"`
 }
 
 // --- dashboard DTO ---

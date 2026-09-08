@@ -19,15 +19,15 @@ func TestExtractJSON(t *testing.T) {
 		{"prose before and after", "Вот результат:\n" + obj + "\nНадеюсь, помог.", "", obj},
 		{"fenced json", "```json\n" + obj + "\n```", "", obj},
 		{"fenced bare", "```\n" + obj + "\n```", "", obj},
-		// The MacBook qwen3-vl:2b shape: empty content, the object lives
-		// in the thinking channel.
+		// One 2b shape: empty content, the object lives in the thinking
+		// channel.
 		{"json in thinking", "", "Let me read the rows... " + obj, obj},
 		{"leaked closed think block", "<think>reasoning here</think>\n" + obj, "", obj},
-		// The sqserver qwen3-vl:2b shape: 6–9k chars of reasoning, never
-		// terminated, no object at all.
+		// The other 2b shape, from a host where the same tag reasons far
+		// longer: 6–9k chars, never terminated, no object at all.
 		{"unterminated think prose", "<think>The screen shows a bank app with категории", "", ""},
 		{"unterminated think then thinking has json", "<think>endless prose", obj, obj},
-		// Deliberate improvement over bench.py: a brace inside a string
+		// Deliberate improvement over the reference extractor: a brace inside a string
 		// must not break the balance count.
 		{"brace in title", `{"rows":[{"title":"Кафе {и} бары","percent":"7"}]}`, "", `{"rows":[{"title":"Кафе {и} бары","percent":"7"}]}`},
 		{"escaped quote in title", `{"title":"Кафе \"У Ашота\" {x}"}`, "", `{"title":"Кафе \"У Ашота\" {x}"}`},

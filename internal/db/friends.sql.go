@@ -34,53 +34,28 @@ func (q *Queries) CancelRequestForSender(ctx context.Context, arg CancelRequestF
 	return result.RowsAffected(), nil
 }
 
-const claimInvite = `-- name: ClaimInvite :one
-update friend_invite
-set claimed_at         = now(),
-    claimed_by_user_id = $2
-where token_hash = $1
-  and claimed_at is null
-  and expires_at > now()
-returning id, created_by_user_id, token_hash, created_at, expires_at, claimed_at, claimed_by_user_id
-`
-
-type ClaimInviteParams struct {
-	TokenHash       []byte
-	ClaimedByUserID *uuid.UUID
-}
-
-// ClaimInvite is the atomic burn (invariant 5): the conditional update
-// either claims a live, unexpired invite or matches nothing — the service
-// distinguishes burned from expired via GetInviteByTokenHash afterwards.
-func (q *Queries) ClaimInvite(ctx context.Context, arg ClaimInviteParams) (FriendInvite, error) {
-	row := q.db.QueryRow(ctx, claimInvite, arg.TokenHash, arg.ClaimedByUserID)
-	var i FriendInvite
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedByUserID,
-		&i.TokenHash,
-		&i.CreatedAt,
-		&i.ExpiresAt,
-		&i.ClaimedAt,
-		&i.ClaimedByUserID,
-	)
-	return i, err
-}
-
 const createFriendInvite = `-- name: CreateFriendInvite :one
-insert into friend_invite (created_by_user_id, token_hash, expires_at)
-values ($1, $2, $3)
-returning id, created_by_user_id, token_hash, created_at, expires_at, claimed_at, claimed_by_user_id
+insert into friend_invite (created_by_user_id, token_hash, token, expires_at)
+values ($1, $2, $3, $4)
+returning id, created_by_user_id, token_hash, created_at, expires_at, claimed_at, claimed_by_user_id, token
 `
 
 type CreateFriendInviteParams struct {
 	CreatedByUserID uuid.UUID
 	TokenHash       []byte
+	Token           *string
 	ExpiresAt       time.Time
 }
 
+// The plaintext token lives at rest since 00037: a claim only files a
+// friend request, so the link is re-showable without extra capability.
 func (q *Queries) CreateFriendInvite(ctx context.Context, arg CreateFriendInviteParams) (FriendInvite, error) {
-	row := q.db.QueryRow(ctx, createFriendInvite, arg.CreatedByUserID, arg.TokenHash, arg.ExpiresAt)
+	row := q.db.QueryRow(ctx, createFriendInvite,
+		arg.CreatedByUserID,
+		arg.TokenHash,
+		arg.Token,
+		arg.ExpiresAt,
+	)
 	var i FriendInvite
 	err := row.Scan(
 		&i.ID,
@@ -90,23 +65,27 @@ func (q *Queries) CreateFriendInvite(ctx context.Context, arg CreateFriendInvite
 		&i.ExpiresAt,
 		&i.ClaimedAt,
 		&i.ClaimedByUserID,
+		&i.Token,
 	)
 	return i, err
 }
 
 const createFriendRequest = `-- name: CreateFriendRequest :one
-insert into friend_request (from_user_id, to_user_id)
-values ($1, $2)
-returning id, from_user_id, to_user_id, status, created_at, responded_at
+insert into friend_request (from_user_id, to_user_id, via_invite)
+values ($1, $2, $3)
+returning id, from_user_id, to_user_id, status, created_at, responded_at, via_invite
 `
 
 type CreateFriendRequestParams struct {
 	FromUserID uuid.UUID
 	ToUserID   uuid.UUID
+	ViaInvite  bool
 }
 
+// via_invite marks a заявка that arrived through the sender's invite link —
+// the inbox labels it («пришла по твоей ссылке»).
 func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendRequestParams) (FriendRequest, error) {
-	row := q.db.QueryRow(ctx, createFriendRequest, arg.FromUserID, arg.ToUserID)
+	row := q.db.QueryRow(ctx, createFriendRequest, arg.FromUserID, arg.ToUserID, arg.ViaInvite)
 	var i FriendRequest
 	err := row.Scan(
 		&i.ID,
@@ -115,6 +94,7 @@ func (q *Queries) CreateFriendRequest(ctx context.Context, arg CreateFriendReque
 		&i.Status,
 		&i.CreatedAt,
 		&i.RespondedAt,
+		&i.ViaInvite,
 	)
 	return i, err
 }
@@ -257,7 +237,7 @@ func (q *Queries) GetFriendshipByPair(ctx context.Context, arg GetFriendshipByPa
 }
 
 const getInviteByTokenHash = `-- name: GetInviteByTokenHash :one
-select id, created_by_user_id, token_hash, created_at, expires_at, claimed_at, claimed_by_user_id
+select id, created_by_user_id, token_hash, created_at, expires_at, claimed_at, claimed_by_user_id, token
 from friend_invite
 where token_hash = $1
 `
@@ -273,12 +253,13 @@ func (q *Queries) GetInviteByTokenHash(ctx context.Context, tokenHash []byte) (F
 		&i.ExpiresAt,
 		&i.ClaimedAt,
 		&i.ClaimedByUserID,
+		&i.Token,
 	)
 	return i, err
 }
 
 const getPendingRequestBetween = `-- name: GetPendingRequestBetween :one
-select id, from_user_id, to_user_id, status, created_at, responded_at
+select id, from_user_id, to_user_id, status, created_at, responded_at, via_invite
 from friend_request
 where status = 'pending'
   and ((from_user_id = $1 and to_user_id = $2) or (from_user_id = $2 and to_user_id = $1))
@@ -299,13 +280,14 @@ func (q *Queries) GetPendingRequestBetween(ctx context.Context, arg GetPendingRe
 		&i.Status,
 		&i.CreatedAt,
 		&i.RespondedAt,
+		&i.ViaInvite,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
 
-select id, username, display_name, email, created_at, telegram_id, password_hash
+select id, username, display_name, email, created_at, telegram_id, password_hash, role
 from "user"
 where username = $1
 `
@@ -330,6 +312,7 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.CreatedAt,
 		&i.TelegramID,
 		&i.PasswordHash,
+		&i.Role,
 	)
 	return i, err
 }
@@ -382,7 +365,7 @@ func (q *Queries) ListFriendsForUser(ctx context.Context, userID uuid.UUID) ([]L
 }
 
 const listLiveInvitesForUser = `-- name: ListLiveInvitesForUser :many
-select id, created_by_user_id, token_hash, created_at, expires_at, claimed_at, claimed_by_user_id
+select id, created_by_user_id, token_hash, created_at, expires_at, claimed_at, claimed_by_user_id, token
 from friend_invite
 where created_by_user_id = $1
   and claimed_at is null
@@ -407,6 +390,7 @@ func (q *Queries) ListLiveInvitesForUser(ctx context.Context, createdByUserID uu
 			&i.ExpiresAt,
 			&i.ClaimedAt,
 			&i.ClaimedByUserID,
+			&i.Token,
 		); err != nil {
 			return nil, err
 		}
@@ -423,6 +407,7 @@ select fr.id,
        fr.from_user_id,
        fr.to_user_id,
        fr.created_at,
+       fr.via_invite,
        fu.username     as from_username,
        fu.display_name as from_display_name,
        tu.username     as to_username,
@@ -440,6 +425,7 @@ type ListPendingRequestsForUserRow struct {
 	FromUserID      uuid.UUID
 	ToUserID        uuid.UUID
 	CreatedAt       time.Time
+	ViaInvite       bool
 	FromUsername    string
 	FromDisplayName string
 	ToUsername      string
@@ -460,6 +446,7 @@ func (q *Queries) ListPendingRequestsForUser(ctx context.Context, userID uuid.UU
 			&i.FromUserID,
 			&i.ToUserID,
 			&i.CreatedAt,
+			&i.ViaInvite,
 			&i.FromUsername,
 			&i.FromDisplayName,
 			&i.ToUsername,
@@ -568,7 +555,7 @@ set status       = $3,
 where id = $1
   and to_user_id = $2
   and status = 'pending'
-returning id, from_user_id, to_user_id, status, created_at, responded_at
+returning id, from_user_id, to_user_id, status, created_at, responded_at, via_invite
 `
 
 type SetRequestStatusForRecipientParams struct {
@@ -587,6 +574,7 @@ func (q *Queries) SetRequestStatusForRecipient(ctx context.Context, arg SetReque
 		&i.Status,
 		&i.CreatedAt,
 		&i.RespondedAt,
+		&i.ViaInvite,
 	)
 	return i, err
 }

@@ -1,24 +1,29 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api, unwrap, type Schemas } from "../api/client";
-import { useBanks, useClients, usePeriods, usePrograms, useTierMap } from "../hooks";
-import { BankBadge, Btn, Card, Empty, ErrMsg, Field, Input, Pct, SegTabs, Select, Spinner, Badge } from "../components/ui";
+import { useClients, usePeriods } from "../hooks";
+import { BankBadge, Btn, Card, Chip, ErrMsg, ListRow, Pct, Spinner } from "../components/ui";
 import { MonthPicker } from "../components/MonthPicker";
-import { capNote, FALLBACK_EMOJI, midMonthISO, midPeriodAddNote, monthKey, monthNameOf, opensStripParts, pad2, todayISO } from "../lib";
+import {
+  FALLBACK_EMOJI,
+  currencyRank,
+  pctNum,
+  plural,
+  winnerOf,
+  capNote,
+  fmtDate,
+  initWithFriends,
+  monthKey,
+  monthNameOf,
+  todayISO,
+  verdictNote,
+} from "../lib";
+import { rememberMonth, viewedMonth } from "../month";
 
-// [enum value, human label] — the API takes the lowercase enum, the user
-// reads «Мир»/«Visa» (2026-07-15).
-const PAYMENT_SYSTEMS = [
-  ["mir", "Мир"],
-  ["visa", "Visa"],
-  ["mastercard", "Mastercard"],
-  ["unionpay", "UnionPay"],
-  ["american_express", "American Express"],
-] as const;
-type PaySystem = (typeof PAYMENT_SYSTEMS)[number][0];
-
-type OverviewClient = Schemas["OverviewClientDTO"];
+type CategoryGroup = Schemas["OverviewCategoryDTO"];
+type LookupEntry = Schemas["LookupEntryDTO"];
+type PartnerFeed = Schemas["PartnerFeedDTO"];
 
 function useOverview(date: string) {
   return useQuery({
@@ -27,814 +32,672 @@ function useOverview(date: string) {
   });
 }
 
-// «Альфа» из «Альфа-Банк» — the design's short bank name in the table cut.
-function bankShort(name: string): string {
-  return name.split(/[\s-]/)[0] || name;
-}
-
-function last4(n: number): string {
-  return String(n).padStart(4, "0");
-}
-
-// Bank clients grouped by держатель: unlabeled (your own) first, then people
-// alphabetically — the family-fleet view (2026-07-09).
-function groupByHolder<T extends { holder_label?: string | null }>(clients: T[]): [string, T[]][] {
-  const groups = new Map<string, T[]>();
-  for (const c of clients) {
-    const k = c.holder_label ?? "";
-    groups.set(k, [...(groups.get(k) ?? []), c]);
-  }
-  return [...groups.entries()].sort((a, b) =>
-    a[0] === "" ? -1 : b[0] === "" ? 1 : a[0].localeCompare(b[0], "ru"),
-  );
-}
-
-// The bank-first cut: one section per bank, its clients (держатели) inside
-// (2026-07-23).
-function groupByBank<T extends { bank_id: number; bank_name: string }>(clients: T[]): [number, T[]][] {
-  const groups = new Map<number, T[]>();
-  for (const c of clients) groups.set(c.bank_id, [...(groups.get(c.bank_id) ?? []), c]);
-  return [...groups.entries()].sort((a, b) => a[1][0].bank_name.localeCompare(b[1][0].bank_name, "ru"));
-}
-
-// The «Банки» tab grouping toggle persists like the theme does — a plain
-// localStorage key read on mount.
-type BanksGrouping = "bank" | "holder";
-const GROUP_KEY = "overview-group";
-function storedGrouping(): BanksGrouping {
-  return localStorage.getItem(GROUP_KEY) === "holder" ? "holder" : "bank";
-}
-
-// «Категории» sort (2026-07-24): по проценту keeps the API order
-// (currency → percent desc → title); the others re-sort client-side.
-// Persisted like the grouping toggle. Default is «по алфавиту» since
-// 2026-07-27 (the list is scanned by category name, not by rate).
-type CatsSort = "percent" | "alpha" | "bank";
+// The feed sort (ТУР 2): «по алфавиту» default, «по проценту» keeps the API
+// order (currency group → percent desc). Persisted under the policy-listed
+// overview-cats-sort key; the retired «по банку» value reads as the default.
+type CatsSort = "percent" | "alpha";
 const CATS_SORT_KEY = "overview-cats-sort";
 function storedCatsSort(): CatsSort {
-  const v = localStorage.getItem(CATS_SORT_KEY);
-  return v === "percent" || v === "bank" ? v : "alpha";
+  return localStorage.getItem(CATS_SORT_KEY) === "percent" ? "percent" : "alpha";
 }
 
-// Держатель + тариф live on the bank client — the cards merely hang off it.
-// Deletes live here too: cards go one by one; the bank goes with its cards,
-// unless КБ history holds it (the API refuses with 409).
-function ClientEditForm({ client, onDone }: { client: OverviewClient; onDone: () => void }) {
-  const programs = usePrograms();
-  const tierMap = useTierMap();
-  const clientsQ = useClients();
-  const qc = useQueryClient();
-  const full = (clientsQ.data ?? []).find((c) => c.id === client.bank_client_id);
-  const [holder, setHolder] = useState(client.holder_label ?? "");
-  const [tierID, setTierID] = useState(full?.program_tier_id != null ? String(full.program_tier_id) : "");
+// Percent as a number for display ordering; unknown last. Nominal across
+// currencies — the same rule the боards use (2026-08-27): ordering is not
+// conversion.
+// Gold mechanic chip for a winner row: the stacked барабан shows its parts
+// («7 + 7 барабан» — the sum is only trustworthy if it shows them), a bare
+// super is «барабан», a special carries its own title («спец · Остатки»).
+function mechanicChip(e: LookupEntry) {
+  if (e.stacked_super != null) return <Chip tone="gold">{e.stacked_regular} + {e.stacked_super} барабан</Chip>;
+  if (e.kind === "super") return <Chip tone="gold">барабан</Chip>;
+  if (e.kind === "special") return <Chip tone="gold">спец{e.raw_title ? ` · ${e.raw_title}` : ""}</Chip>;
+  return null;
+}
 
-  const program = (programs.data ?? []).find((p) => p.bank_id === client.bank_id);
-  const tiers = program ? [...(tierMap.data?.values() ?? [])].filter((ti) => ti.program.id === program.id) : [];
+// The row's overlap logo stack (9a): every bank where the category exists
+// this month, the displayed winner in front — nearest the percent, last in
+// DOM. Behind it the others in rank order, nearer = higher. The 2px ring in
+// the surface color is what makes the overlap read as a stack.
+function BankStack({ banks, winner }: { banks: string[]; winner: string }) {
+  const rest = banks.filter((b) => b !== winner);
+  const shown = [...rest.slice(0, 3).reverse(), winner];
+  return (
+    <span className="flex flex-none">
+      {shown.map((b, i) => (
+        <span key={b} className="flex flex-none" style={{ marginLeft: i ? -7 : 0, borderRadius: 7, boxShadow: "0 0 0 2px var(--t-srf)" }}>
+          <BankBadge name={b} size={18} />
+        </span>
+      ))}
+    </span>
+  );
+}
 
-  const save = useMutation({
-    mutationFn: async () =>
-      unwrap(
-        await api.PUT("/api/v1/bank-clients/{id}", {
-          params: { path: { id: client.bank_client_id } },
-          body: {
-            ...(holder.trim() ? { label: holder.trim() } : {}),
-            ...(tierID ? { program_tier_id: Number(tierID) } : {}),
-          },
-        }),
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["overview"] });
-      qc.invalidateQueries({ queryKey: ["clients"] });
-      onDone();
-    },
+// The 3a expansion: the category's full ranking (rubles, then points — never
+// converted), plus the «можно выбрать» rows. Lazily fetched on first expand;
+// usePrefetchOffline warms the active slugs for offline. Rows navigate to
+// the bank's menu — marking a selection lives there, not here (feedback
+// 2026-08-25, same rule as CB-11).
+function ExpandedCategory({
+  slug,
+  date,
+  friendsOn,
+  openEntry,
+}: {
+  slug: string;
+  date: string | null;
+  friendsOn: boolean;
+  openEntry: (e: { bank_client_id?: number; friend_name?: string; kind?: string }) => void;
+}) {
+  // date null = the current month: the key then matches what
+  // usePrefetchOffline warmed, so expansion works at a no-signal checkout.
+  const lookup = useQuery({
+    queryKey: date ? ["lookup", slug, date] : ["lookup", slug],
+    queryFn: async () =>
+      unwrap(await api.GET("/api/v1/cashback/lookup", { params: { query: { category: slug, ...(date ? { date } : {}) } } })),
   });
 
-  const delCard = useMutation({
-    mutationFn: async (cardID: number) =>
-      unwrap(await api.DELETE("/api/v1/cards/{id}", { params: { path: { id: cardID } } })),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["overview"] });
-      qc.invalidateQueries({ queryKey: ["cards"] });
-    },
-  });
-
-  const delClient = useMutation({
-    mutationFn: async () =>
-      unwrap(await api.DELETE("/api/v1/bank-clients/{id}", { params: { path: { id: client.bank_client_id } } })),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["overview"] });
-      qc.invalidateQueries({ queryKey: ["clients"] });
-      qc.invalidateQueries({ queryKey: ["cards"] });
-      onDone();
-    },
-  });
+  if (lookup.isPending) return <Spinner />;
+  if (lookup.isError) return <ErrMsg error={lookup.error} />;
+  const d = lookup.data;
+  const ranked = (d.ranked ?? []).filter((e) => friendsOn || !e.friend_name);
+  const available = d.available ?? [];
+  // A friend's unpicked rows land here rather than on the collapsed row: this
+  // is where the per-bank picture lives, and «попроси Марину» is detail, not
+  // the answer to «чем платить».
+  const friendAvailable = friendsOn ? (d.friend_available ?? []) : [];
+  const rows = [
+    ...ranked.map((e, i) => ({ key: `r-${e.bank_client_id}-${i}`, avail: false as const, unpicked: false, e })),
+    ...available.map((e) => ({ key: `a-${e.offer_id}`, avail: true as const, unpicked: false, e })),
+    ...friendAvailable.map((e, i) => ({ key: `f-${e.bank_client_id}-${i}`, avail: false as const, unpicked: true, e })),
+  ];
+  // The legend speaks for whatever is on screen, not only for the ranked
+  // rows: a points row that arrives as «свободный слот» needs it too.
+  const currencies = new Set(rows.map((r) => r.e.currency_kind));
 
   return (
-    <form
-      data-sid="CB-01.g"
-      className="mt-3 space-y-3 rounded-xl bg-srf2 p-3"
-      onClick={(e) => e.stopPropagation()}
-      onSubmit={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        save.mutate();
-      }}
-    >
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Держатель">
-          <Input value={holder} onChange={(e) => setHolder(e.target.value)} placeholder="Мама" />
-        </Field>
-        <Field label="Тариф">
-          <Select value={tierID} onChange={(e) => setTierID(e.target.value)}>
-            <option value="">— не указан —</option>
-            {tiers.map(({ tier }) => (
-              <option key={tier.id} value={tier.id}>
-                {tier.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      </div>
-      {(client.cards ?? []).length > 0 && (
-        <Field label="Карты">
-          <div className="flex flex-wrap gap-1.5">
-            {(client.cards ?? []).map((cc) => (
-              <span key={cc.card_id} className="flex items-center gap-1.5 rounded-lg bg-inset px-2 py-1 text-[11px] font-semibold text-tx3">
-                ··{last4(cc.last_4_digits)}
-                <button
-                  type="button"
-                  title="Удалить карту"
-                  className="text-warn"
-                  disabled={delCard.isPending}
-                  onClick={() => {
-                    if (window.confirm(`Удалить карту ··${last4(cc.last_4_digits)}?`)) delCard.mutate(cc.card_id);
-                  }}
-                >
-                  ✕
-                </button>
+    <div className="mt-2.5 ml-8 space-y-2 border-t border-brd/60 pt-2.5" data-sid="CB-01.f">
+      {/* Invariant 5 reaches this list too: rubles first, points after, and
+          nominal percent orders WITHIN a currency. Sorting straight across
+          them opened «Образование» on a 9% в баллах under a headline of 4% ₽
+          — an order that implies the comparison the app refuses to make.
+          The 2026-08-28 rule survives untouched, because «a 10% свободный
+          слот must not hide under a 9% selected row» is about state, and
+          both of those rows sit in the same currency group. */}
+      {rows
+        .sort(
+          (a, b) => currencyRank(a.e.currency_kind) - currencyRank(b.e.currency_kind) || pctNum(b.e.percent) - pctNum(a.e.percent),
+        )
+        .map(({ key, avail, unpicked, e }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => openEntry(e)}
+            className={`flex w-full items-center gap-2 text-left ${unpicked ? "opacity-60" : ""}`}
+          >
+            <BankBadge name={e.bank_name} size={18} />
+            {/* The name truncates, the markers do not: everything used to sit
+                in one truncating line, so a long friend name cut the currency
+                chip off the end. They wrap to a second line when they cannot
+                fit instead of disappearing. */}
+            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-xs font-semibold text-tx2">
+              <span className="min-w-0 truncate">
+                {e.bank_name}
+                {e.holder_label ? ` · ${e.holder_label}` : e.friend_name || e.kind === "partner" || avail ? "" : " · Я"}
               </span>
-            ))}
-          </div>
-        </Field>
+              {avail && (
+                <span className="inline-flex flex-none items-baseline gap-1 text-[10px] font-semibold text-tx3">
+                  <span className="h-1.5 w-1.5 flex-none self-center rounded-full border-[1.5px] border-tx4" />
+                  свободный слот
+                </span>
+              )}
+              {avail && verdictNote(e as Schemas["AvailableEntryDTO"]) && (
+                <span className="flex-none text-[10px] font-medium text-tx4">· {verdictNote(e as Schemas["AvailableEntryDTO"])}</span>
+              )}
+              {!avail && e.friend_name && <span className="flex-none"><Chip tone="friend">друг · {e.friend_name}</Chip></span>}
+              {/* Same marker their own unpicked rows carry, so one legend
+                  covers both: the outlined dot means «в меню, не выбрано». */}
+              {unpicked && (
+                <span className="inline-flex flex-none items-baseline gap-1 text-[10px] font-semibold text-tx3">
+                  <span className="h-1.5 w-1.5 flex-none self-center rounded-full border-[1.5px] border-tx4" />
+                  не выбрано
+                </span>
+              )}
+              {!avail && e.kind === "partner" && (
+                <span className="flex-none">
+                  <Chip tone="gold">партнёрка{e.partner_scope === "merchant" ? ` · только в «${e.raw_title}»` : ""}</Chip>
+                </span>
+              )}
+              {e.currency_kind === "points" && <span className="flex-none"><Chip tone="points">{e.points_label || "баллы"}</Chip></span>}
+              {!avail && !e.friend_name && e.kind !== "partner" && capNote(e) && (
+                <span className="flex-none font-medium text-tx4">· {capNote(e)}</span>
+              )}
+            </span>
+            <Pct percent={e.percent} currency={e.currency_kind} className="text-[13px]" />
+            <span className="flex-none text-[10px] text-tx4">›</span>
+          </button>
+        ))}
+      {currencies.has("points") && currencies.size > 1 && (
+        <p className="text-[10px] leading-snug font-medium text-tx4">
+          Баллы в рубли не пересчитываются: сначала идут рублёвые строки, лиловый процент считается баллами.
+        </p>
       )}
-      <div className="flex gap-2">
-        <Btn type="submit" disabled={save.isPending}>
-          Сохранить
-        </Btn>
-        <Btn type="button" variant="ghost" onClick={onDone}>
-          Отмена
-        </Btn>
-        <Btn
-          type="button"
-          variant="danger"
-          className="ml-auto"
-          disabled={delClient.isPending}
-          onClick={() => {
-            if (window.confirm(`Удалить ${client.bank_name} (${client.holder_label ?? "Я"}) вместе с картами?`))
-              delClient.mutate();
-          }}
-        >
-          Удалить банк
-        </Btn>
-      </div>
-      <ErrMsg error={save.error ?? delClient.error ?? delCard.error} />
-    </form>
+    </div>
   );
 }
 
-// Adding a bank = creating the person × bank relationship (bank_client);
-// cards are optional and come after, under the bank (2026-07-23).
-function AddBankForm({ initialBankID, onDone }: { initialBankID?: number; onDone: () => void }) {
-  const banks = useBanks();
-  const programs = usePrograms();
-  const tierMap = useTierMap();
-  const qc = useQueryClient();
-  const [bankID, setBankID] = useState(initialBankID != null ? String(initialBankID) : "");
-  const [holder, setHolder] = useState("");
-  const [tierID, setTierID] = useState("");
-
-  const program = (programs.data ?? []).find((p) => String(p.bank_id) === bankID);
-  const tiers = program ? [...(tierMap.data?.values() ?? [])].filter((ti) => ti.program.id === program.id) : [];
-
-  const create = useMutation({
-    mutationFn: async () =>
-      unwrap(
-        await api.POST("/api/v1/bank-clients", {
-          body: {
-            bank_id: Number(bankID),
-            ...(holder.trim() ? { label: holder.trim() } : {}),
-            ...(tierID ? { program_tier_id: Number(tierID) } : {}),
-          },
-        }),
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["overview"] });
-      qc.invalidateQueries({ queryKey: ["clients"] });
-      onDone();
-    },
-  });
-
+// The caption line is part of every row's box, present or not: reserving it
+// with an invisible glyph makes captioned and captionless rows exactly the
+// same height, which a min-height could only approximate.
+function CaptionSlot() {
   return (
-    <Card className="p-4" data-sid="CB-01.e">
-      <form
-        className="space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          create.mutate();
-        }}
-      >
-        <Field label="Банк">
-          <Select
-            required
-            value={bankID}
-            onChange={(e) => {
-              setBankID(e.target.value);
-              setTierID("");
-            }}
-          >
-            <option value="">— выберите банк —</option>
-            {(banks.data ?? []).map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Держатель (необязательно)">
-          <Input value={holder} onChange={(e) => setHolder(e.target.value)} placeholder="Мама" />
-        </Field>
-        {tiers.length > 0 && (
-          <Field label="Уровень (тариф КБ-программы)">
-            <Select value={tierID} onChange={(e) => setTierID(e.target.value)}>
-              <option value="">— не указан —</option>
-              {tiers.map(({ tier }) => (
-                <option key={tier.id} value={tier.id}>
-                  {tier.name}
-                  {tier.is_paid_subscription ? " (подписка)" : ""}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
-        <div className="flex gap-2">
-          <Btn type="submit" disabled={create.isPending}>
-            Добавить банк
-          </Btn>
-          <Btn type="button" variant="ghost" onClick={onDone}>
-            Отмена
-          </Btn>
-        </div>
-        <ErrMsg error={create.error} />
-      </form>
-    </Card>
+    <span aria-hidden className="invisible text-[10px] font-semibold">
+      ·
+    </span>
   );
 }
 
-// The plastic itself — strictly under an already-added bank (bank client);
-// the bank comes first (2026-07-23).
-function AddCardForm({
-  initialBankID,
-  onDone,
-  onAddBank,
+// One feed row — the final anatomy (9a, 8d-2): single line, no bank name.
+// Status chips ride the title's tail; the right side is the overlap logo
+// stack with the percent, and the держатель/друг caption sits under them.
+// Full bank names live a tap away, in the expansion.
+function FeedRow({
+  g,
+  date,
+  friendsOn,
+  openEntry,
 }: {
-  initialBankID?: number;
-  onDone: () => void;
-  onAddBank: () => void;
+  g: CategoryGroup;
+  date: string | null;
+  friendsOn: boolean;
+  openEntry: (e: { bank_client_id?: number; friend_name?: string; kind?: string }) => void;
 }) {
-  const clients = useClients();
-  const qc = useQueryClient();
-  const [clientID, setClientID] = useState("");
-  const [last4Str, setLast4Str] = useState("");
-  const [paySystem, setPaySystem] = useState<PaySystem>("mir");
-
-  const options = (clients.data ?? []).filter((c) => initialBankID == null || c.bank_id === initialBankID);
-
-  const create = useMutation({
-    mutationFn: async () =>
-      unwrap(
-        await api.POST("/api/v1/cards", {
-          body: {
-            bank_client_id: Number(clientID),
-            last_4_digits: Number(last4Str),
-            payment_system: paySystem,
-          },
-        }),
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["overview"] });
-      qc.invalidateQueries({ queryKey: ["cards"] });
-      onDone();
-    },
-  });
-
-  if (!clients.isPending && options.length === 0) {
-    return (
-      <Card className="space-y-3 p-4" data-sid="CB-01.f">
-        <p className="text-sm font-medium text-tx3">Сначала добавьте банк — карта появится под ним.</p>
-        <div className="flex gap-2">
-          <Btn type="button" onClick={onAddBank}>
-            Добавить банк
-          </Btn>
-          <Btn type="button" variant="ghost" onClick={onDone}>
-            Отмена
-          </Btn>
-        </div>
-      </Card>
-    );
-  }
-
+  const [expanded, setExpanded] = useState(false);
+  const w = winnerOf(g, friendsOn);
+  if (!w) return null;
+  const { entry: e, state } = w;
+  const variant = state === "friend" ? "friend" : state === "available" || state === "friend-available" ? "dashed" : "solid";
+  const stackBanks = (g.bank_stack ?? []).filter((b) => friendsOn || !b.friend).map((b) => b.bank_name);
+  // A friend's unpicked row says itself: the dashed border means nobody has
+  // taken this, the caption says whose menu it is, and the logo joins the
+  // stack. Words on top of that were the third copy of one fact.
+  const availChip = state === "available" ? verdictNote(g.available!) || "свободен слот" : "";
   return (
-    <Card className="p-4" data-sid="CB-01.f">
-      <form
-        className="space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          create.mutate();
-        }}
-      >
-        <Field label="Банк и держатель">
-          <Select required value={clientID} onChange={(e) => setClientID(e.target.value)}>
-            <option value="">— выберите —</option>
-            {options.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.bank_name} — {c.label ?? "Я"}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Последние 4 цифры">
-            <Input required inputMode="numeric" pattern="\d{4}" maxLength={4} title="Ровно четыре цифры" value={last4Str} onChange={(e) => setLast4Str(e.target.value)} placeholder="1234" />
-          </Field>
-          <Field label="Платёжная система">
-            <Select value={paySystem} onChange={(e) => setPaySystem(e.target.value as PaySystem)}>
-              {PAYMENT_SYSTEMS.map(([ps, label]) => (
-                <option key={ps} value={ps}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-        <div className="flex gap-2">
-          <Btn type="submit" disabled={create.isPending}>
-            Добавить карту
-          </Btn>
-          <Btn type="button" variant="ghost" onClick={onDone}>
-            Отмена
-          </Btn>
-        </div>
-        <ErrMsg error={create.error} />
-      </form>
-    </Card>
-  );
-}
-
-// One bank client row — reused by both groupings. titleMode picks what the
-// row leads with: the bank (держатель grouping) or the держатель (bank
-// grouping, where the section header already names the bank).
-function ClientCard({
-  c,
-  titleMode,
-  monthName,
-  monthDate,
-  editing,
-  onToggleEdit,
-}: {
-  c: OverviewClient;
-  titleMode: "bank" | "holder";
-  monthName: string;
-  monthDate: string;
-  editing: boolean;
-  onToggleEdit: () => void;
-}) {
-  const navigate = useNavigate();
-  const title = titleMode === "bank" ? c.bank_name : (c.holder_label ?? "Я");
-  const cardNums = (c.cards ?? []).map((cc) => `··${last4(cc.last_4_digits)}`).join(" ");
-
-  if (c.period_id == null) {
-    return (
-      <div className="rounded-2xl border border-dashed border-dash bg-srf/50 p-3.5">
-        <div className="flex items-center gap-2.5">
-          {titleMode === "bank" && <BankBadge name={c.bank_name} />}
-          <div className="min-w-0 flex-1">
-            <p className="text-[13.5px] font-bold text-tx3">
-              {title} <span className="font-semibold text-tx4">{cardNums}</span>
-            </p>
-            <p className="mt-px text-[10.5px] font-medium text-tx4">нет периода на {monthName}</p>
-          </div>
-          <Btn variant="soft" onClick={() => navigate(`/periods/new?client=${c.bank_client_id}&month=${monthKey(monthDate)}`)}>
-            Добавить
-          </Btn>
-          <button
-            type="button"
-            className="px-1 text-tx4"
-            title="Держатель / тариф"
-            onClick={onToggleEdit}
-          >
-            ✎
-          </button>
-        </div>
-        {editing && <ClientEditForm client={c} onDone={onToggleEdit} />}
-      </div>
-    );
-  }
-
-  return (
-    <Card className="p-3.5">
-      <div className="cursor-pointer" onClick={() => navigate(`/periods/${c.period_id}`)}>
-        <div className="flex items-center gap-2.5">
-          {titleMode === "bank" && <BankBadge name={c.bank_name} />}
-          <div className="min-w-0 flex-1">
-            <p className="text-[13.5px] font-bold">
-              {title} <span className="font-semibold text-tx4">{cardNums}</span>
-            </p>
-            <p className="mt-px truncate text-[10.5px] font-medium text-tx4">
-              {[c.tier_name, capNote(c), midPeriodAddNote(c.mid_period_add, c.activation)]
-                .filter(Boolean)
-                .join(" · ") || "без тарифа"}
-            </p>
-          </div>
-          {c.max_categories != null ? (
-            <span className="rounded-lg bg-inset px-2 py-1 text-[11px] font-bold text-tx3">
-              {c.slots_used}/{c.max_categories}
-            </span>
-          ) : c.currency_kind === "points" ? (
-            <Badge tone="indigo">баллы</Badge>
-          ) : null}
-          <button
-            type="button"
-            className="px-1 text-tx4"
-            title="Держатель / тариф"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleEdit();
-            }}
-          >
-            ✎
-          </button>
-        </div>
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {(c.selected ?? []).map((chip) => (
-            <span key={chip.offer_id} className="rounded-lg bg-acc/15 px-2 py-1 text-[10.5px] font-semibold text-tx2">
-              {chip.raw_title} <Pct percent={chip.percent} currency={c.currency_kind} className="text-[10.5px]" />
-            </span>
-          ))}
-          {(c.specials ?? []).map((chip) => (
-            <span key={chip.offer_id} className="rounded-lg border border-gold/25 bg-gold/10 px-2 py-1 text-[10.5px] font-semibold text-gold">
-              {chip.raw_title}
-              {chip.percent != null && ` ${chip.percent}%`} · {chip.kind === "super" ? "барабан" : "спец"}
-            </span>
-          ))}
-          {c.max_categories != null && c.slots_used < c.max_categories && (
-            <span className="rounded-lg border border-dashed border-dash px-2 py-1 text-[10.5px] font-semibold text-tx4">+ слот</span>
+    <ListRow
+      emoji={g.emoji || FALLBACK_EMOJI}
+      variant={variant}
+      onClick={() => setExpanded(!expanded)}
+      title={
+        <>
+          {g.title_ru}
+          {mechanicChip(e) && <span className="ml-1.5 align-[1px]">{mechanicChip(e)}</span>}
+          {availChip && <span className="ml-1.5 align-[1px]"><Chip tone="friend">{availChip}</Chip></span>}
+        </>
+      }
+      right={
+        <span className="flex flex-none flex-col items-end gap-0.5">
+          <span className="flex items-center gap-2">
+            <BankStack banks={stackBanks} winner={e.bank_name} />
+            <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
+          </span>
+          {/* One place names the friend. Which of the two friend states this
+              is comes from the border: dashed = nobody has taken it. Note
+              the explicit branch — `holder_label` on a friend's entry is
+              THEIR держатель, and falling through would print it as if the
+              viewer had a card there. */}
+          {state === "friend" || state === "friend-available" ? (
+            <span className="max-w-[9rem] truncate text-[10px] font-bold text-accl">друг · {e.friend_name}</span>
+          ) : e.holder_label ? (
+            <span className="max-w-[9rem] truncate text-[10px] font-semibold text-tx4">{e.holder_label}</span>
+          ) : (
+            <CaptionSlot />
           )}
-        </div>
-      </div>
-      {editing && <ClientEditForm client={c} onDone={onToggleEdit} />}
-    </Card>
+        </span>
+      }
+    >
+      {expanded && <ExpandedCategory slug={g.slug} date={date} friendsOn={friendsOn} openEntry={openEntry} />}
+    </ListRow>
   );
 }
 
-// Months any offer period covers (a quarter period spans three), keyed
-// "YYYY-MM" — what the picker offers beyond the current month.
-function availableMonths(periods: { period_start: string; period_end: string }[]): Set<string> {
-  const keys = new Set<string>();
-  for (const p of periods) {
-    let d = new Date(Number(p.period_start.slice(0, 4)), Number(p.period_start.slice(5, 7)) - 1, 1);
-    const end = new Date(Number(p.period_end.slice(0, 4)), Number(p.period_end.slice(5, 7)) - 1, 1);
-    while (d <= end) {
-      keys.add(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}`);
-      d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-    }
-  }
-  return keys;
+// A партнёрка feed row (v2, 9a): the gold frame and the ★ already say what
+// it is — no word, only the term chip («по 31.08»), none without a date.
+// The bank is its logo by the percent. Tap opens that bank's menu, the same
+// answer every other feed row gives.
+function PartnerFeedRow({ p, onOpen }: { p: PartnerFeed; onOpen: () => void }) {
+  return (
+    <ListRow
+      lead={<span className="flex h-[21px] w-[21px] flex-none items-center justify-center rounded-md bg-gold/15 text-[11px] font-extrabold text-gold">★</span>}
+      variant="gold"
+      onClick={onOpen}
+      title={
+        <>
+          {p.raw_title}
+          {p.valid_to && <span className="ml-1.5 align-[1px]"><Chip tone="gold">по {fmtDate(p.valid_to)}</Chip></span>}
+          {p.needs_activation && <span className="ml-1.5 align-[1px]"><Chip tone="gold">требует активации</Chip></span>}
+        </>
+      }
+      right={
+        // min-h matches the rows that carry a держатель/друг caption: the feed
+        // reads as a list, and a row that is 14px shorter than its neighbours
+        // makes the column ragged for a reason the user cannot see.
+        <span className="flex flex-none flex-col items-end gap-0.5">
+          <span className="flex items-center gap-2">
+            <BankBadge name={p.bank_name} size={18} />
+            <Pct percent={p.percent} currency={p.currency_kind} className="text-base" />
+          </span>
+          <CaptionSlot />
+        </span>
+      }
+    />
+  );
 }
 
-type AddingState = { kind: "bank" | "card"; bankID?: number } | null;
+// «За все покупки» is an ordinary feed row since 9a — alphabetized among
+// the rest, not a dim tail. Tap answers as the точка продаж does.
+function BaseFeedRow({ b }: { b: Schemas["OverviewBaseDTO"] }) {
+  const navigate = useNavigate();
+  const e = b.best;
+  return (
+    <ListRow
+      emoji={b.emoji || FALLBACK_EMOJI}
+      variant="solid"
+      onClick={() => navigate("/pos?cat=all-purchases")}
+      title="За все покупки"
+      right={
+        <span className="flex flex-none flex-col items-end gap-0.5">
+          <span className="flex items-center gap-2">
+            <BankStack banks={(b.bank_stack ?? []).map((s) => s.bank_name)} winner={e.bank_name} />
+            <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
+          </span>
+          {e.holder_label ? (
+            <span className="max-w-[9rem] truncate text-[10px] font-semibold text-tx4">{e.holder_label}</span>
+          ) : (
+            <CaptionSlot />
+          )}
+        </span>
+      }
+    />
+  );
+}
+
+// Interleave category, партнёрка and base rows without breaking invariant
+// 5: the percent sort merges by (currency group, percent desc) — the lists
+// arrive from the API already in that order — and the alphabet sort is by
+// name. «За все покупки» rides the same list since 9a.
+type FeedItem = {
+  key: string;
+  title: string;
+  entry: LookupEntry;
+  cat?: CategoryGroup;
+  partner?: PartnerFeed;
+  base?: Schemas["OverviewBaseDTO"];
+};
+
+function mergeFeed(
+  categories: CategoryGroup[],
+  partners: PartnerFeed[],
+  base: Schemas["OverviewBaseDTO"] | undefined,
+  sort: CatsSort,
+  friendsOn: boolean,
+): FeedItem[] {
+  const items: FeedItem[] = [];
+  for (const g of categories) {
+    const w = winnerOf(g, friendsOn);
+    if (w) items.push({ key: `c${g.category_id}`, title: g.title_ru, entry: w.entry, cat: g });
+  }
+  for (const p of partners) {
+    items.push({ key: `p${p.partner_id}`, title: p.raw_title, entry: p, partner: p });
+  }
+  if (base) items.push({ key: "base", title: "За все покупки", entry: base.best, base });
+  if (sort === "alpha") return items.sort((a, b) => a.title.localeCompare(b.title, "ru"));
+  const group = (k?: string) => (k === "rub" ? 0 : k === "points" ? 1 : 2);
+  return items.sort((a, b) => {
+    if (group(a.entry.currency_kind) !== group(b.entry.currency_kind)) return group(a.entry.currency_kind) - group(b.entry.currency_kind);
+    const pa = a.entry.percent != null ? parseFloat(a.entry.percent) : -1;
+    const pb = b.entry.percent != null ? parseFloat(b.entry.percent) : -1;
+    if (pa !== pb) return pb - pa;
+    return a.title.localeCompare(b.title, "ru");
+  });
+}
+
+// 5a — the honest zero-banks state: search and friends already work, only
+// the month context is missing. The CTA opens the bank catalog.
+function FirstRun() {
+  const navigate = useNavigate();
+  return (
+    <div className="space-y-3 pt-4" data-sid="CB-01.h">
+      <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] bg-acc/15">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--t-accl)" strokeWidth="1.9" strokeLinecap="round">
+          <line x1="6.5" y1="17.5" x2="17.5" y2="6.5" />
+          <circle cx="8" cy="8" r="1.9" />
+          <circle cx="16" cy="16" r="1.9" />
+        </svg>
+      </span>
+      <h2 className="text-center text-xl font-extrabold tracking-tight">Один список вместо пяти приложений</h2>
+      {[
+        ["🏦", "Добавь банки — слоты и лимиты подставятся из каталога"],
+        ["📸", "Скинь скрины меню месяца — категории распознаются сами"],
+        ["💳", "На кассе приложение подскажет, какой картой платить"],
+      ].map(([icon, text]) => (
+        <Card key={icon} className="flex items-center gap-3 px-3.5 py-3">
+          <span className="text-base">{icon}</span>
+          <span className="text-[12.5px] leading-snug font-medium text-tx2">{text}</span>
+        </Card>
+      ))}
+      <Btn className="w-full" onClick={() => navigate("/banks/new")}>
+        Добавить первый банк
+      </Btn>
+      <p className="text-center text-[11px] font-medium text-tx4">Есть друг в Sharespences? Его кешбеки появятся здесь же.</p>
+    </div>
+  );
+}
 
 export default function Overview() {
-  const [cut, setCut] = useState<"cats" | "banks">("cats");
-  const [grouping, setGroupingState] = useState<BanksGrouping>(storedGrouping);
   const [catsSort, setCatsSortState] = useState<CatsSort>(storedCatsSort);
-  const [adding, setAdding] = useState<AddingState>(null);
-  const [editingClientID, setEditingClientID] = useState<number | null>(null);
-  const now = new Date();
-  const [monthDate, setMonthDate] = useState(midMonthISO(now.getFullYear(), now.getMonth()));
-  const isCurrentMonth = monthKey(monthDate) === monthKey(todayISO());
-  const monthName = monthNameOf(monthDate);
-  const overview = useOverview(monthDate);
-  const banks = useBanks();
-  const periods = usePeriods();
-  const months = useMemo(() => availableMonths(periods.data ?? []), [periods.data]);
-  const navigate = useNavigate();
-
-  const setGrouping = (g: BanksGrouping) => {
-    localStorage.setItem(GROUP_KEY, g);
-    setGroupingState(g);
+  // Shared with CB-09 (web/src/month.ts): the picked month survives the
+  // CB-01 ↔ CB-09 hop instead of snapping back to the current one.
+  const [monthDate, setMonthDateState] = useState(viewedMonth);
+  const setMonthDate = (iso: string) => {
+    rememberMonth(iso);
+    setMonthDateState(iso);
   };
+  const overview = useOverview(monthDate);
+  const clientsQ = useClients();
+  const periods = usePeriods();
+  const navigate = useNavigate();
+  const friendsOn = initWithFriends();
+  const monthName = monthNameOf(monthDate);
+  const isCurrentMonth = monthKey(monthDate) === monthKey(todayISO());
+
   const setCatsSort = (s: CatsSort) => {
     localStorage.setItem(CATS_SORT_KEY, s);
     setCatsSortState(s);
   };
 
-  if (overview.isPending) return <Spinner />;
+  if (overview.isPending || clientsQ.isPending) return <Spinner />;
   if (overview.isError) return <ErrMsg error={overview.error} />;
   const data = overview.data;
   const categories = data.categories ?? [];
-  const clients = data.clients ?? [];
-  const bankColor = new Map((banks.data ?? []).map((b) => [b.id, b.color_hex]));
-  // Stable sort keeps the API's percent-desc order within a same-key group.
-  const sortedCategories =
-    catsSort === "alpha"
-      ? [...categories].sort((a, b) => a.title_ru.localeCompare(b.title_ru, "ru"))
-      : catsSort === "bank"
-        ? [...categories].sort((a, b) => a.best.bank_name.localeCompare(b.best.bank_name, "ru"))
-        : categories;
+  const singles = data.single_bank ?? [];
+  const roster = clientsQ.data ?? [];
 
-  const clientCard = (c: OverviewClient, titleMode: "bank" | "holder") => (
-    <ClientCard
-      key={c.bank_client_id}
-      c={c}
-      titleMode={titleMode}
-      monthName={monthName}
-      monthDate={monthDate}
-      editing={editingClientID === c.bank_client_id}
-      onToggleEdit={() => setEditingClientID(editingClientID === c.bank_client_id ? null : c.bank_client_id)}
-    />
+  // Clients whose viewed month has no entered menu — the 5b card. Quarter
+  // periods cover their three months, so МКБ stays «заполнен» mid-quarter.
+  const filledClientIDs = new Set(
+    (periods.data ?? [])
+      .filter((p) => p.offer_count > 0 && p.period_start <= monthDate && monthDate <= p.period_end)
+      .map((p) => p.bank_client_id),
   );
+  const unfilled = roster.filter((c) => !filledClientIDs.has(c.id));
+  // Banks that have opened a selection whose menu is still empty. The rule is
+  // the server's (PendingMenu), the same field CB-09 marks its bank rows
+  // with, so both screens speak about one fact. A period for the month being
+  // viewed is left out: the list above already says that one.
+  // ⚠️ `pending_from` is not «the bank opened its picker»: PendingMenu
+  // returns the CURRENT period whenever it is unfilled, before it consults
+  // the opens-day at all. Filtering on the month alone therefore announced
+  // «Открыт выбор на июль» for an unfilled МКБ quarter, and put banks with
+  // no known opens-day under a heading about opening — the very claim CB-09
+  // lost. Only a period that does not contain today is news.
+  const openings = (data.clients ?? [])
+    .filter(
+      (c) =>
+        c.pending_from != null &&
+        !(c.pending_from <= todayISO() && (c.pending_to ?? c.pending_from) >= todayISO()) &&
+        monthKey(c.pending_from) !== monthKey(monthDate),
+    )
+    .sort((a, b) => a.pending_from!.localeCompare(b.pending_from!) || a.bank_name.localeCompare(b.bank_name));
+  const openingMonths = new Set(openings.map((c) => monthKey(c.pending_from!)));
+  const monthEmpty = roster.length > 0 && filledClientIDs.size === 0;
 
-  const addForm = (bankID?: number) =>
-    adding?.kind === "bank" ? (
-      <AddBankForm initialBankID={bankID} onDone={() => setAdding(null)} />
-    ) : (
-      <AddCardForm
-        initialBankID={bankID}
-        onDone={() => setAdding(null)}
-        onAddBank={() => setAdding({ kind: "bank", bankID })}
-      />
-    );
+  const feed = mergeFeed(categories, data.partners ?? [], data.base ?? undefined, catsSort, friendsOn);
+
+  // A ranking row leads to its bank's menu for the viewed month (feedback
+  // 2026-08-25, same rule as CB-11): marking a selection lives there. A
+  // friend's menu isn't ours to open. A партнёрка is a row of the same bank
+  // and answers the same way — it used to divert to the bank list, which
+  // made one row in the feed behave unlike its neighbours.
+  const openClient = (clientID?: number) => {
+    const c = (data.clients ?? []).find((x) => x.bank_client_id === clientID);
+    // No client on the row means there is no one menu to open — a bank-wide
+    // партнёрка has none, and the API now omits the field rather than
+    // sending 0. Its home is the bank card it is edited from. Falling
+    // through silently made the row unclickable instead.
+    if (c == null) {
+      navigate("/banks");
+      return;
+    }
+    if (c.period_id != null) navigate(`/periods/${c.period_id}`);
+    else navigate(`/periods/new?client=${c.bank_client_id}&month=${monthKey(monthDate)}`);
+  };
+  const openEntry = (e: { bank_client_id?: number; friend_name?: string; kind?: string }) => {
+    if (e.friend_name) navigate("/friends");
+    else openClient(e.bank_client_id);
+  };
 
   return (
     <>
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-[25px] font-extrabold tracking-tight">Кешбек</h1>
-        {/* The month chip is a period picker: browse past periods (2026-07-09);
-            all data-backed months are offered, back to the imported history. */}
-        <MonthPicker value={monthDate} available={months} onChange={setMonthDate} />
+      <div className="flex items-center justify-between gap-2.5" data-sid="CB-01.a">
+        <h1 className="text-[23px] font-extrabold tracking-tight">Кешбек</h1>
+        <div className="flex items-center gap-2">
+          {roster.length > 0 && <MonthPicker value={monthDate} onChange={setMonthDate} />}
+          <Link to="/banks" title="Банки и карты" className="flex h-[33px] w-[33px] items-center justify-center rounded-[11px] bg-inset">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--t-accl)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="6" width="18" height="13" rx="3" />
+              <path d="M3 10.5h18" />
+            </svg>
+          </Link>
+          <Link to="/friends" title="Кешбек друзей" className="flex h-[33px] w-[33px] items-center justify-center rounded-[11px] bg-inset">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--t-accl)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="9" cy="8.5" r="3.2" />
+              <path d="M3.5 19.5c0-3 2.5-4.8 5.5-4.8s5.5 1.8 5.5 4.8" />
+              <path d="M16 5.7a3.2 3.2 0 0 1 0 5.6" />
+              <path d="M17.5 14.9c1.8.6 3 2 3 4.6" />
+            </svg>
+          </Link>
+        </div>
       </div>
 
-      <SegTabs
-        sid="CB-01.a"
-        value={cut}
-        onChange={setCut}
-        options={[
-          { value: "cats", label: "Категории" },
-          { value: "banks", label: "Банки" },
-        ]}
-      />
+      {/* One search entry for magазины/категории/MCC — works from the very
+          first launch, before any bank exists. A real input, not a styled
+          button: iOS opens the keyboard only for a focused editable field
+          inside the tap gesture, so this field takes the focus and CB-04's
+          autoFocus inherits the already-open keyboard after the hop. */}
+      <div className="flex h-11 w-full items-center gap-2.5 rounded-2xl border border-brd2 bg-srf2 px-3.5">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--t-tx4)" strokeWidth="2.4" strokeLinecap="round" className="flex-none">
+          <circle cx="10.5" cy="10.5" r="7" />
+          <path d="M16 16l5 5" />
+        </svg>
+        <input
+          value=""
+          onChange={() => {}}
+          onFocus={() => navigate("/search")}
+          placeholder="Магазин, категория или MCC"
+          inputMode="search"
+          className="min-w-0 flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-tx4"
+        />
+      </div>
 
-      {cut === "cats" && (
+      {roster.length === 0 ? (
         <>
-          <div className="mx-0.5 flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-tx3">Лучшая карта по категории</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-tx4">{monthName}</span>
-          </div>
-          {categories.length > 0 && (
-            <div data-sid="CB-01.b" className="mx-0.5 flex items-center justify-end gap-2.5">
-              {(
-                [
-                  ["percent", "по проценту"],
-                  ["alpha", "по алфавиту"],
-                  ["bank", "по банку"],
-                ] as const
-              ).map(([s, label]) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setCatsSort(s)}
-                  className={`text-[10.5px] ${catsSort === s ? "font-bold text-accl" : "font-semibold text-tx4"}`}
-                >
-                  {label}
-                </button>
-              ))}
+          <FirstRun />
+          {feed.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Кешбеки друзей</p>
+              {feed.map((it) =>
+                it.cat ? (
+                  <FeedRow key={it.key} g={it.cat} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} openEntry={openEntry} />
+                ) : it.base ? (
+                  <BaseFeedRow key={it.key} b={it.base} />
+                ) : (
+                  <PartnerFeedRow key={it.key} p={it.partner!} onOpen={() => openEntry(it.partner!)} />
+                ),
+              )}
             </div>
-          )}
-          <Card className="px-4 py-1" data-sid="CB-01.c">
-            {categories.length === 0 ? (
-              <p className="py-4 text-center text-sm font-medium text-tx3">
-                Нет активных выборов — откройте период во вкладке «Банки».
-              </p>
-            ) : (
-              <>
-                <div className="flex items-center gap-2.5 py-2.5 text-[9px] font-bold uppercase tracking-[.1em] text-tx4">
-                  <span className="w-[18px]" />
-                  <span className="flex-1">Категория</span>
-                  <span>Карта</span>
-                  <span className="w-10 text-right">%</span>
-                </div>
-                {sortedCategories.map((g) => (
-                  <button
-                    key={g.category_id}
-                    type="button"
-                    onClick={() => navigate(`/lookup?cat=${g.slug}`)}
-                    className="flex w-full items-center gap-2.5 border-t border-brd/60 py-2.5 text-left"
-                  >
-                    {/* Category icon (2026-07-27) — the canonical emoji
-                        seeded from the knowledge taxonomy. */}
-                    <span className="w-[18px] flex-none text-[15px] leading-none">{g.emoji || FALLBACK_EMOJI}</span>
-                    <span className="flex-1 text-sm font-semibold">
-                      {g.title_ru}
-                      {/* All kinds rank since 2026-07-27; барабан/спец are granted bonuses,
-                          not chosen slots — flagged gold, спец also means «проверь условие».
-                          A stacked row (2026-07-31) carries the барабан inside its
-                          percent and arrives as kind=regular — mark it off the parts. */}
-                      {(g.best.kind === "super" || g.best.stacked_super != null) && (
-                        <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] align-middle text-[9px] font-bold text-gold">барабан</span>
-                      )}
-                      {g.best.kind === "special" && (
-                        <span className="ml-1.5 rounded bg-gold/10 px-1 py-[1px] align-middle text-[9px] font-bold text-gold">спец</span>
-                      )}
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-tx3">
-                      <BankBadge name={g.best.bank_name} size={22} />
-                      {bankShort(g.best.bank_name)}
-                      {g.best.holder_label && <span className="text-tx4">· {g.best.holder_label}</span>}
-                      {g.others_count > 0 && <span className="text-tx4">+{g.others_count}</span>}
-                    </span>
-                    {g.best.kind === "special" ? (
-                      <span className="w-10 text-right text-[14.5px] font-extrabold text-gold">
-                        {g.best.percent != null ? `${g.best.percent}%` : "—"}
-                      </span>
-                    ) : (
-                      <span className="w-10 flex-none text-right">
-                        <Pct percent={g.best.percent} currency={g.best.currency_kind} className="text-[14.5px]" />
-                        {/* The sum is only trustworthy if it shows its parts. */}
-                        {g.best.stacked_super != null && (
-                          <span className="block text-[9px] font-semibold text-tx4">
-                            {g.best.stacked_regular}+{g.best.stacked_super}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </button>
-                ))}
-                {data.base && (
-                  <button
-                    type="button"
-                    onClick={() => navigate("/lookup?cat=all-purchases")}
-                    className="flex w-full items-center gap-2.5 border-t border-brd/60 py-2.5 text-left"
-                  >
-                    <span className="w-[18px] flex-none text-[15px] leading-none">{data.base.emoji || FALLBACK_EMOJI}</span>
-                    <span className="flex-1 text-sm font-semibold text-tx3">Остальное</span>
-                    <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-tx3">
-                      <BankBadge name={data.base.best.bank_name} size={22} />
-                      {bankShort(data.base.best.bank_name)}
-                      {data.base.best.holder_label && <span className="text-tx4">· {data.base.best.holder_label}</span>}
-                      {data.base.others_count > 0 && <span className="text-tx4">+{data.base.others_count}</span>}
-                    </span>
-                    <span className="w-10 text-right text-[14.5px] font-extrabold text-tx4">
-                      {data.base.best.percent != null ? `${data.base.best.percent}%` : "—"}
-                    </span>
-                  </button>
-                )}
-              </>
-            )}
-          </Card>
-          {categories.length > 0 && (
-            <p className="text-center text-[10.5px] font-medium text-tx4">Тап по строке — детали и лимит</p>
           )}
         </>
-      )}
-
-      {cut === "banks" && (
-        <div data-sid="CB-01.d" className="space-y-2.5">
-          {data.selection_opens_day != null && isCurrentMonth && (
-            <div className="flex items-center gap-2 rounded-xl border border-acc/25 bg-acc/10 px-3 py-2">
-              <span className="h-1.5 w-1.5 flex-none rounded-full bg-acc" />
-              <span className="text-[11px] font-medium text-tx2">
-                {opensStripParts(data.selection_opens_day).text} <b className="font-bold text-tx">{opensStripParts(data.selection_opens_day).date}</b>
-              </span>
-            </div>
+      ) : (
+        <>
+          {(unfilled.length > 0 || openings.length > 0) && (
+            <Card className="border-acc/30 bg-acc/8 p-3.5" data-sid="CB-01.d">
+              {unfilled.length > 0 && (
+                <>
+                  <p className="text-[15px] font-extrabold tracking-tight">
+                    {monthEmpty ? `${monthName[0].toUpperCase()}${monthName.slice(1)} ещё пуст` : "Меню занесены не везде"}
+                  </p>
+                  <p className="mt-1 text-[11.5px] leading-snug font-medium text-tx2">
+                    {monthEmpty
+                      ? "Меню месяца не занесены — лента не знает ставок твоих банков."
+                      : "Часть банков без меню месяца — их ставок в ленте нет."}
+                  </p>
+                  <div className="mt-2.5 space-y-1.5">
+                    {unfilled.map((c) => (
+                      <div key={c.id} className="flex items-center gap-2">
+                        <BankBadge name={c.bank_name ?? ""} size={20} />
+                        <span className="min-w-0 flex-1 text-xs font-semibold text-tx2">
+                          {c.bank_name} · {c.label ?? "Я"}
+                        </span>
+                        <Btn
+                          variant="soft"
+                          className="!px-2.5 !py-1.5 text-xs"
+                          onClick={() => navigate(`/periods/new?client=${c.id}&month=${monthKey(monthDate)}`)}
+                        >
+                          Заполнить
+                        </Btn>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {/* The 25th, where it is actionable. The ритуал used to be a
+                  sentence pointing at «Банки»; naming the banks that opened
+                  and handing each one its own button is the same hint with
+                  the trip removed. The month rides on the row when several
+                  differ (a quarterly program opens its own period). */}
+              {openings.length > 0 && (
+                <div className={unfilled.length > 0 ? "mt-3 border-t border-brd/60 pt-2.5" : ""}>
+                  <p className="text-[15px] font-extrabold tracking-tight">
+                    Открыт выбор
+                    {openingMonths.size === 1 ? ` на ${monthNameOf(openings[0].pending_from!)}` : ""}
+                  </p>
+                  <p className="mt-1 text-[11.5px] leading-snug font-medium text-tx2">
+                    Выбери категории в приложении банка и отметь здесь.
+                  </p>
+                  <div className="mt-2.5 space-y-1.5">
+                    {openings.map((c) => (
+                      <div key={c.bank_client_id} className="flex items-center gap-2">
+                        <BankBadge name={c.bank_name} size={20} />
+                        <span className="min-w-0 flex-1 text-xs font-semibold text-tx2">
+                          {c.bank_name} · {c.holder_label ?? "Я"}
+                          {openingMonths.size > 1 && (
+                            <span className="font-medium text-tx4"> · {monthNameOf(c.pending_from!)}</span>
+                          )}
+                        </span>
+                        <Btn
+                          variant="soft"
+                          className="!px-2.5 !py-1.5 text-xs"
+                          onClick={() => navigate(`/periods/new?client=${c.bank_client_id}&month=${monthKey(c.pending_from!)}`)}
+                        >
+                          Заполнить
+                        </Btn>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
           )}
 
-          {clients.length > 0 && (
-            <div className="mx-0.5 flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-tx3">Банки и карты</span>
-              <div className="flex gap-2.5">
+          {(feed.length > 0 || singles.length > 0) && (
+            <div className="mx-0.5 flex items-baseline justify-between" data-sid="CB-01.b">
+              <span className="text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">
+                {monthEmpty ? "Доступно сейчас" : `${categories.length} ${plural(categories.length, "категория", "категории", "категорий")}`}
+              </span>
+              <span className="flex gap-2.5">
                 {(
                   [
-                    ["bank", "по банкам"],
-                    ["holder", "по держателям"],
+                    ["alpha", "по алфавиту"],
+                    ["percent", "по проценту"],
                   ] as const
-                ).map(([g, label]) => (
+                ).map(([s, label]) => (
                   <button
-                    key={g}
+                    key={s}
                     type="button"
-                    onClick={() => setGrouping(g)}
-                    className={`text-[10.5px] ${grouping === g ? "font-bold text-accl" : "font-semibold text-tx4"}`}
+                    onClick={() => setCatsSort(s)}
+                    className={`text-[11px] ${catsSort === s ? "font-bold text-accl" : "font-semibold text-tx4"}`}
                   >
                     {label}
                   </button>
                 ))}
-              </div>
+              </span>
             </div>
           )}
 
-          {clients.length === 0 && <Empty>Пока нет банков — начните с «+ Добавить банк».</Empty>}
+          {feed.length === 0 && singles.length === 0 && unfilled.length === 0 && (
+            <Card className="p-4 text-center text-sm font-medium text-tx3">
+              Меню занесены, но ничего не выбрано — отметь выборы в «Банках».
+            </Card>
+          )}
 
-          {grouping === "holder"
-            ? /* Family fleet: bank clients grouped by держатель (2026-07-09);
-                 one row per client — its plastics share the selection. */
-              groupByHolder(clients).map(([holder, group]) => (
-                <div key={holder || "_own"} className="space-y-2.5">
-                  {holder !== "" && <p className="mx-0.5 pt-1 text-[11px] font-bold text-tx2">{holder}</p>}
-                  {group.map((c) => clientCard(c, "bank"))}
-                </div>
-              ))
-            : groupByBank(clients).map(([bankID, group]) => (
-                <div key={bankID} className="space-y-2.5">
-                  <div className="mx-0.5 flex items-center gap-2 pt-1">
-                    <BankBadge name={group[0].bank_name} size={22} color={bankColor.get(bankID)} />
-                    <p className="flex-1 text-[11px] font-bold text-tx2">{group[0].bank_name}</p>
-                    <button
-                      type="button"
-                      className="text-[10.5px] font-semibold text-tx4"
-                      onClick={() => setAdding({ kind: "bank", bankID })}
-                    >
-                      + держатель
-                    </button>
-                    <button
-                      type="button"
-                      className="text-[10.5px] font-semibold text-tx4"
-                      onClick={() => setAdding({ kind: "card", bankID })}
-                    >
-                      + карта
-                    </button>
-                  </div>
-                  {group.map((c) => clientCard(c, "holder"))}
-                  {adding != null && adding.bankID === bankID && addForm(bankID)}
-                </div>
-              ))}
+          <div className="space-y-1.5" data-sid="CB-01.c">
+            {feed.map((it) =>
+              it.cat ? (
+                <FeedRow key={it.key} g={it.cat} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} openEntry={openEntry} />
+              ) : it.base ? (
+                <BaseFeedRow key={it.key} b={it.base} />
+              ) : (
+                <PartnerFeedRow key={it.key} p={it.partner!} onOpen={() => openEntry(it.partner!)} />
+              ),
+            )}
 
-          {adding != null && adding.bankID == null ? (
-            addForm()
+            {singles.length > 0 && (
+              // The bank's own rows: menu rows with no canonical category, so
+              // nothing across banks compares with them. They used to sit in a
+              // collapsed fold that inlined every title into one truncated
+              // line — unreadable past a handful, and its «только в одном
+              // банке» heading was not even true (the same title exists at two
+              // banks often enough). One labelled section at the end instead:
+              // always open, ordinary rows, and the label states the fact once
+              // rather than a chip repeating it on each row. They stay a group
+              // rather than sorting into the list above, because that list is
+              // «which card pays most for X» across banks, and these answer a
+              // different question.
+              <div className="space-y-1.5 pt-1" data-sid="CB-01.e">
+                <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Свои категории банков</p>
+                {singles.map((e, i) => (
+                  <ListRow
+                    key={`s-${e.bank_client_id ?? 0}-${i}`}
+                    emoji={e.emoji || FALLBACK_EMOJI}
+                    variant="solid"
+                    onClick={() => openEntry(e)}
+                    title={
+                      <>
+                        {e.raw_title}
+                        {mechanicChip(e) && <span className="ml-1.5 align-[1px]">{mechanicChip(e)}</span>}
+                      </>
+                    }
+                    right={
+                      <span className="flex flex-none flex-col items-end gap-0.5">
+                        <span className="flex items-center gap-2">
+                          <BankBadge name={e.bank_name} size={18} />
+                          <Pct percent={e.percent} currency={e.currency_kind} className="text-base" />
+                        </span>
+                        {e.holder_label ? (
+            <span className="max-w-[9rem] truncate text-[10px] font-semibold text-tx4">{e.holder_label}</span>
           ) : (
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={() => setAdding({ kind: "bank" })}
-                className="flex-1 rounded-2xl border border-dashed border-dash py-3 text-sm font-semibold text-tx4"
-              >
-                + Добавить банк
-              </button>
-              <button
-                type="button"
-                onClick={() => setAdding({ kind: "card" })}
-                className="flex-1 rounded-2xl border border-dashed border-dash py-3 text-sm font-semibold text-tx4"
-              >
-                + Добавить карту
-              </button>
-            </div>
+            <CaptionSlot />
           )}
-        </div>
-      )}
+                      </span>
+                    }
+                  />
+                ))}
+              </div>
+            )}
 
-      <div className="space-y-2.5 pt-1">
-        <Link to="/lookup" className="block">
-          <Card className="flex items-center gap-3 p-3.5">
-            <span className="grad-acc flex h-9 w-9 flex-none items-center justify-center rounded-xl text-white">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z" />
-                <circle cx="12" cy="10" r="3" />
-              </svg>
-            </span>
-            <span className="flex-1 text-sm font-bold">Какой картой платить?</span>
-            <span className="text-tx4">›</span>
-          </Card>
-        </Link>
-        <Link to="/partners" className="block">
-          <Card className="flex items-center gap-3 p-3.5">
-            <span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl border border-gold/25 bg-gold/10 text-gold">★</span>
-            <span className="flex-1 text-sm font-bold">Партнёрские предложения</span>
-            <span className="text-tx4">›</span>
-          </Card>
-        </Link>
-        <Link to="/friends" className="block" data-sid="CB-01.h">
-          <Card className="flex items-center gap-3 p-3.5">
-            <span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-acc/15 text-accl">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-            </span>
-            <span className="flex-1 text-sm font-bold">Кешбек друзей</span>
-            <span className="text-tx4">›</span>
-          </Card>
-        </Link>
-      </div>
+          </div>
+
+        </>
+      )}
     </>
   );
 }

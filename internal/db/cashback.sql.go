@@ -194,22 +194,30 @@ func (q *Queries) CreateOfferPeriod(ctx context.Context, arg CreateOfferPeriodPa
 
 const createPartnerOffer = `-- name: CreatePartnerOffer :one
 insert into partner_offer (user_id, bank_id, bank_client_id, merchant_title, percent,
-                           valid_from, valid_to, cap_value, notes, min_amount)
-values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-returning id, user_id, bank_id, merchant_title, percent, valid_from, valid_to, cap_value, notes, bank_client_id, min_amount
+                           valid_from, valid_to, cap_value, notes, min_amount,
+                           scope_kind, canonical_category_id, merchant_kind,
+                           currency_kind, requires_activation, activated_at)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+returning id, user_id, bank_id, merchant_title, percent, valid_from, valid_to, cap_value, notes, bank_client_id, min_amount, scope_kind, canonical_category_id, merchant_kind, currency_kind, requires_activation, activated_at, ended_at
 `
 
 type CreatePartnerOfferParams struct {
-	UserID        uuid.UUID
-	BankID        int32
-	BankClientID  *int64
-	MerchantTitle string
-	Percent       *decimal.Decimal
-	ValidFrom     *time.Time
-	ValidTo       *time.Time
-	CapValue      *decimal.Decimal
-	Notes         *string
-	MinAmount     *decimal.Decimal
+	UserID              uuid.UUID
+	BankID              int32
+	BankClientID        *int64
+	MerchantTitle       string
+	Percent             *decimal.Decimal
+	ValidFrom           *time.Time
+	ValidTo             *time.Time
+	CapValue            *decimal.Decimal
+	Notes               *string
+	MinAmount           *decimal.Decimal
+	ScopeKind           PartnerScope
+	CanonicalCategoryID *int64
+	MerchantKind        NullPointOfSaleType
+	CurrencyKind        NullCashbackCurrencyKind
+	RequiresActivation  bool
+	ActivatedAt         *time.Time
 }
 
 func (q *Queries) CreatePartnerOffer(ctx context.Context, arg CreatePartnerOfferParams) (PartnerOffer, error) {
@@ -224,6 +232,12 @@ func (q *Queries) CreatePartnerOffer(ctx context.Context, arg CreatePartnerOffer
 		arg.CapValue,
 		arg.Notes,
 		arg.MinAmount,
+		arg.ScopeKind,
+		arg.CanonicalCategoryID,
+		arg.MerchantKind,
+		arg.CurrencyKind,
+		arg.RequiresActivation,
+		arg.ActivatedAt,
 	)
 	var i PartnerOffer
 	err := row.Scan(
@@ -238,6 +252,13 @@ func (q *Queries) CreatePartnerOffer(ctx context.Context, arg CreatePartnerOffer
 		&i.Notes,
 		&i.BankClientID,
 		&i.MinAmount,
+		&i.ScopeKind,
+		&i.CanonicalCategoryID,
+		&i.MerchantKind,
+		&i.CurrencyKind,
+		&i.RequiresActivation,
+		&i.ActivatedAt,
+		&i.EndedAt,
 	)
 	return i, err
 }
@@ -423,6 +444,28 @@ func (q *Queries) DetachFromPartnerOffer(ctx context.Context, arg DetachFromPart
 	return result.RowsAffected(), nil
 }
 
+const endPartnerOfferForUser = `-- name: EndPartnerOfferForUser :execrows
+update partner_offer
+set ended_at = coalesce(ended_at, now())
+where id = $1
+  and user_id = $2
+`
+
+type EndPartnerOfferForUserParams struct {
+	ID     int64
+	UserID uuid.UUID
+}
+
+// «Завершить» is a dated event, idempotent on repeat; valid_to is never
+// rewritten — it stays the recorded bank term. Reopen is the undo.
+func (q *Queries) EndPartnerOfferForUser(ctx context.Context, arg EndPartnerOfferForUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, endPartnerOfferForUser, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getBankCategory = `-- name: GetBankCategory :one
 select id, bank_id, title, canonical_category_id, kind, emoji, is_custom, active, created_by
 from bank_category
@@ -579,9 +622,17 @@ func (q *Queries) GetOfferWithContextForUser(ctx context.Context, arg GetOfferWi
 }
 
 const getPartnerOfferForUser = `-- name: GetPartnerOfferForUser :one
-select po.id, po.user_id, po.bank_id, po.merchant_title, po.percent, po.valid_from, po.valid_to, po.cap_value, po.notes, po.bank_client_id, po.min_amount, b.name as bank_name
+select po.id, po.user_id, po.bank_id, po.merchant_title, po.percent, po.valid_from, po.valid_to, po.cap_value, po.notes, po.bank_client_id, po.min_amount, po.scope_kind, po.canonical_category_id, po.merchant_kind, po.currency_kind, po.requires_activation, po.activated_at, po.ended_at,
+       b.name       as bank_name,
+       cc.slug      as canonical_slug,
+       cc.title_ru  as canonical_title_ru,
+       cl.label     as holder_label,
+       cp.points_label
 from partner_offer po
          join bank b on b.id = po.bank_id
+         left join canonical_category cc on cc.id = po.canonical_category_id
+         left join bank_client cl on cl.id = po.bank_client_id
+         left join cashback_program cp on cp.bank_id = po.bank_id
 where po.id = $1
   and po.user_id = $2
 `
@@ -592,18 +643,29 @@ type GetPartnerOfferForUserParams struct {
 }
 
 type GetPartnerOfferForUserRow struct {
-	ID            int64
-	UserID        uuid.UUID
-	BankID        int32
-	MerchantTitle string
-	Percent       *decimal.Decimal
-	ValidFrom     *time.Time
-	ValidTo       *time.Time
-	CapValue      *decimal.Decimal
-	Notes         *string
-	BankClientID  *int64
-	MinAmount     *decimal.Decimal
-	BankName      string
+	ID                  int64
+	UserID              uuid.UUID
+	BankID              int32
+	MerchantTitle       string
+	Percent             *decimal.Decimal
+	ValidFrom           *time.Time
+	ValidTo             *time.Time
+	CapValue            *decimal.Decimal
+	Notes               *string
+	BankClientID        *int64
+	MinAmount           *decimal.Decimal
+	ScopeKind           PartnerScope
+	CanonicalCategoryID *int64
+	MerchantKind        NullPointOfSaleType
+	CurrencyKind        NullCashbackCurrencyKind
+	RequiresActivation  bool
+	ActivatedAt         *time.Time
+	EndedAt             *time.Time
+	BankName            string
+	CanonicalSlug       *string
+	CanonicalTitleRu    *string
+	HolderLabel         *string
+	PointsLabel         *string
 }
 
 func (q *Queries) GetPartnerOfferForUser(ctx context.Context, arg GetPartnerOfferForUserParams) (GetPartnerOfferForUserRow, error) {
@@ -621,7 +683,18 @@ func (q *Queries) GetPartnerOfferForUser(ctx context.Context, arg GetPartnerOffe
 		&i.Notes,
 		&i.BankClientID,
 		&i.MinAmount,
+		&i.ScopeKind,
+		&i.CanonicalCategoryID,
+		&i.MerchantKind,
+		&i.CurrencyKind,
+		&i.RequiresActivation,
+		&i.ActivatedAt,
+		&i.EndedAt,
 		&i.BankName,
+		&i.CanonicalSlug,
+		&i.CanonicalTitleRu,
+		&i.HolderLabel,
+		&i.PointsLabel,
 	)
 	return i, err
 }
@@ -874,11 +947,19 @@ func (q *Queries) ListOfferPeriodAttachments(ctx context.Context, offerPeriodID 
 }
 
 const listOfferPeriodsForUser = `-- name: ListOfferPeriodsForUser :many
-select op.id, op.period_start, op.period_end, op.max_categories_override, op.bank_client_id, cl.bank_id, cl.label as holder_label, b.name as bank_name
+select op.id, op.period_start, op.period_end, op.max_categories_override, op.bank_client_id,
+       cl.bank_id,
+       cl.label          as holder_label,
+       b.name            as bank_name,
+       count(co.id)::int as offer_count,
+       count(s.id)::int  as selected_count
 from offer_period op
          join bank_client cl on cl.id = op.bank_client_id
          join bank b on b.id = cl.bank_id
+         left join category_offer co on co.offer_period_id = op.id
+         left join selection s on s.category_offer_id = co.id
 where cl.user_id = $1
+group by op.id, cl.bank_id, cl.label, b.name
 order by op.period_start desc, op.id
 `
 
@@ -891,8 +972,13 @@ type ListOfferPeriodsForUserRow struct {
 	BankID                int32
 	HolderLabel           *string
 	BankName              string
+	OfferCount            int32
+	SelectedCount         int32
 }
 
+// ListOfferPeriodsForUser carries fill counts so the month picker can render
+// «заполнен/нет» per client without N+1 period fetches. selection is unique
+// per category_offer, so the left joins cannot fan out the counts.
 func (q *Queries) ListOfferPeriodsForUser(ctx context.Context, userID uuid.UUID) ([]ListOfferPeriodsForUserRow, error) {
 	rows, err := q.db.Query(ctx, listOfferPeriodsForUser, userID)
 	if err != nil {
@@ -911,6 +997,8 @@ func (q *Queries) ListOfferPeriodsForUser(ctx context.Context, userID uuid.UUID)
 			&i.BankID,
 			&i.HolderLabel,
 			&i.BankName,
+			&i.OfferCount,
+			&i.SelectedCount,
 		); err != nil {
 			return nil, err
 		}
@@ -929,13 +1017,19 @@ select co.id                     as category_offer_id,
        co.percent,
        co.kind,
        co.cap_value              as offer_cap_value,
+       co.bank_category_id,
        op.id                     as offer_period_id,
        op.bank_client_id,
        op.period_start,
        op.period_end,
        op.max_categories_override,
        cl.label                  as holder_label,
+       b.id                      as bank_id,
        b.name                    as bank_name,
+       -- The row's icon (9a/12a): its catalog row's emoji, else the
+       -- canonical's — resolved here so every reader shows the same icon.
+       bc.emoji                  as bank_category_emoji,
+       cc.emoji                  as canonical_emoji,
        pt.cap_value,
        pt.cap_scope              as tier_cap_scope,
        pt.cap_per_category,
@@ -957,6 +1051,8 @@ from category_offer co
          join bank_client cl on cl.id = op.bank_client_id
          join bank b on b.id = cl.bank_id
          left join selection s on s.category_offer_id = co.id
+         left join bank_category bc on bc.id = co.bank_category_id
+         left join canonical_category cc on cc.id = co.canonical_category_id
          left join program_tier pt on pt.id = cl.program_tier_id
          left join cashback_program cp on cp.id = pt.program_id
 where op.bank_client_id = any ($1::bigint[])
@@ -969,13 +1065,17 @@ type ListOffersForClientsRow struct {
 	Percent               *decimal.Decimal
 	Kind                  CashbackOfferKind
 	OfferCapValue         *decimal.Decimal
+	BankCategoryID        *int64
 	OfferPeriodID         int64
 	BankClientID          int64
 	PeriodStart           time.Time
 	PeriodEnd             time.Time
 	MaxCategoriesOverride *int32
 	HolderLabel           *string
+	BankID                int32
 	BankName              string
+	BankCategoryEmoji     *string
+	CanonicalEmoji        *string
 	CapValue              *decimal.Decimal
 	TierCapScope          NullCashbackCapScope
 	CapPerCategory        *decimal.Decimal
@@ -1010,13 +1110,17 @@ func (q *Queries) ListOffersForClients(ctx context.Context, clientIds []int64) (
 			&i.Percent,
 			&i.Kind,
 			&i.OfferCapValue,
+			&i.BankCategoryID,
 			&i.OfferPeriodID,
 			&i.BankClientID,
 			&i.PeriodStart,
 			&i.PeriodEnd,
 			&i.MaxCategoriesOverride,
 			&i.HolderLabel,
+			&i.BankID,
 			&i.BankName,
+			&i.BankCategoryEmoji,
+			&i.CanonicalEmoji,
 			&i.CapValue,
 			&i.TierCapScope,
 			&i.CapPerCategory,
@@ -1125,28 +1229,50 @@ func (q *Queries) ListPartnerOfferAttachments(ctx context.Context, partnerOfferI
 }
 
 const listPartnerOffersForUser = `-- name: ListPartnerOffersForUser :many
-select po.id, po.user_id, po.bank_id, po.merchant_title, po.percent, po.valid_from, po.valid_to, po.cap_value, po.notes, po.bank_client_id, po.min_amount, b.name as bank_name
+select po.id, po.user_id, po.bank_id, po.merchant_title, po.percent, po.valid_from, po.valid_to, po.cap_value, po.notes, po.bank_client_id, po.min_amount, po.scope_kind, po.canonical_category_id, po.merchant_kind, po.currency_kind, po.requires_activation, po.activated_at, po.ended_at,
+       b.name       as bank_name,
+       cc.slug      as canonical_slug,
+       cc.title_ru  as canonical_title_ru,
+       cl.label     as holder_label,
+       cp.points_label
 from partner_offer po
          join bank b on b.id = po.bank_id
+         left join canonical_category cc on cc.id = po.canonical_category_id
+         left join bank_client cl on cl.id = po.bank_client_id
+         left join cashback_program cp on cp.bank_id = po.bank_id
 where po.user_id = $1
 order by po.id
 `
 
 type ListPartnerOffersForUserRow struct {
-	ID            int64
-	UserID        uuid.UUID
-	BankID        int32
-	MerchantTitle string
-	Percent       *decimal.Decimal
-	ValidFrom     *time.Time
-	ValidTo       *time.Time
-	CapValue      *decimal.Decimal
-	Notes         *string
-	BankClientID  *int64
-	MinAmount     *decimal.Decimal
-	BankName      string
+	ID                  int64
+	UserID              uuid.UUID
+	BankID              int32
+	MerchantTitle       string
+	Percent             *decimal.Decimal
+	ValidFrom           *time.Time
+	ValidTo             *time.Time
+	CapValue            *decimal.Decimal
+	Notes               *string
+	BankClientID        *int64
+	MinAmount           *decimal.Decimal
+	ScopeKind           PartnerScope
+	CanonicalCategoryID *int64
+	MerchantKind        NullPointOfSaleType
+	CurrencyKind        NullCashbackCurrencyKind
+	RequiresActivation  bool
+	ActivatedAt         *time.Time
+	EndedAt             *time.Time
+	BankName            string
+	CanonicalSlug       *string
+	CanonicalTitleRu    *string
+	HolderLabel         *string
+	PointsLabel         *string
 }
 
+// Partner rows carry their canonical (when hinted/scoped) and the program's
+// points label so lookup/feed can group by currency and name the balance
+// without a second query.
 func (q *Queries) ListPartnerOffersForUser(ctx context.Context, userID uuid.UUID) ([]ListPartnerOffersForUserRow, error) {
 	rows, err := q.db.Query(ctx, listPartnerOffersForUser, userID)
 	if err != nil {
@@ -1168,7 +1294,18 @@ func (q *Queries) ListPartnerOffersForUser(ctx context.Context, userID uuid.UUID
 			&i.Notes,
 			&i.BankClientID,
 			&i.MinAmount,
+			&i.ScopeKind,
+			&i.CanonicalCategoryID,
+			&i.MerchantKind,
+			&i.CurrencyKind,
+			&i.RequiresActivation,
+			&i.ActivatedAt,
+			&i.EndedAt,
 			&i.BankName,
+			&i.CanonicalSlug,
+			&i.CanonicalTitleRu,
+			&i.HolderLabel,
+			&i.PointsLabel,
 		); err != nil {
 			return nil, err
 		}
@@ -1315,13 +1452,19 @@ select co.id                     as category_offer_id,
        co.percent,
        co.kind,
        co.cap_value              as offer_cap_value,
+       co.bank_category_id,
        op.id                     as offer_period_id,
        op.bank_client_id,
        op.period_start,
        op.period_end,
        op.max_categories_override,
        cl.label                  as holder_label,
+       b.id                      as bank_id,
        b.name                    as bank_name,
+       -- The row's icon (9a/12a): its catalog row's emoji, else the
+       -- canonical's — resolved here so every reader shows the same icon.
+       bc.emoji                  as bank_category_emoji,
+       cc.emoji                  as canonical_emoji,
        pt.cap_value,
        pt.cap_scope              as tier_cap_scope,
        pt.cap_per_category,
@@ -1348,6 +1491,8 @@ from category_offer co
          join bank_client cl on cl.id = op.bank_client_id
          join bank b on b.id = cl.bank_id
          left join selection s on s.category_offer_id = co.id
+         left join bank_category bc on bc.id = co.bank_category_id
+         left join canonical_category cc on cc.id = co.canonical_category_id
          left join program_tier pt on pt.id = cl.program_tier_id
          left join cashback_program cp on cp.id = pt.program_id
 where cl.user_id = $1
@@ -1360,13 +1505,17 @@ type ListUserOffersRow struct {
 	Percent               *decimal.Decimal
 	Kind                  CashbackOfferKind
 	OfferCapValue         *decimal.Decimal
+	BankCategoryID        *int64
 	OfferPeriodID         int64
 	BankClientID          int64
 	PeriodStart           time.Time
 	PeriodEnd             time.Time
 	MaxCategoriesOverride *int32
 	HolderLabel           *string
+	BankID                int32
 	BankName              string
+	BankCategoryEmoji     *string
+	CanonicalEmoji        *string
 	CapValue              *decimal.Decimal
 	TierCapScope          NullCashbackCapScope
 	CapPerCategory        *decimal.Decimal
@@ -1399,13 +1548,17 @@ func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListU
 			&i.Percent,
 			&i.Kind,
 			&i.OfferCapValue,
+			&i.BankCategoryID,
 			&i.OfferPeriodID,
 			&i.BankClientID,
 			&i.PeriodStart,
 			&i.PeriodEnd,
 			&i.MaxCategoriesOverride,
 			&i.HolderLabel,
+			&i.BankID,
 			&i.BankName,
+			&i.BankCategoryEmoji,
+			&i.CanonicalEmoji,
 			&i.CapValue,
 			&i.TierCapScope,
 			&i.CapPerCategory,
@@ -1425,6 +1578,26 @@ func (q *Queries) ListUserOffers(ctx context.Context, userID uuid.UUID) ([]ListU
 		return nil, err
 	}
 	return items, nil
+}
+
+const reopenPartnerOfferForUser = `-- name: ReopenPartnerOfferForUser :execrows
+update partner_offer
+set ended_at = null
+where id = $1
+  and user_id = $2
+`
+
+type ReopenPartnerOfferForUserParams struct {
+	ID     int64
+	UserID uuid.UUID
+}
+
+func (q *Queries) ReopenPartnerOfferForUser(ctx context.Context, arg ReopenPartnerOfferForUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, reopenPartnerOfferForUser, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setOfferPeriodMaxOverride = `-- name: SetOfferPeriodMaxOverride :one
@@ -1515,32 +1688,44 @@ func (q *Queries) UpdateCategoryOfferForUser(ctx context.Context, arg UpdateCate
 
 const updatePartnerOfferForUser = `-- name: UpdatePartnerOfferForUser :one
 update partner_offer
-set bank_id        = $3,
-    bank_client_id = $4,
-    merchant_title = $5,
-    percent        = $6,
-    valid_from     = $7,
-    valid_to       = $8,
-    cap_value      = $9,
-    notes          = $10,
-    min_amount     = $11
+set bank_id               = $3,
+    bank_client_id        = $4,
+    merchant_title        = $5,
+    percent               = $6,
+    valid_from            = $7,
+    valid_to              = $8,
+    cap_value             = $9,
+    notes                 = $10,
+    min_amount            = $11,
+    scope_kind            = $12,
+    canonical_category_id = $13,
+    merchant_kind         = $14,
+    currency_kind         = $15,
+    requires_activation   = $16,
+    activated_at          = $17
 where id = $1
   and user_id = $2
-returning id, user_id, bank_id, merchant_title, percent, valid_from, valid_to, cap_value, notes, bank_client_id, min_amount
+returning id, user_id, bank_id, merchant_title, percent, valid_from, valid_to, cap_value, notes, bank_client_id, min_amount, scope_kind, canonical_category_id, merchant_kind, currency_kind, requires_activation, activated_at, ended_at
 `
 
 type UpdatePartnerOfferForUserParams struct {
-	ID            int64
-	UserID        uuid.UUID
-	BankID        int32
-	BankClientID  *int64
-	MerchantTitle string
-	Percent       *decimal.Decimal
-	ValidFrom     *time.Time
-	ValidTo       *time.Time
-	CapValue      *decimal.Decimal
-	Notes         *string
-	MinAmount     *decimal.Decimal
+	ID                  int64
+	UserID              uuid.UUID
+	BankID              int32
+	BankClientID        *int64
+	MerchantTitle       string
+	Percent             *decimal.Decimal
+	ValidFrom           *time.Time
+	ValidTo             *time.Time
+	CapValue            *decimal.Decimal
+	Notes               *string
+	MinAmount           *decimal.Decimal
+	ScopeKind           PartnerScope
+	CanonicalCategoryID *int64
+	MerchantKind        NullPointOfSaleType
+	CurrencyKind        NullCashbackCurrencyKind
+	RequiresActivation  bool
+	ActivatedAt         *time.Time
 }
 
 func (q *Queries) UpdatePartnerOfferForUser(ctx context.Context, arg UpdatePartnerOfferForUserParams) (PartnerOffer, error) {
@@ -1556,6 +1741,12 @@ func (q *Queries) UpdatePartnerOfferForUser(ctx context.Context, arg UpdatePartn
 		arg.CapValue,
 		arg.Notes,
 		arg.MinAmount,
+		arg.ScopeKind,
+		arg.CanonicalCategoryID,
+		arg.MerchantKind,
+		arg.CurrencyKind,
+		arg.RequiresActivation,
+		arg.ActivatedAt,
 	)
 	var i PartnerOffer
 	err := row.Scan(
@@ -1570,6 +1761,13 @@ func (q *Queries) UpdatePartnerOfferForUser(ctx context.Context, arg UpdatePartn
 		&i.Notes,
 		&i.BankClientID,
 		&i.MinAmount,
+		&i.ScopeKind,
+		&i.CanonicalCategoryID,
+		&i.MerchantKind,
+		&i.CurrencyKind,
+		&i.RequiresActivation,
+		&i.ActivatedAt,
+		&i.EndedAt,
 	)
 	return i, err
 }

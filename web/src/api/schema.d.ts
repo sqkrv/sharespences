@@ -332,6 +332,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cashback/mcc-board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** «Чем платить» for one MCC — exact per-bank matching */
+        get: operations["cashback-mcc-board"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cashback/offer-periods": {
         parameters: {
             query?: never;
@@ -454,6 +471,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cashback/partner-offers/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Partner offers matching a merchant name */
+        get: operations["cashback-partner-offer-match"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cashback/partner-offers/{id}": {
         parameters: {
             query?: never;
@@ -502,6 +536,40 @@ export interface paths {
         post?: never;
         /** Remove a screenshot */
         delete: operations["cashback-partner-offer-detach"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cashback/partner-offers/{id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End a partner offer (undoable) */
+        post: operations["cashback-partner-offer-end"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cashback/partner-offers/{id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen an ended partner offer */
+        post: operations["cashback-partner-offer-reopen"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -633,10 +701,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List live invite links */
+        /** The live invite link (at most one) */
         get: operations["friends-invite-list"];
         put?: never;
-        /** Create a one-shot invite link */
+        /** Create the invite link (replaces the previous one) */
         post: operations["friends-invite-create"];
         delete?: never;
         options?: never;
@@ -653,7 +721,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Claim an invite link */
+        /** Claim an invite link — files a friend request to the inviter */
         post: operations["friends-invite-claim"];
         delete?: never;
         options?: never;
@@ -833,6 +901,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mcc/codes/{code}/merchants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Known points of sale carrying a code («Точки с кодом», 13a) */
+        get: operations["mcc-code-merchants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mcc/merchants": {
         parameters: {
             query?: never;
@@ -842,6 +927,57 @@ export interface paths {
         };
         /** Search the merchant base (points of sale) by name */
         get: operations["mcc-merchant-search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mcc/points-of-sale": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a точка продаж (pending until moderated) */
+        post: operations["mcc-pos-create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mcc/points-of-sale/similar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Existing points that look like the one being created */
+        get: operations["mcc-pos-similar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mcc/points-of-sale/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One point of sale — the «О точке» card */
+        get: operations["mcc-point-get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -861,6 +997,57 @@ export interface paths {
         get: operations["mcc-resolve"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/moderation/pos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Moderation queue / review stream (moderators) */
+        get: operations["moderation-pos-list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/moderation/pos/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish a pending submission (moderators) */
+        post: operations["moderation-pos-approve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/moderation/pos/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a submission or pull a published row (moderators) */
+        post: operations["moderation-pos-reject"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1087,19 +1274,25 @@ export interface components {
              * @enum {string}
              */
             activation: "immediate" | "next_day" | "unknown";
-            /** Format: int64 */
-            bank_client_id: number;
+            /**
+             * Format: int64
+             * @description absent when the row belongs to no single client — a bank-wide партнёрка
+             */
+            bank_client_id?: number;
             bank_name: string;
             cap_per_category?: string;
             cap_scope?: string;
             cap_value?: string;
             client_label: string;
             currency_kind: string;
+            /** @description the row's icon: its catalog row's, else the canonical's */
+            emoji?: string;
             /** @description карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда */
             friend_name?: string;
             friend_username?: string;
             holder_label?: string;
             kind: string;
+            needs_activation?: boolean;
             /** @description per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap */
             offer_cap_value?: string;
             /**
@@ -1107,6 +1300,10 @@ export interface components {
              * @description category_offer id — «Отметить выбранной» posts the ordinary selection for it
              */
             offer_id: number;
+            /** Format: int64 */
+            partner_id?: number;
+            /** @enum {string} */
+            partner_scope?: "merchant" | "category" | "";
             percent?: string;
             period_end: string;
             period_start: string;
@@ -1118,7 +1315,7 @@ export interface components {
             /** @description the барабан granted on top of that pick — mark the row «барабан» when this is set */
             stacked_super?: string;
             /** @enum {string} */
-            verdict: "free" | "paid" | "locked" | "slots_full" | "unknown";
+            verdict: "free" | "paid" | "unknown" | "slots_full" | "locked";
         };
         "Bank-client-createRequest": {
             /**
@@ -1188,6 +1385,11 @@ export interface components {
             /** Format: int32 */
             id: number;
             name: string;
+        };
+        BankStackDTO: {
+            bank_name: string;
+            /** @description present only via a friend's card */
+            friend?: boolean;
         };
         CanonicalCategoryDTO: {
             emoji?: string;
@@ -1335,14 +1537,36 @@ export interface components {
             readonly $schema?: string;
             /** @description S3b: offered-but-unselected menu rows, actionable verdicts first */
             available?: components["schemas"]["AvailableEntryDTO"][] | null;
+            /** @description offered-but-unselected rows this period can no longer take (slots_full/locked) */
+            blocked?: components["schemas"]["AvailableEntryDTO"][] | null;
             category: components["schemas"]["CanonicalCategoryDTO"];
             date: string;
             /** @description selected «За все покупки» — pays when nothing ranks */
             fallback?: components["schemas"]["LookupEntryDTO"][] | null;
+            /** @description a friend's shared menu row they have not picked and still have room for — display only, no offer id */
+            friend_available?: components["schemas"]["AvailableEntryDTO"][] | null;
             message?: string;
             partner?: components["schemas"]["PartnerOfferDTO"][] | null;
             /** @description regular + super + special, marked by kind (invariant 6 amendment 2026-07-27) */
             ranked: components["schemas"]["LookupEntryDTO"][] | null;
+        };
+        "Cashback-mcc-boardResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Cashback-mcc-boardResponse.json
+             */
+            readonly $schema?: string;
+            /** @description exact-matched menu rows still pickable («свободный слот») */
+            available?: components["schemas"]["AvailableEntryDTO"][] | null;
+            /** @description «Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships */
+            base?: components["schemas"]["LookupEntryDTO"][] | null;
+            /** @description exact-matched menu rows this period can no longer take (slots_full/locked) — shown apart, the client still answers with its base row */
+            blocked?: components["schemas"]["AvailableEntryDTO"][] | null;
+            /** @description a friend's shared menu row holding this code that they have not picked and still can — display only, offer_id is 0: the action is asking them */
+            friend_available?: components["schemas"]["AvailableEntryDTO"][] | null;
+            /** @description selected rows whose bank counts this code in that category (bank_category_mcc) — own + friends' */
+            ranked?: components["schemas"]["LookupEntryDTO"][] | null;
         };
         "Cashback-offer-period-attachRequest": {
             /**
@@ -1411,8 +1635,12 @@ export interface components {
             categories: components["schemas"]["OverviewCategoryDTO"][] | null;
             clients: components["schemas"]["OverviewClientDTO"][] | null;
             date: string;
+            /** @description alive партнёрки active on the date, ranked by the category-row key — interleave, points never above rubles */
+            partners?: components["schemas"]["PartnerFeedDTO"][] | null;
             /** Format: int32 */
             selection_opens_day?: number;
+            /** @description the bank's own rows: selected menu rows with no canonical category, so nothing across banks compares with them */
+            single_bank?: components["schemas"]["LookupEntryDTO"][] | null;
         };
         "Cashback-partner-offer-attachRequest": {
             /**
@@ -1430,22 +1658,51 @@ export interface components {
              * @example https://example.com/schemas/Cashback-partner-offer-createRequest.json
              */
             readonly $schema?: string;
+            /** @description true stamps the activation moment (kept on update); false clears it */
+            activated?: boolean;
             /** @description скриншоты, уже загруженные через /attachments */
             attachment_ids?: string[] | null;
             /** Format: int64 */
             bank_client_id?: number;
             /** Format: int32 */
             bank_id: number;
+            /**
+             * Format: int64
+             * @description required for category scope; an optional hint for merchant scope (ranks in that category's lookup with a «только в …» caveat)
+             */
+            canonical_category_id?: number;
             cap_value?: string;
+            /**
+             * @description what the offer pays in; absent ranks in the unknown group
+             * @enum {string}
+             */
+            currency_kind?: "rub" | "points";
+            /** @enum {string} */
+            merchant_kind?: "offline" | "online" | "app" | "other";
             merchant_title: string;
             /** @description minimum qualifying purchase («от 2 000 ₽»); display only */
             min_amount?: string;
             notes?: string;
             percent?: string;
+            requires_activation?: boolean;
+            /**
+             * @description где действует; default merchant
+             * @enum {string}
+             */
+            scope_kind?: "merchant" | "category";
             /** Format: date */
             valid_from?: string;
             /** Format: date */
             valid_to?: string;
+        };
+        "Cashback-partner-offer-matchResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Cashback-partner-offer-matchResponse.json
+             */
+            readonly $schema?: string;
+            matches?: components["schemas"]["LookupEntryDTO"][] | null;
         };
         "Cashback-partner-offer-updateRequest": {
             /**
@@ -1454,15 +1711,35 @@ export interface components {
              * @example https://example.com/schemas/Cashback-partner-offer-updateRequest.json
              */
             readonly $schema?: string;
+            /** @description true stamps the activation moment (kept on update); false clears it */
+            activated?: boolean;
             /** Format: int64 */
             bank_client_id?: number;
             /** Format: int32 */
             bank_id: number;
+            /**
+             * Format: int64
+             * @description required for category scope; an optional hint for merchant scope (ranks in that category's lookup with a «только в …» caveat)
+             */
+            canonical_category_id?: number;
             cap_value?: string;
+            /**
+             * @description what the offer pays in; absent ranks in the unknown group
+             * @enum {string}
+             */
+            currency_kind?: "rub" | "points";
+            /** @enum {string} */
+            merchant_kind?: "offline" | "online" | "app" | "other";
             merchant_title: string;
             min_amount?: string;
             notes?: string;
             percent?: string;
+            requires_activation?: boolean;
+            /**
+             * @description где действует; default merchant
+             * @enum {string}
+             */
+            scope_kind?: "merchant" | "category";
             /** Format: date */
             valid_from?: string;
             /** Format: date */
@@ -1570,6 +1847,17 @@ export interface components {
             noted_at: string;
             source: string;
         };
+        ClaimResultDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ClaimResultDTO.json
+             */
+            readonly $schema?: string;
+            inviter: components["schemas"]["FoundUserDTO"];
+            /** @enum {string} */
+            status: "request_sent" | "accepted" | "already_requested" | "already_friends";
+        };
         CodeDTO: {
             code: string;
             description?: string;
@@ -1670,6 +1958,8 @@ export interface components {
         };
         FriendOfferDTO: {
             currency_kind: string;
+            /** @description the row's icon — its catalog row's, else the canonical category's */
+            emoji?: string;
             kind: string;
             percent?: string;
             points_label?: string;
@@ -1700,21 +1990,6 @@ export interface components {
              */
             readonly $schema?: string;
             token: string;
-        };
-        "Friends-invite-createResponse": {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/Friends-invite-createResponse.json
-             */
-            readonly $schema?: string;
-            /** Format: date-time */
-            expires_at: string;
-            id: string;
-            /** @description показывается только здесь — хранится лишь хэш */
-            token: string;
-            /** @description путь ссылки-приглашения; хост добавляет клиент */
-            url: string;
         };
         "Friends-request-createRequest": {
             /**
@@ -1771,28 +2046,47 @@ export interface components {
             selected: boolean;
         };
         InviteDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/InviteDTO.json
+             */
+            readonly $schema?: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             expires_at: string;
             id: string;
+            token?: string;
+            /** @description путь ссылки-приглашения; хост добавляет клиент */
+            url?: string;
         };
         LookupEntryDTO: {
-            /** Format: int64 */
-            bank_client_id: number;
+            /**
+             * Format: int64
+             * @description absent when the row belongs to no single client — a bank-wide партнёрка
+             */
+            bank_client_id?: number;
             bank_name: string;
             cap_per_category?: string;
             cap_scope?: string;
             cap_value?: string;
             client_label: string;
             currency_kind: string;
+            /** @description the row's icon: its catalog row's, else the canonical's */
+            emoji?: string;
             /** @description карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда */
             friend_name?: string;
             friend_username?: string;
             holder_label?: string;
             kind: string;
+            needs_activation?: boolean;
             /** @description per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap */
             offer_cap_value?: string;
+            /** Format: int64 */
+            partner_id?: number;
+            /** @enum {string} */
+            partner_scope?: "merchant" | "category" | "";
             percent?: string;
             period_end: string;
             period_start: string;
@@ -1803,6 +2097,23 @@ export interface components {
             stacked_regular?: string;
             /** @description the барабан granted on top of that pick — mark the row «барабан» when this is set */
             stacked_super?: string;
+        };
+        "Mcc-pos-createRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Mcc-pos-createRequest.json
+             */
+            readonly $schema?: string;
+            /** @description офлайн — адрес, онлайн — сайт, приложение — название, другое — описание */
+            address?: string;
+            /** @description 4 цифры — из истории транзакций */
+            mcc: string;
+            /** @description как в выписке или SMS, латиницей */
+            merchant_title?: string;
+            name: string;
+            /** @enum {string} */
+            type: "offline" | "online" | "app" | "other";
         };
         "Mcc-resolveResponse": {
             /**
@@ -1816,6 +2127,12 @@ export interface components {
             code: components["schemas"]["CodeDTO"];
         };
         MerchantDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MerchantDTO.json
+             */
+            readonly $schema?: string;
             address?: string;
             /** Format: int64 */
             confirmations: number;
@@ -1825,6 +2142,65 @@ export interface components {
             mcc: string;
             merchant_title?: string;
             name: string;
+            /** @enum {string} */
+            origin: "mcc_codes" | "user_manual" | "user_transaction" | "admin";
+            /**
+             * @description pending rows are the caller's own submissions awaiting moderation
+             * @enum {string}
+             */
+            status?: "approved" | "pending";
+            /** @enum {string} */
+            type?: "offline" | "online" | "app" | "other";
+            /** Format: int64 */
+            user_confirmations: number;
+        };
+        MerchantSearchDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/MerchantSearchDTO.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["MerchantDTO"][] | null;
+            /**
+             * Format: int64
+             * @description matches in the whole base, not just this page
+             */
+            total: number;
+        };
+        "Moderation-pos-rejectRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Moderation-pos-rejectRequest.json
+             */
+            readonly $schema?: string;
+            /** @description заметка для оператора; автору не возвращается */
+            note?: string;
+        };
+        ModerationPage: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ModerationPage.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ModerationRowDTO"][] | null;
+            /** Format: int64 */
+            total: number;
+        };
+        ModerationRowDTO: {
+            address?: string;
+            created_at: string;
+            id: string;
+            mcc?: string;
+            /** @description словарное название кода — категория в свёрнутой строке */
+            mcc_name?: string;
+            merchant_title?: string;
+            moderated_at?: string;
+            name: string;
+            /** @enum {string} */
+            origin: "mcc_codes" | "user_manual" | "user_transaction" | "admin";
             /** @enum {string} */
             type?: "offline" | "online" | "app" | "other";
         };
@@ -1852,10 +2228,16 @@ export interface components {
             id: number;
             /** Format: int32 */
             max_categories_override?: number;
+            /** Format: int32 */
+            offer_count: number;
             period_end: string;
             period_start: string;
+            /** Format: int32 */
+            selected_count: number;
         };
         OverviewBaseDTO: {
+            /** @description banks with a selected base row, rank order */
+            bank_stack?: components["schemas"]["BankStackDTO"][] | null;
             best: components["schemas"]["LookupEntryDTO"];
             /** @description all-purchases icon — keeps the list's icon column aligned */
             emoji?: string;
@@ -1870,17 +2252,31 @@ export interface components {
             payment_system: string;
         };
         OverviewCategoryDTO: {
-            best: components["schemas"]["LookupEntryDTO"];
+            /** @description best «можно выбрать» row while nothing is selected for the category — the feed's dashed state */
+            available?: components["schemas"]["AvailableEntryDTO"];
+            /** @description every bank where the category exists this month, rank order — the row's overlap logos */
+            bank_stack?: components["schemas"]["BankStackDTO"][] | null;
+            /** @description the viewer's own best card; absent when only a friend covers the category */
+            best?: components["schemas"]["LookupEntryDTO"];
             /** Format: int64 */
             category_id: number;
             /** @description canonical category icon for the list */
             emoji?: string;
-            /** Format: int64 */
+            /** @description a friend's shared menu row they have not picked and still have room for — display only: offer_id is 0, picking is the owner's action */
+            friend_available?: components["schemas"]["AvailableEntryDTO"];
+            /** @description a friend's card that wins the ranking or fills a hole */
+            friend_best?: components["schemas"]["LookupEntryDTO"];
+            /**
+             * Format: int64
+             * @description other own cards beyond best; friends are not counted
+             */
             others_count: number;
             slug: string;
             title_ru: string;
         };
         OverviewChipDTO: {
+            /** @description canonical category icon; absent on canonical-less rows */
+            emoji?: string;
             kind: string;
             /** Format: int64 */
             offer_id: number;
@@ -1912,16 +2308,74 @@ export interface components {
              * @enum {string}
              */
             mid_period_add?: "allowed" | "locked_after_first" | "paid" | "unknown";
+            partner_offers?: components["schemas"]["OverviewPartnerChipDTO"][] | null;
+            pending_from?: string;
+            pending_to?: string;
             period_end?: string;
             /** Format: int64 */
             period_id?: number;
             period_start?: string;
             points_label?: string;
             selected: components["schemas"]["OverviewChipDTO"][] | null;
+            /**
+             * Format: int32
+             * @description day of month the bank opens the next period's selection («выбор с 25-го»)
+             */
+            selection_opens_day?: number;
             /** Format: int64 */
             slots_used: number;
             specials?: components["schemas"]["OverviewChipDTO"][] | null;
             tier_name?: string;
+        };
+        OverviewPartnerChipDTO: {
+            currency_kind: string;
+            /** Format: int64 */
+            id: number;
+            merchant_title: string;
+            percent?: string;
+            /** @enum {string} */
+            status: "active" | "scheduled" | "expired" | "ended";
+            valid_to?: string;
+        };
+        PartnerFeedDTO: {
+            /**
+             * Format: int64
+             * @description absent when the row belongs to no single client — a bank-wide партнёрка
+             */
+            bank_client_id?: number;
+            bank_name: string;
+            cap_per_category?: string;
+            cap_scope?: string;
+            cap_value?: string;
+            client_label: string;
+            currency_kind: string;
+            /** @description the row's icon: its catalog row's, else the canonical's */
+            emoji?: string;
+            /** @description карта друга («картой Стаса»); пусто — своя карта. Caps на карте друга не сериализуются никогда */
+            friend_name?: string;
+            friend_username?: string;
+            holder_label?: string;
+            kind: string;
+            needs_activation?: boolean;
+            /** @description per-offer cap (ВТБ «Кешбэк до N ₽»); display it over the tier cap */
+            offer_cap_value?: string;
+            /** Format: int64 */
+            partner_id?: number;
+            /** @enum {string} */
+            partner_scope?: "merchant" | "category" | "";
+            percent?: string;
+            period_end: string;
+            period_start: string;
+            points_label?: string;
+            /** @description the bank's own menu title — names the mechanic on marked super/special rows («Пятница») */
+            raw_title: string;
+            /** @description percent is a sum: the client's own monthly pick. Set together with stacked_super (invariant 6 amendment 2026-07-31) */
+            stacked_regular?: string;
+            /** @description the барабан granted on top of that pick — mark the row «барабан» when this is set */
+            stacked_super?: string;
+            /** @enum {string} */
+            status: "active" | "scheduled" | "expired" | "ended";
+            valid_to?: string;
         };
         PartnerOfferDTO: {
             /**
@@ -1930,19 +2384,39 @@ export interface components {
              * @example https://example.com/schemas/PartnerOfferDTO.json
              */
             readonly $schema?: string;
+            activated_at?: string;
             attachment_ids?: string[] | null;
             /** Format: int64 */
             bank_client_id?: number;
             /** Format: int32 */
             bank_id: number;
             bank_name?: string;
+            /** Format: int64 */
+            canonical_category_id?: number;
+            canonical_slug?: string;
+            canonical_title_ru?: string;
             cap_value?: string;
+            /** @description rub | points; absent = unknown, ranks last */
+            currency_kind?: string;
+            ended_at?: string;
+            holder_label?: string;
             /** Format: int64 */
             id: number;
+            /** @description offline | online | app | other — the «магазин» type chip */
+            merchant_kind?: string;
             merchant_title: string;
             min_amount?: string;
             notes?: string;
             percent?: string;
+            points_label?: string;
+            requires_activation: boolean;
+            /** @enum {string} */
+            scope_kind: "merchant" | "category";
+            /**
+             * @description derived; «Завершить» sets ended without touching valid_to
+             * @enum {string}
+             */
+            status?: "active" | "scheduled" | "expired" | "ended";
             valid_from?: string;
             valid_to?: string;
         };
@@ -2349,6 +2823,8 @@ export interface components {
             /** Format: int64 */
             id: number;
             username: string;
+            /** @description the sender arrived through your invite link («пришла по твоей ссылке») */
+            via_invite?: boolean;
         };
         ResolveEntryDTO: {
             /** Format: int64 */
@@ -2368,6 +2844,11 @@ export interface components {
             /** Format: int64 */
             bank_client_id: number;
             friend_user_id: string;
+        };
+        SimilarPointDTO: {
+            id: string;
+            mcc: string;
+            name: string;
         };
         SlotCandidateDTO: {
             /** Format: int64 */
@@ -2401,6 +2882,8 @@ export interface components {
             display_name: string;
             email: string;
             id: string;
+            /** @enum {string} */
+            role: "user" | "moderator" | "admin";
             username: string;
         };
         VersionDTO: {
@@ -3177,6 +3660,40 @@ export interface operations {
             };
         };
     };
+    "cashback-mcc-board": {
+        parameters: {
+            query?: {
+                /** @description MCC code */
+                code?: number;
+                /** @description YYYY-MM-DD; defaults to today */
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cashback-mcc-boardResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "cashback-offer-period-list": {
         parameters: {
             query?: {
@@ -3493,6 +4010,40 @@ export interface operations {
             };
         };
     };
+    "cashback-partner-offer-match": {
+        parameters: {
+            query?: {
+                /** @description merchant / точка продаж name */
+                query?: string;
+                /** @description YYYY-MM-DD; defaults to today */
+                date?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cashback-partner-offer-matchResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "cashback-partner-offer-get": {
         parameters: {
             query?: never;
@@ -3628,6 +4179,64 @@ export interface operations {
             path: {
                 id: number;
                 attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-partner-offer-end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cashback-partner-offer-reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
             };
             cookie?: never;
         };
@@ -3910,7 +4519,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Friends-invite-createResponse"];
+                    "application/json": components["schemas"]["InviteDTO"];
                 };
             };
             /** @description Error */
@@ -3943,7 +4552,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FoundUserDTO"];
+                    "application/json": components["schemas"]["ClaimResultDTO"];
                 };
             };
             /** @description Error */
@@ -4318,11 +4927,48 @@ export interface operations {
             };
         };
     };
+    "mcc-code-merchants": {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                code: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "mcc-merchant-search": {
         parameters: {
             query: {
                 query: string;
+                /** @description point-of-sale type; empty means any */
+                type?: "" | "offline" | "online" | "app" | "other";
                 limit?: number;
+                /** @description rows to skip — the list pages as the user scrolls */
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -4336,7 +4982,103 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MerchantDTO"][] | null;
+                    "application/json": components["schemas"]["MerchantSearchDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "mcc-pos-create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Mcc-pos-createRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "mcc-pos-similar": {
+        parameters: {
+            query: {
+                mcc: string;
+                name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimilarPointDTO"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "mcc-point-get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MerchantDTO"];
                 };
             };
             /** @description Error */
@@ -4369,6 +5111,102 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Mcc-resolveResponse"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "moderation-pos-list": {
+        parameters: {
+            query?: {
+                /** @description pending — очередь на проверку; published — недавно опубликованные (не из скрейпа) */
+                state?: "pending" | "published";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModerationPage"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "moderation-pos-approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "moderation-pos-reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Moderation-pos-rejectRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

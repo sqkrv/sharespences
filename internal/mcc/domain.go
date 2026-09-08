@@ -1,7 +1,6 @@
 // Package mcc implements the MCC module: the code dictionary, per-bank
 // category→MCC membership (flat current state), and the append-only change
-// journal (pipeline design in ADR-0004,
-// meta-repo). Resolution answers «каким банковским категориям принадлежит
+// journal (pipeline design in ADR-0004). Resolution answers «каким банковским категориям принадлежит
 // этот MCC» and hands deduped canonical slugs to the cashback lookup.
 package mcc
 
@@ -18,6 +17,10 @@ var ErrNotFound = errors.New("код не найден в справочнике
 
 // ErrBadCode — the input is not a 3-4 digit MCC.
 var ErrBadCode = errors.New("код должен быть числом из 3–4 цифр")
+
+// ErrNotModerator — the caller's role does not pass the moderation gate.
+// One message for every refusal: no existence leaks.
+var ErrNotModerator = errors.New("нужны права модератора")
 
 // FormatCode renders a code the way banks print them: zero-padded to four
 // digits («0742»).

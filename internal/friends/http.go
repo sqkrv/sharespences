@@ -99,12 +99,26 @@ type RequestDTO struct {
 	Username    string    `json:"username"`
 	DisplayName string    `json:"display_name"`
 	CreatedAt   time.Time `json:"created_at"`
+	ViaInvite   bool      `json:"via_invite,omitempty" doc:"the sender arrived through your invite link («пришла по твоей ссылке»)"`
 }
 
+// InviteDTO carries the live link itself (00037: multi-use, re-showable).
+// URL/Token are absent on pre-00037 rows — those were shown once; the
+// client offers «Создать новую» instead.
 type InviteDTO struct {
 	ID        uuid.UUID `json:"id"`
+	URL       string    `json:"url,omitempty" doc:"путь ссылки-приглашения; хост добавляет клиент"`
+	Token     string    `json:"token,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// ClaimResultDTO is the invite-claim answer: who invited, and where things
+// now stand — a fresh заявка, a mutual-pending collapse into friendship, or
+// the benign repeats a multi-use link produces.
+type ClaimResultDTO struct {
+	Inviter FoundUserDTO `json:"inviter"`
+	Status  string       `json:"status" enum:"request_sent,accepted,already_requested,already_friends"`
 }
 
 // SharingDTO is one issued grant; the UI joins it with bank-client-list and
@@ -220,7 +234,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		for _, r := range rows {
 			if r.ToUserID == userID {
 				out.Body.Incoming = append(out.Body.Incoming, RequestDTO{
-					ID: r.ID, Username: r.FromUsername, DisplayName: r.FromDisplayName, CreatedAt: r.CreatedAt,
+					ID: r.ID, Username: r.FromUsername, DisplayName: r.FromDisplayName, CreatedAt: r.CreatedAt, ViaInvite: r.ViaInvite,
 				})
 			} else {
 				out.Body.Outgoing = append(out.Body.Outgoing, RequestDTO{
@@ -272,38 +286,21 @@ func RegisterHTTP(api huma.API, s *Service) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "friends-invite-create", Method: http.MethodPost,
-		Path: "/api/v1/friends/invites", Summary: "Create a one-shot invite link", Tags: []string{"friends"},
+		Path: "/api/v1/friends/invites", Summary: "Create the invite link (replaces the previous one)", Tags: []string{"friends"},
 		DefaultStatus: http.StatusCreated,
-	}, func(ctx context.Context, _ *struct{}) (*struct {
-		Body struct {
-			ID        uuid.UUID `json:"id"`
-			URL       string    `json:"url" doc:"путь ссылки-приглашения; хост добавляет клиент"`
-			Token     string    `json:"token" doc:"показывается только здесь — хранится лишь хэш"`
-			ExpiresAt time.Time `json:"expires_at"`
-		}
-	}, error) {
+	}, func(ctx context.Context, _ *struct{}) (*struct{ Body InviteDTO }, error) {
 		inv, token, err := s.CreateInvite(ctx, auth.UserID(ctx))
 		if err != nil {
 			return nil, httpErr(err)
 		}
-		out := &struct {
-			Body struct {
-				ID        uuid.UUID `json:"id"`
-				URL       string    `json:"url" doc:"путь ссылки-приглашения; хост добавляет клиент"`
-				Token     string    `json:"token" doc:"показывается только здесь — хранится лишь хэш"`
-				ExpiresAt time.Time `json:"expires_at"`
-			}
-		}{}
-		out.Body.ID = inv.ID
-		out.Body.URL = "/friends/join/" + token
-		out.Body.Token = token
-		out.Body.ExpiresAt = inv.ExpiresAt
-		return out, nil
+		return &struct{ Body InviteDTO }{InviteDTO{
+			ID: inv.ID, URL: "/join/" + token, Token: token, CreatedAt: inv.CreatedAt, ExpiresAt: inv.ExpiresAt,
+		}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
 		OperationID: "friends-invite-list", Method: http.MethodGet,
-		Path: "/api/v1/friends/invites", Summary: "List live invite links", Tags: []string{"friends"},
+		Path: "/api/v1/friends/invites", Summary: "The live invite link (at most one)", Tags: []string{"friends"},
 	}, func(ctx context.Context, _ *struct{}) (*struct{ Body []InviteDTO }, error) {
 		rows, err := s.ListInvites(ctx, auth.UserID(ctx))
 		if err != nil {
@@ -312,6 +309,10 @@ func RegisterHTTP(api huma.API, s *Service) {
 		out := make([]InviteDTO, len(rows))
 		for i, r := range rows {
 			out[i] = InviteDTO{ID: r.ID, CreatedAt: r.CreatedAt, ExpiresAt: r.ExpiresAt}
+			if r.Token != nil {
+				out[i].Token = *r.Token
+				out[i].URL = "/join/" + *r.Token
+			}
 		}
 		return &struct{ Body []InviteDTO }{out}, nil
 	})
@@ -363,19 +364,30 @@ func RegisterHTTP(api huma.API, s *Service) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "friends-invite-claim", Method: http.MethodPost,
-		Path: "/api/v1/friends/invites/claim", Summary: "Claim an invite link", Tags: []string{"friends"},
+		Path: "/api/v1/friends/invites/claim", Summary: "Claim an invite link — files a friend request to the inviter", Tags: []string{"friends"},
 		// Token in the body, not the path — keeps it out of URL logs.
 	}, func(ctx context.Context, in *struct {
 		Body struct {
 			Token string `json:"token" minLength:"1"`
 		}
-	}) (*struct{ Body FoundUserDTO }, error) {
-		inviter, err := s.ClaimInvite(ctx, auth.UserID(ctx), in.Body.Token)
-		if err != nil {
+	}) (*struct{ Body ClaimResultDTO }, error) {
+		inviter, res, err := s.ClaimInvite(ctx, auth.UserID(ctx), in.Body.Token)
+		// Re-claiming a live link is the normal multi-use case, not a fault:
+		// the page still names the inviter and says where things stand.
+		status := "request_sent"
+		switch {
+		case errors.Is(err, ErrAlreadyFriends):
+			status = "already_friends"
+		case errors.Is(err, ErrRequestExists):
+			status = "already_requested"
+		case err != nil:
 			return nil, httpErr(err)
+		case res.Accepted:
+			status = "accepted"
 		}
-		return &struct{ Body FoundUserDTO }{FoundUserDTO{
-			UserID: inviter.ID, Username: inviter.Username, DisplayName: inviter.DisplayName,
+		return &struct{ Body ClaimResultDTO }{ClaimResultDTO{
+			Inviter: FoundUserDTO{UserID: inviter.ID, Username: inviter.Username, DisplayName: inviter.DisplayName},
+			Status:  status,
 		}}, nil
 	})
 }

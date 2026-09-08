@@ -50,8 +50,23 @@ type Service struct {
 	// seam, same idiom as the attachment funcs). Nil = the friends feature
 	// is absent; friend views are empty, lookup stays personal.
 	ListSharedWithMe func(ctx context.Context, viewerID uuid.UUID) ([]SharedFriend, error)
+	// MCCMemberships resolves an MCC code to the bank catalog rows that hold
+	// it (bank_category_mcc) — injected from the mcc module at assembly
+	// (ADR-0002 seam: values cross, tables don't). Nil = MCC boards answer
+	// empty.
+	MCCMemberships func(ctx context.Context, userID uuid.UUID, code int16) ([]MembershipRow, error)
 
 	recognitions recognitionStore
+}
+
+// MembershipRow is one bank catalog row holding an MCC — the value shape the
+// mcc module hands across the seam.
+type MembershipRow struct {
+	BankCategoryID int64
+	// BankID and CanonicalCategoryID let the board match a menu row that was
+	// never linked to a catalog row — see LookupByMCC.
+	BankID              int32
+	CanonicalCategoryID *int64
 }
 
 // clientLabel names a bank client for display: «Альфа-Банк» for the account owner's
@@ -119,6 +134,20 @@ func rowRange(start, end time.Time) DateRange {
 
 // entryOf maps a ListUserOffers row into a lookup entry (shared by lookup,
 // overview and the base-rate fallback).
+
+// rowEmoji is the row's icon: the bank catalog row's own, else the canonical
+// category's, else nothing. Resolved in SQL and picked here so every screen
+// shows one icon for one row.
+func rowEmoji(bankCategory, canonical *string) string {
+	if bankCategory != nil {
+		return *bankCategory
+	}
+	if canonical != nil {
+		return *canonical
+	}
+	return ""
+}
+
 func entryOf(o db.ListUserOffersRow) LookupEntry {
 	var capScope CapScope
 	if o.TierCapScope.Valid {
@@ -128,12 +157,14 @@ func entryOf(o db.ListUserOffersRow) LookupEntry {
 	if o.PointsLabel != nil {
 		pointsLabel = *o.PointsLabel
 	}
+	emoji := rowEmoji(o.BankCategoryEmoji, o.CanonicalEmoji)
 	return LookupEntry{
 		ClientID:       o.BankClientID,
 		ClientLabel:    clientLabel(o.BankName, o.HolderLabel),
 		HolderLabel:    holderOf(o.HolderLabel),
 		BankName:       o.BankName,
 		RawTitle:       o.RawTitle,
+		Emoji:          emoji,
 		Percent:        o.Percent,
 		CurrencyKind:   currencyOf(o),
 		Kind:           OfferKind(o.Kind),
@@ -745,13 +776,77 @@ func (s *Service) HelperContext(ctx context.Context, userID uuid.UUID, offerPeri
 // its best active card. «Best» = first by the domain ranking (rubles group
 // before points, percent desc within a group) — deliberately NOT a numeric
 // cross-currency comparison (invariant 5); rubles win by list position only.
+// BankStackEntry is one logo in a feed row's overlap stack (9a): a bank
+// where the category exists this month, in rank order. Friend marks let the
+// client drop friends' banks when the toggle hides them.
+type BankStackEntry struct {
+	BankName string
+	Friend   bool
+}
+
+// bankStackOf builds the stack: selected entries first (rank order), then
+// still-available menu rows; one entry per bank. A bank seen as a friend's
+// AND the viewer's own keeps its rank position but counts as own — the
+// friends toggle must not hide the viewer's own presence.
+func bankStackOf(ranked []LookupEntry, avail, friendAvail []AvailableEntry) []BankStackEntry {
+	idx := make(map[string]int, len(ranked)+len(avail))
+	var out []BankStackEntry
+	add := func(bank string, friend bool) {
+		if bank == "" {
+			return
+		}
+		if i, ok := idx[bank]; ok {
+			if !friend {
+				out[i].Friend = false
+			}
+			return
+		}
+		idx[bank] = len(out)
+		out = append(out, BankStackEntry{BankName: bank, Friend: friend})
+	}
+	for _, e := range ranked {
+		add(e.BankName, e.FriendName != "")
+	}
+	for _, e := range avail {
+		add(e.Entry.BankName, false)
+	}
+	// A bank where only a friend holds the row, unpicked. It belongs in the
+	// stack by the stack's own definition — «every bank where the category
+	// exists this month» — and being flagged as a friend's it disappears
+	// with the friends toggle. Without it the row would go silent about a
+	// rate that is one tap away.
+	for _, e := range friendAvail {
+		add(e.Entry.BankName, true)
+	}
+	return out
+}
+
 type OverviewCategoryGroup struct {
-	CategoryID  int64
-	Slug        string
-	TitleRu     string
-	Emoji       string // canonical category icon for the list (2026-07-27)
-	Best        LookupEntry
-	OthersCount int
+	CategoryID int64
+	Slug       string
+	TitleRu    string
+	Emoji      string // canonical category icon for the list (2026-07-27)
+	// Best is the viewer's own winner; nil when only a friend covers the
+	// category. FriendBest is set only when a friend's card outranks every
+	// own one or fills such a hole (redesign 2026-08-06) — hiding friends
+	// falls the row back to Best instead of dropping it.
+	Best       *LookupEntry
+	FriendBest *LookupEntry
+	// Available is the best S3b «можно выбрать» row, populated only while
+	// the viewer has no own selection for the category — the feed's dashed
+	// state («только то, что есть или реально доступно»); once something is
+	// selected the fuller available list stays a lookup concern.
+	Available *AvailableEntry
+	// FriendAvailable is the same dashed state on a friend's shared card: a
+	// menu row they have not picked and still have room for. Display only —
+	// it carries no offer id, because picking is the owner's action. Kept
+	// apart from Available for the reason Best/FriendBest are kept apart:
+	// a row the viewer cannot act on must never displace one they can.
+	FriendAvailable *AvailableEntry
+	OthersCount     int // other OWN cards beyond Best; friends never counted
+	// BankStack: every bank where the category exists this month, rank
+	// order — the feed row's overlap logos (9a).
+	BankStack []BankStackEntry
 }
 
 // OverviewSelectedRow is a selected menu row shown as a chip on a card.
@@ -760,6 +855,7 @@ type OverviewSelectedRow struct {
 	RawTitle string
 	Kind     OfferKind
 	Percent  *decimal.Decimal
+	Emoji    string // canonical category icon (2e v3); "" for canonical-less rows
 }
 
 // OverviewClientCard is one plastic of the client, shown as a chip
@@ -800,6 +896,28 @@ type OverviewClient struct {
 	MaxCategories *int32 // effective: period override, else tier
 	Selected      []OverviewSelectedRow
 	Specials      []OverviewSelectedRow
+	// SelectionOpensDay is the program's ритуал date («выбор с 25-го»), shown
+	// per bank on CB-09.b — the aggregate on OverviewResult answers «when is
+	// the next one anywhere», which is a different question.
+	SelectionOpensDay *int32
+	// Pending is the period this client still has to fill, when its window is
+	// already open (domain PendingMenu). Nil = nothing to do.
+	Pending *DateRange
+	// Partners are the client's партнёрки as gold chips (v2, 3c): every
+	// status — the SPA shows alive ones inline and folds ended/expired into
+	// a collapsed group, so past offers keep a home after CB-05 dissolves.
+	// A bank-level offer (no client) hangs off the bank's first client.
+	Partners []OverviewPartnerChip
+}
+
+// OverviewPartnerChip is one партнёрка on a bank client card.
+type OverviewPartnerChip struct {
+	ID            int64
+	MerchantTitle string
+	Percent       *decimal.Decimal
+	CurrencyKind  CurrencyKind
+	ValidTo       *time.Time
+	Status        string
 }
 
 // OverviewBase is the «Остальное» row: the best base-rate card («За все
@@ -808,6 +926,7 @@ type OverviewBase struct {
 	Emoji       string // all-purchases icon — keeps the list's icon column aligned
 	Best        LookupEntry
 	OthersCount int
+	BankStack   []BankStackEntry // banks with a selected base row, rank order (9a)
 }
 
 // emojiOf unwraps a canonical category's optional UI icon (seeded from the
@@ -821,10 +940,29 @@ func emojiOf(c db.CanonicalCategory) string {
 
 // OverviewResult answers GET /cashback/overview: the design's two cuts of
 // the same month (screens 01/02), plus the passive «selection opens» day.
+// OverviewPartnerRow is one партнёрка in the feed: its rankable entry plus
+// the lifecycle facts the row states («по 31.08», требует активации).
+type OverviewPartnerRow struct {
+	Entry   LookupEntry
+	ValidTo *time.Time
+	Status  string
+}
+
 type OverviewResult struct {
-	Categories        []OverviewCategoryGroup
-	Base              *OverviewBase
-	Clients           []OverviewClient
+	Categories []OverviewCategoryGroup
+	Base       *OverviewBase
+	Clients    []OverviewClient
+	// SingleBank is the bank's-own-rows section at the end of the feed:
+	// selected canonical-less rows — a bank's own service categories that
+	// cannot group across banks. Ranked for a stable order; the feed shows
+	// them as a labelled section at its end, not a fold.
+	SingleBank []LookupEntry
+	// Partners are the alive партнёрки active on the date, ranked by the
+	// same key as category rows (currency group → percent desc) so the SPA
+	// can interleave without ever putting points above rubles (invariant 5).
+	// They live outside Categories: a merchant offer is its own row, named
+	// by the merchant, alive even when no month menu is entered.
+	Partners          []OverviewPartnerRow
 	SelectionOpensDay *int32 // earliest across the user's clients' programs
 }
 
@@ -911,29 +1049,190 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		}
 		byCat[*o.CanonicalCategoryID] = append(byCat[*o.CanonicalCategoryID], entryOf(o))
 	}
+	// Friends enter the feed rankings (redesign 2026-08-06) — surfaced only
+	// when they win or fill a hole (SplitFeedWinner). Their all-purchases
+	// rows stay out: base rates are personal, «Остальное» is own-only.
+	friendCats, err := s.friendEntriesByCategory(ctx, userID)
+	if err != nil {
+		return OverviewResult{}, err
+	}
+	for catID, entries := range friendCats {
+		if allPurposesID != nil && catID == *allPurposesID {
+			continue
+		}
+		byCat[catID] = append(byCat[catID], entries...)
+	}
+	// S3b «можно выбрать» per category, for the feed's dashed rows: menu
+	// rows sitting unselected in an active period, verdict-first ranked —
+	// the same construction Lookup does for one category.
+	regCount := make(map[int64]int) // offer_period_id → selected regular rows
+	for _, o := range offers {
+		if o.Selected && OfferKind(o.Kind) == OfferRegular {
+			regCount[o.OfferPeriodID]++
+		}
+	}
+	availByCat := make(map[int64][]AvailableEntry)
+	for _, o := range offers {
+		if o.Selected || o.CanonicalCategoryID == nil {
+			continue
+		}
+		if allPurposesID != nil && *o.CanonicalCategoryID == *allPurposesID {
+			continue
+		}
+		kind := OfferKind(o.Kind)
+		if kind == OfferSpecial || !rowRange(o.PeriodStart, o.PeriodEnd).Contains(onDate) {
+			continue
+		}
+		max := o.MaxCategoriesOverride
+		if max == nil {
+			max = o.MaxCategories
+		}
+		verdict := AssessAvailability(AvailabilityCheck{
+			Kind:                 kind,
+			Policy:               MidPeriodAddPolicy(o.MidPeriodAdd),
+			HasRegularSelection:  regCount[o.OfferPeriodID] > 0,
+			MaxCategories:        max,
+			RegularSelectedCount: regCount[o.OfferPeriodID],
+		})
+		if !verdict.Pickable() {
+			continue
+		}
+		availByCat[*o.CanonicalCategoryID] = append(availByCat[*o.CanonicalCategoryID], AvailableEntry{
+			Entry:      entryOf(o),
+			OfferID:    o.CategoryOfferID,
+			Verdict:    verdict,
+			Activation: ActivationKind(o.Activation),
+		})
+	}
+	friendAvailByCat, err := s.friendAvailableByCategory(ctx, userID, onDate)
+	if err != nil {
+		return OverviewResult{}, err
+	}
+	// «За все покупки» belongs to the Base row, not to the category list —
+	// the viewer's own available rows drop it above for the same reason, and
+	// a friend's copy of it would reintroduce the row the feed avoids.
+	if allPurposesID != nil {
+		delete(friendAvailByCat, *allPurposesID)
+	}
+	seenCats := make(map[int64]bool, len(byCat))
 	for catID, entries := range byCat {
+		seenCats[catID] = true
 		ranked := RankActiveSelections(onDate, entries)
 		cat, ok := catByID[catID]
 		if !ok {
 			continue
 		}
-		if len(ranked.Ranked) == 0 {
-			continue // nothing active
-		}
 		// All three kinds rank (invariant 6 amendment, 2026-07-27): the
 		// best card may be a барабан or a спец — the frontend marks it.
+		own, friendBest := SplitFeedWinner(ranked.Ranked)
+		g := OverviewCategoryGroup{
+			CategoryID: catID,
+			Slug:       cat.Slug,
+			TitleRu:    cat.TitleRu,
+			Emoji:      emojiOf(cat),
+			Best:       own,
+			FriendBest: friendBest,
+			BankStack:  bankStackOf(ranked.Ranked, availByCat[catID], friendAvailByCat[catID]),
+		}
+		// A friend's unpicked row is not gated on the viewer's own state, and
+		// that is the one place it parts company with Available. Available is
+		// a call to action and rightly disappears once the viewer has picked;
+		// this is inventory — CB-01 exists to show what cashback is out there,
+		// while choosing a card to pay with happens through search
+		// (merchant/category/MCC), not here.
+		if fa := RankAvailable(friendAvailByCat[catID]); len(fa) > 0 {
+			g.FriendAvailable = &fa[0]
+		}
+		if own == nil {
+			// No own selection — the dashed state stays reachable even when
+			// a friend fills the hole (it is what the row falls back to).
+			if avail := RankAvailable(availByCat[catID]); len(avail) > 0 {
+				g.Available = &avail[0]
+			}
+			if friendBest == nil && g.Available == nil && g.FriendAvailable == nil {
+				continue // nothing active
+			}
+		}
+		ownCount := 0
+		for _, e := range ranked.Ranked {
+			if e.FriendName == "" {
+				ownCount++
+			}
+		}
+		if own != nil {
+			ownCount--
+		}
+		g.OthersCount = ownCount
+		res.Categories = append(res.Categories, g)
+	}
+	// Categories with nothing selected anywhere but something offered: the
+	// feed's dashed «можно выбрать» rows (redesign, ТУР 1 «решено»: only
+	// what exists or is genuinely available — but available IS a row).
+	for catID, avails := range availByCat {
+		if seenCats[catID] {
+			continue
+		}
+		seenCats[catID] = true
+		cat, ok := catByID[catID]
+		if !ok {
+			continue
+		}
+		ranked := RankAvailable(avails)
+		g := OverviewCategoryGroup{
+			CategoryID: catID,
+			Slug:       cat.Slug,
+			TitleRu:    cat.TitleRu,
+			Emoji:      emojiOf(cat),
+			Available:  &ranked[0],
+			BankStack:  bankStackOf(nil, ranked, friendAvailByCat[catID]),
+		}
+		if fa := RankAvailable(friendAvailByCat[catID]); len(fa) > 0 {
+			g.FriendAvailable = &fa[0]
+		}
+		res.Categories = append(res.Categories, g)
+	}
+	// Categories only a friend offers: nothing of the viewer's own is in play
+	// this month, but a friend has a row they have not picked and can. No
+	// BankStack — the logos say «where you have this category», and a
+	// friend's bank is not the viewer's.
+	for catID, favails := range friendAvailByCat {
+		if seenCats[catID] {
+			continue
+		}
+		seenCats[catID] = true
+		cat, ok := catByID[catID]
+		if !ok {
+			continue
+		}
+		ranked := RankAvailable(favails)
 		res.Categories = append(res.Categories, OverviewCategoryGroup{
-			CategoryID:  catID,
-			Slug:        cat.Slug,
-			TitleRu:     cat.TitleRu,
-			Emoji:       emojiOf(cat),
-			Best:        ranked.Ranked[0],
-			OthersCount: len(ranked.Ranked) - 1,
+			CategoryID:      catID,
+			Slug:            cat.Slug,
+			TitleRu:         cat.TitleRu,
+			Emoji:           emojiOf(cat),
+			FriendAvailable: &ranked[0],
 		})
 	}
-	// Sort: rub before points; then percent desc; then title.
+	// Sort: rub before points; then percent desc; then title. The key is the
+	// row's displayed winner — the friend when one is surfaced, the dashed
+	// available row when nothing is selected at all.
+	winnerOf := func(g OverviewCategoryGroup) *LookupEntry {
+		if g.FriendBest != nil {
+			return g.FriendBest
+		}
+		if g.Best != nil {
+			return g.Best
+		}
+		if g.Available != nil {
+			return &g.Available.Entry
+		}
+		if g.FriendAvailable != nil {
+			return &g.FriendAvailable.Entry
+		}
+		return &LookupEntry{}
+	}
 	sort.SliceStable(res.Categories, func(i, j int) bool {
-		a, b := res.Categories[i].Best, res.Categories[j].Best
+		a, b := winnerOf(res.Categories[i]), winnerOf(res.Categories[j])
 		ca := map[CurrencyKind]int{CurrencyRub: 0, CurrencyPoints: 1}[a.CurrencyKind]
 		cb := map[CurrencyKind]int{CurrencyRub: 0, CurrencyPoints: 1}[b.CurrencyKind]
 		if ca != cb {
@@ -945,10 +1244,47 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 		return res.Categories[i].TitleRu < res.Categories[j].TitleRu
 	})
 
+	// The bank's own rows: selected canonical-less rows — bank-own
+	// service categories («Альфа-Тревел», «ЖКУ») that no canonical groups.
+	// Unmapped rows used to be invisible here; the redesign shows them as a
+	// collapsed tail instead of dropping them from the feed.
+	var singles []LookupEntry
+	for _, o := range offers {
+		if o.Selected && o.CanonicalCategoryID == nil {
+			singles = append(singles, entryOf(o))
+		}
+	}
+	res.SingleBank = RankActiveSelections(onDate, singles).Ranked
+
+	// Партнёрки (v2): alive offers active on the date become their own
+	// merchant-named feed rows, ranked by the category-row key. They ignore
+	// periods entirely — the «жив без меню месяца» promise holds by shape.
+	partners, err := s.Q.ListPartnerOffersForUser(ctx, userID)
+	if err != nil {
+		return OverviewResult{}, err
+	}
+	partnerByID := make(map[int64]db.ListPartnerOffersForUserRow, len(partners))
+	var partnerEntries []LookupEntry
+	for _, p := range partners {
+		if !alivePartner(p) {
+			continue
+		}
+		partnerByID[p.ID] = p
+		partnerEntries = append(partnerEntries, partnerEntryOf(p))
+	}
+	for _, e := range RankActiveSelections(onDate, partnerEntries).Ranked {
+		p := partnerByID[e.PartnerID]
+		res.Partners = append(res.Partners, OverviewPartnerRow{
+			Entry:   e,
+			ValidTo: p.ValidTo,
+			Status:  PartnerStatus(onDate, p.ValidFrom, p.ValidTo, p.EndedAt),
+		})
+	}
+
 	// «Остальное»: best selected «За все покупки» across clients.
 	fb := RankActiveSelections(onDate, fallbackEntries(offers, allPurposesID, nil, entryOf))
 	if len(fb.Ranked) > 0 {
-		base := OverviewBase{Best: fb.Ranked[0], OthersCount: len(fb.Ranked) - 1}
+		base := OverviewBase{Best: fb.Ranked[0], OthersCount: len(fb.Ranked) - 1, BankStack: bankStackOf(fb.Ranked, nil, nil)}
 		if allPurposesID != nil {
 			base.Emoji = emojiOf(catByID[*allPurposesID])
 		}
@@ -957,6 +1293,39 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 
 	// --- «Карты»: every bank client with its plastics, and the client's
 	// active period when one exists (all its cards share it). ---
+	// A bank-level партнёрка (no client) hangs off the bank's first client,
+	// so it renders exactly once.
+	firstClientOfBank := make(map[int32]int64, len(clients))
+	for _, c := range clients {
+		if _, ok := firstClientOfBank[c.BankID]; !ok {
+			firstClientOfBank[c.BankID] = c.ID
+		}
+	}
+	// Programs by bank: the ритуал date belongs to the bank's program, not to
+	// the client's tier, so a client with no tier set still gets its «выбор с
+	// 25-го» and its unfilled-menu mark (CB-09.b).
+	programs, err := s.Q.ListPrograms(ctx)
+	if err != nil {
+		return OverviewResult{}, err
+	}
+	programByBank := make(map[int32]db.ListProgramsRow, len(programs))
+	for _, p := range programs {
+		if _, taken := programByBank[p.BankID]; !taken {
+			programByBank[p.BankID] = p
+		}
+	}
+	// Every recorded period with its menu-row count — PendingMenu needs both,
+	// and both are already loaded for the month cut.
+	fillByClient := make(map[int64][]PeriodFill)
+	for _, p := range periods {
+		fill := PeriodFill{Range: rowRange(p.PeriodStart, p.PeriodEnd)}
+		for _, o := range offers {
+			if o.OfferPeriodID == p.ID {
+				fill.Offers++
+			}
+		}
+		fillByClient[p.BankClientID] = append(fillByClient[p.BankClientID], fill)
+	}
 	for _, client := range clients {
 		oc := OverviewClient{
 			ClientID:     client.ID,
@@ -987,10 +1356,17 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 			}
 			oc.MidPeriodAdd = string(program.MidPeriodAdd)
 			oc.Activation = string(program.Activation)
+		}
+		if program, ok := programByBank[client.BankID]; ok {
+			oc.SelectionOpensDay = program.SelectionOpensDay
 			if program.SelectionOpensDay != nil &&
 				(res.SelectionOpensDay == nil || *program.SelectionOpensDay < *res.SelectionOpensDay) {
 				res.SelectionOpensDay = program.SelectionOpensDay
 			}
+			// The mark is about today, not about the month being viewed: a
+			// user browsing July must still see that September is open and
+			// empty (owner 2026-08-27).
+			oc.Pending = PendingMenu(time.Now(), PeriodType(program.PeriodType), program.SelectionOpensDay, fillByClient[client.ID])
 		}
 		// Invariant 4 guarantees at most one period per client covers a date.
 		for _, p := range periods {
@@ -1012,6 +1388,9 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 				continue
 			}
 			row := OverviewSelectedRow{OfferID: o.CategoryOfferID, RawTitle: o.RawTitle, Kind: OfferKind(o.Kind), Percent: o.Percent}
+			if o.CanonicalCategoryID != nil {
+				row.Emoji = emojiOf(catByID[*o.CanonicalCategoryID])
+			}
 			// Only regular fills a slot and shows as a chosen (mint) chip;
 			// granted super/special go to the gold bonus chips (no slot).
 			if OfferKind(o.Kind) != OfferRegular {
@@ -1021,19 +1400,81 @@ func (s *Service) Overview(ctx context.Context, userID uuid.UUID, onDate time.Ti
 				oc.Selected = append(oc.Selected, row)
 			}
 		}
+		for _, p := range partners {
+			owns := (p.BankClientID != nil && *p.BankClientID == client.ID) ||
+				(p.BankClientID == nil && p.BankID == client.BankID && firstClientOfBank[p.BankID] == client.ID)
+			if !owns {
+				continue
+			}
+			chip := OverviewPartnerChip{
+				ID: p.ID, MerchantTitle: p.MerchantTitle, Percent: p.Percent,
+				CurrencyKind: CurrencyUnknown, ValidTo: p.ValidTo,
+				Status: PartnerStatus(onDate, p.ValidFrom, p.ValidTo, p.EndedAt),
+			}
+			if p.CurrencyKind.Valid {
+				chip.CurrencyKind = CurrencyKind(p.CurrencyKind.CashbackCurrencyKind)
+			}
+			oc.Partners = append(oc.Partners, chip)
+		}
 		res.Clients = append(res.Clients, oc)
 	}
 	return res, nil
 }
 
-// LookupResultView answers S3, with partner offers as an unranked footnote
-// (matched by merchant/notes text against the category title).
+// LookupResultView answers S3. Partner offers rank since партнёрки v2
+// (2026-08-06): a canonical-scoped/hinted партнёрка enters Ranked as
+// kind=partner; the legacy substring footnote survives only for rows
+// without a canonical, until their owner maps them.
 type LookupResultView struct {
 	Category  db.CanonicalCategory
-	Ranked    []LookupEntry    // regular + super + special, marked by kind (amendment 2026-07-27)
+	Ranked    []LookupEntry    // regular + super + special + partner, marked by kind
 	Fallback  []LookupEntry    // selected «За все покупки» — pays when nothing ranks
-	Available []AvailableEntry // S3b: offered-but-unselected rows with verdicts
-	Partner   []db.ListPartnerOffersForUserRow
+	Available []AvailableEntry // S3b: offered-but-unselected rows still pickable
+	Blocked   []AvailableEntry // offered-but-unselected rows this period can no longer take
+	// FriendAvailable is the same «в меню, но не выбрано» on a friend's
+	// shared card. It reaches the row expansion, which is where the per-bank
+	// picture lives — the collapsed row says it with a dimmed logo in the
+	// stack rather than a sentence.
+	FriendAvailable []AvailableEntry
+	Partner         []db.ListPartnerOffersForUserRow
+}
+
+// partnerEntryOf turns one partner_offer row into a rankable entry. Caps
+// stay on the row's own fields (cap bounds the payout in the offer's OWN
+// currency); nil currency lands in the unknown group, honestly last.
+func partnerEntryOf(p db.ListPartnerOffersForUserRow) LookupEntry {
+	e := LookupEntry{
+		BankName:        p.BankName,
+		RawTitle:        p.MerchantTitle,
+		Percent:         p.Percent,
+		CurrencyKind:    CurrencyUnknown,
+		Kind:            OfferPartner,
+		Period:          PartnerPeriod(p.ValidFrom, p.ValidTo),
+		OfferCapValue:   p.CapValue,
+		PartnerID:       p.ID,
+		PartnerScope:    PartnerScope(p.ScopeKind),
+		NeedsActivation: p.RequiresActivation && p.ActivatedAt == nil,
+	}
+	if p.CurrencyKind.Valid {
+		e.CurrencyKind = CurrencyKind(p.CurrencyKind.CashbackCurrencyKind)
+	}
+	if e.CurrencyKind == CurrencyPoints && p.PointsLabel != nil {
+		e.PointsLabel = *p.PointsLabel
+	}
+	if p.BankClientID != nil {
+		e.ClientID = *p.BankClientID
+	}
+	if p.HolderLabel != nil {
+		e.HolderLabel = *p.HolderLabel
+		e.ClientLabel = *p.HolderLabel
+	}
+	return e
+}
+
+// alivePartner: not ended by the user. The date filter itself is the
+// ranking's period check (PartnerPeriod covers open bounds).
+func alivePartner(p db.ListPartnerOffersForUserRow) bool {
+	return p.EndedAt == nil
 }
 
 func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug string, onDate time.Time) (LookupResultView, error) {
@@ -1059,6 +1500,18 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 		return LookupResultView{}, err
 	}
 	entries = append(entries, friendEntries...)
+	// Партнёрки of this canonical rank too (v2): merchant-scoped ones carry
+	// their scope so the UI states «только в „…“» — ranked, but marked.
+	partners, err := s.Q.ListPartnerOffersForUser(ctx, userID)
+	if err != nil {
+		return LookupResultView{}, err
+	}
+	for _, p := range partners {
+		if !alivePartner(p) || p.CanonicalCategoryID == nil || *p.CanonicalCategoryID != cat.ID {
+			continue
+		}
+		entries = append(entries, partnerEntryOf(p))
+	}
 	ranked := RankActiveSelections(onDate, entries)
 
 	// S3b «Можно выбрать»: menu rows of this category sitting in an active
@@ -1070,7 +1523,7 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 			regCount[o.OfferPeriodID]++
 		}
 	}
-	var available []AvailableEntry
+	var available, blocked []AvailableEntry
 	for _, o := range all {
 		if o.Selected || o.CanonicalCategoryID == nil || *o.CanonicalCategoryID != cat.ID {
 			continue
@@ -1083,18 +1536,24 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 		if max == nil {
 			max = o.MaxCategories
 		}
-		available = append(available, AvailableEntry{
-			Entry:   entryOf(o),
-			OfferID: o.CategoryOfferID,
-			Verdict: AssessAvailability(AvailabilityCheck{
-				Kind:                 kind,
-				Policy:               MidPeriodAddPolicy(o.MidPeriodAdd),
-				HasRegularSelection:  regCount[o.OfferPeriodID] > 0,
-				MaxCategories:        max,
-				RegularSelectedCount: regCount[o.OfferPeriodID],
-			}),
-			Activation: ActivationKind(o.Activation),
+		verdict := AssessAvailability(AvailabilityCheck{
+			Kind:                 kind,
+			Policy:               MidPeriodAddPolicy(o.MidPeriodAdd),
+			HasRegularSelection:  regCount[o.OfferPeriodID] > 0,
+			MaxCategories:        max,
+			RegularSelectedCount: regCount[o.OfferPeriodID],
 		})
+		row := AvailableEntry{
+			Entry:      entryOf(o),
+			OfferID:    o.CategoryOfferID,
+			Verdict:    verdict,
+			Activation: ActivationKind(o.Activation),
+		}
+		if !verdict.Pickable() {
+			blocked = append(blocked, row)
+			continue
+		}
+		available = append(available, row)
 	}
 
 	// «За все покупки» answers the lookup when nothing ranks — and is worth
@@ -1108,13 +1567,14 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 	fb := RankActiveSelections(onDate, fallbackEntries(all, allPurposesID, &catID, entryOf))
 	fallback := fb.Ranked
 
-	partners, err := s.Q.ListPartnerOffersForUser(ctx, userID)
-	if err != nil {
-		return LookupResultView{}, err
-	}
+	// Legacy footnote — only canonical-less партнёрки still substring-match
+	// here (deprecated: mapping the row promotes it into Ranked above).
 	var footnote []db.ListPartnerOffersForUserRow
 	needle := NormalizeTitle(cat.TitleRu)
 	for _, p := range partners {
+		if !alivePartner(p) || p.CanonicalCategoryID != nil {
+			continue
+		}
 		if p.ValidFrom != nil && dateOnly(onDate).Before(dateOnly(*p.ValidFrom)) {
 			continue
 		}
@@ -1129,10 +1589,45 @@ func (s *Service) Lookup(ctx context.Context, userID uuid.UUID, categorySlug str
 			footnote = append(footnote, p)
 		}
 	}
+	friendAvail, err := s.friendAvailableByCategory(ctx, userID, onDate)
+	if err != nil {
+		return LookupResultView{}, err
+	}
 	return LookupResultView{
 		Category: cat, Ranked: ranked.Ranked,
-		Fallback: fallback, Available: RankAvailable(available), Partner: footnote,
+		Fallback: fallback, Available: RankAvailable(available), Blocked: RankAvailable(blocked),
+		FriendAvailable: RankAvailable(friendAvail[cat.ID]), Partner: footnote,
 	}, nil
+}
+
+// MatchPartnerOffers answers the точка продаж: alive offers whose merchant
+// title (or notes) match the queried name, normalized both directions —
+// honest name-based matching, never presented as a merchant link (the POS
+// base is import-owned and per-location; a FK would be false precision).
+func (s *Service) MatchPartnerOffers(ctx context.Context, userID uuid.UUID, query string, onDate time.Time) ([]LookupEntry, error) {
+	if strings.TrimSpace(query) == "" {
+		return nil, nil
+	}
+	partners, err := s.Q.ListPartnerOffersForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	needle := NormalizeTitle(query)
+	var entries []LookupEntry
+	for _, p := range partners {
+		if !alivePartner(p) {
+			continue
+		}
+		hay := NormalizeTitle(p.MerchantTitle)
+		if p.Notes != nil {
+			hay += " " + NormalizeTitle(*p.Notes)
+		}
+		if !strings.Contains(hay, needle) && !strings.Contains(needle, NormalizeTitle(p.MerchantTitle)) {
+			continue
+		}
+		entries = append(entries, partnerEntryOf(p))
+	}
+	return RankActiveSelections(onDate, entries).Ranked, nil
 }
 
 func notFound(err error) error {
@@ -1145,4 +1640,240 @@ func notFound(err error) error {
 func isPgCode(err error, code string) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == code
+}
+
+// MCCBoard is the exact answer for one code (10b variant 3, 2026-08-27):
+// every entry got here through a bank's OWN category holding the code —
+// bank_category_mcc membership — never through a canonical guess. Banks
+// without ingested MCC memberships fall to Base («Кешбек на всё»), honestly:
+// approximate ranking on an MCC-driven screen was rejected outright.
+// Exclusion lists («код исключён банком», 13c) are a recorded follow-up —
+// they need their own model and a per-bank rules ingestion first.
+type MCCBoard struct {
+	Ranked    []LookupEntry    // selected rows, own + friends', stacked супер folded in
+	Available []AvailableEntry // exact-matched menu rows still pickable («свободный слот»)
+	Blocked   []AvailableEntry // exact-matched menu rows this period can no longer take
+	// FriendAvailable is the same «в меню, но не выбрано» fact on a friend's
+	// shared card, and it is actionable in the way that matters here: the
+	// friend can still pick it if asked. Kept apart from Available because
+	// the viewer cannot pick it themselves — no offer id travels with it.
+	FriendAvailable []AvailableEntry
+	Base            []LookupEntry // clients whose only answer is the selected base row
+}
+
+// friendRowKey collapses a friend's same menu row across the two periods the
+// share window can span.
+type friendRowKey struct {
+	clientID int64
+	title    string
+}
+
+// LookupByMCC builds the board for one code on one date. Friends ride the
+// same exact filter over their shared rows — invariants 4 (no caps) and 8
+// (the share window) hold exactly as in friendEntriesByCategory.
+func (s *Service) LookupByMCC(ctx context.Context, userID uuid.UUID, code int16, onDate time.Time) (MCCBoard, error) {
+	var board MCCBoard
+	if s.MCCMemberships == nil {
+		return board, nil
+	}
+	members, err := s.MCCMemberships(ctx, userID, code)
+	if err != nil {
+		return board, err
+	}
+	// Two ways a menu row can be «the bank's category for this code».
+	//
+	// Exact: the row was entered through the picker and points at the catalog
+	// row (bank_category_id) that carries the code. That is the strong form
+	// and stays the primary one.
+	//
+	// By canonical, WITHIN THE SAME BANK: a row entered by title — a custom
+	// category, a bank whose catalog the picker had to fall back from, an
+	// import — has no catalog link, and requiring one made it invisible here
+	// no matter how well it mapped (report 2026-08-28: «for every PoS it
+	// showed no cards»). If the bank counts 5411 in its «Продукты», and the
+	// user's selected row IS «Продукты» by canonical identity, the bank's
+	// answer for that code is known. Staying inside one bank is what keeps
+	// this honest: it never borrows another bank's category set.
+	matched := make(map[int64]bool, len(members))
+	matchedCanon := make(map[int32]map[int64]bool)
+	for _, m := range members {
+		matched[m.BankCategoryID] = true
+		if m.CanonicalCategoryID == nil {
+			continue
+		}
+		if matchedCanon[m.BankID] == nil {
+			matchedCanon[m.BankID] = make(map[int64]bool)
+		}
+		matchedCanon[m.BankID][*m.CanonicalCategoryID] = true
+	}
+	// countsForCode reports whether this menu row is the bank's category for
+	// the looked-up code, by either route.
+	countsForCode := func(bankID int32, bankCategoryID, canonicalID *int64) bool {
+		if bankCategoryID != nil && matched[*bankCategoryID] {
+			return true
+		}
+		return canonicalID != nil && matchedCanon[bankID][*canonicalID]
+	}
+
+	offers, err := s.Q.ListUserOffers(ctx, userID)
+	if err != nil {
+		return board, err
+	}
+	regCount := make(map[int64]int) // offer_period_id → selected regular rows
+	for _, o := range offers {
+		if o.Selected && OfferKind(o.Kind) == OfferRegular {
+			regCount[o.OfferPeriodID]++
+		}
+	}
+
+	var entries []LookupEntry
+	var avail, blocked []AvailableEntry
+	covered := make(map[int64]bool) // client ids answering above the base fold
+	for _, o := range offers {
+		if !countsForCode(o.BankID, o.BankCategoryID, o.CanonicalCategoryID) {
+			continue
+		}
+		if !rowRange(o.PeriodStart, o.PeriodEnd).Contains(onDate) {
+			continue
+		}
+		if o.Selected {
+			entries = append(entries, entryOf(o))
+			covered[o.BankClientID] = true
+			continue
+		}
+		if OfferKind(o.Kind) == OfferSpecial {
+			continue
+		}
+		max := o.MaxCategoriesOverride
+		if max == nil {
+			max = o.MaxCategories
+		}
+		verdict := AssessAvailability(AvailabilityCheck{
+			Kind:                 OfferKind(o.Kind),
+			Policy:               MidPeriodAddPolicy(o.MidPeriodAdd),
+			HasRegularSelection:  regCount[o.OfferPeriodID] > 0,
+			MaxCategories:        max,
+			RegularSelectedCount: regCount[o.OfferPeriodID],
+		})
+		row := AvailableEntry{
+			Entry:      entryOf(o),
+			OfferID:    o.CategoryOfferID,
+			Verdict:    verdict,
+			Activation: ActivationKind(o.Activation),
+		}
+		if !verdict.Pickable() {
+			// The bank does count this code — in a category this period can
+			// no longer take. Shown apart, and deliberately NOT «covered»:
+			// the client's honest answer here stays its base row.
+			blocked = append(blocked, row)
+			continue
+		}
+		avail = append(avail, row)
+		covered[o.BankClientID] = true
+	}
+
+	friends, rows, err := s.sharedRows(ctx, userID)
+	if err != nil {
+		return board, err
+	}
+	if len(rows) > 0 {
+		window := FriendShareWindow(time.Now())
+		owner := make(map[int64]*SharedFriend)
+		for i := range friends {
+			for _, id := range friends[i].BankClientIDs {
+				owner[id] = &friends[i]
+			}
+		}
+		// The friend's own slot arithmetic decides whether an unpicked row of
+		// theirs is still takeable.
+		friendBest := make(map[friendRowKey]AvailableEntry)
+		friendRegCount := make(map[int64]int)
+		for _, r := range rows {
+			if r.Selected && OfferKind(r.Kind) == OfferRegular {
+				friendRegCount[r.OfferPeriodID]++
+			}
+		}
+		for _, r := range rows {
+			if !countsForCode(r.BankID, r.BankCategoryID, r.CanonicalCategoryID) {
+				continue
+			}
+			// Same conjunction the feed path uses (friends.go): the window
+			// bounds what may ever be shown, onDate picks the period being
+			// asked about. With the window alone a next-month row answered
+			// «what pays today», and an explicit ?date= moved the viewer's
+			// own rows while leaving the friend's where they were.
+			period := rowRange(r.PeriodStart, r.PeriodEnd)
+			if !period.Overlaps(window) || !period.Contains(onDate) {
+				continue
+			}
+			f := owner[r.BankClientID]
+			if f == nil {
+				continue
+			}
+			e := entryOf(db.ListUserOffersRow(r))
+			e.CapValue, e.CapPerCategory, e.OfferCapValue, e.CapScope = nil, nil, nil, ""
+			e.FriendName = f.DisplayName
+			e.FriendUsername = f.Username
+			if r.Selected {
+				entries = append(entries, e)
+				continue
+			}
+			// Unpicked, and the bank counts this code in it. Worth showing
+			// even though the viewer cannot act: asking the friend to pick it
+			// is the whole point of sharing a menu.
+			if OfferKind(r.Kind) == OfferSpecial {
+				continue
+			}
+			max := r.MaxCategoriesOverride
+			if max == nil {
+				max = r.MaxCategories
+			}
+			verdict := AssessAvailability(AvailabilityCheck{
+				Kind:                 OfferKind(r.Kind),
+				Policy:               MidPeriodAddPolicy(r.MidPeriodAdd),
+				HasRegularSelection:  friendRegCount[r.OfferPeriodID] > 0,
+				MaxCategories:        max,
+				RegularSelectedCount: friendRegCount[r.OfferPeriodID],
+			})
+			if !verdict.Pickable() {
+				continue // a dead end for them too — nothing to ask for
+			}
+			// The share window spans two months, so the same row can be
+			// unpicked in both this period and the next one. They are one
+			// fact to the viewer — «Марина может это выбрать» — and two rows
+			// differing only by a period the board never shows read as a
+			// duplicate. Keep the better offer per client and title.
+			key := friendRowKey{clientID: r.BankClientID, title: r.RawTitle}
+			if prev, seen := friendBest[key]; seen {
+				if cmpPercentDesc(e.Percent, prev.Entry.Percent) >= 0 {
+					continue
+				}
+			}
+			friendBest[key] = AvailableEntry{
+				Entry: e, Verdict: verdict, Activation: ActivationKind(r.Activation),
+			}
+		}
+
+		for _, row := range friendBest {
+			board.FriendAvailable = append(board.FriendAvailable, row)
+		}
+	}
+	// The viewer's own three lists are built from `offers` above and have
+	// nothing to do with sharing, so they are assigned outside the friends
+	// block — inside it, a viewer with no shared rows got an empty board.
+	board.Ranked = RankActiveSelections(onDate, entries).Ranked
+	board.Available = RankAvailable(avail)
+	board.Blocked = RankAvailable(blocked)
+	board.FriendAvailable = RankAvailable(board.FriendAvailable)
+
+	var allPurposesID *int64
+	if ap, err := s.Q.GetCanonicalCategoryBySlug(ctx, "all-purchases"); err == nil {
+		allPurposesID = &ap.ID
+	}
+	for _, e := range RankActiveSelections(onDate, fallbackEntries(offers, allPurposesID, nil, entryOf)).Ranked {
+		if !covered[e.ClientID] {
+			board.Base = append(board.Base, e)
+		}
+	}
+	return board, nil
 }

@@ -2,7 +2,7 @@
 // menus and selections per bank client (a person's relationship with one
 // bank — all of the client's cards share the selection), the constraint
 // helper, and the category-level lookup. Domain rules follow
-// docs/specs/cashback.md (private meta-repo); invariant numbers in comments
+// docs/specs/cashback.md; invariant numbers in comments
 // refer to its "Invariants" section.
 package cashback
 
@@ -57,7 +57,54 @@ const (
 	OfferRegular OfferKind = "regular"
 	OfferSuper   OfferKind = "super"
 	OfferSpecial OfferKind = "special"
+	// OfferPartner marks a partner_offer entry inside a ranking (партнёрки
+	// v2, 2026-08-06). NOT a cashback_offer_kind enum label — partner offers
+	// live in their own table; the kind exists so ranked lists can carry
+	// them uniformly. Like special: never a slot, never a comparison
+	// candidate, never stacked, never S3b; unlike special it has no
+	// per-week condition — the scope (merchant/category) is the condition.
+	OfferPartner OfferKind = "partner"
 )
+
+// PartnerScope mirrors partner_offer.scope_kind: where the offer applies.
+// merchant — one магазин/сервис, matched by normalized name (the canonical
+// category is an optional hint); category — the whole canonical category.
+type PartnerScope string
+
+const (
+	PartnerScopeMerchant PartnerScope = "merchant"
+	PartnerScopeCategory PartnerScope = "category"
+)
+
+// PartnerStatus derives the lifecycle chip: ended (by the user — a dated
+// event, valid_to untouched) wins over the calendar; then scheduled /
+// expired / active come from the validity bounds, nil = open.
+func PartnerStatus(now time.Time, validFrom, validTo, endedAt *time.Time) string {
+	switch {
+	case endedAt != nil:
+		return "ended"
+	case validFrom != nil && dateOnly(now).Before(dateOnly(*validFrom)):
+		return "scheduled"
+	case validTo != nil && dateOnly(now).After(dateOnly(*validTo)):
+		return "expired"
+	default:
+		return "active"
+	}
+}
+
+// PartnerPeriod turns the nullable validity bounds into the inclusive
+// DateRange the rankers filter on; an open bound extends to the calendar's
+// edge so «бессрочно» offers stay active on any lookup date.
+func PartnerPeriod(validFrom, validTo *time.Time) DateRange {
+	r := DateRange{Start: Date(1, time.January, 1), End: Date(9999, time.December, 31)}
+	if validFrom != nil {
+		r.Start = dateOnly(*validFrom)
+	}
+	if validTo != nil {
+		r.End = dateOnly(*validTo)
+	}
+	return r
+}
 
 // PeriodType mirrors cashback_program.period_type.
 type PeriodType string
@@ -322,6 +369,7 @@ type LookupEntry struct {
 	HolderLabel    string // держатель («Мама»); empty = the owner
 	BankName       string
 	RawTitle       string // the bank's own menu title — names the mechanic on marked super/special rows («Пятница»)
+	Emoji          string // the row's icon: catalog row's, else canonical's; "" when neither
 	Percent        *decimal.Decimal
 	CurrencyKind   CurrencyKind
 	Kind           OfferKind
@@ -344,6 +392,14 @@ type LookupEntry struct {
 	// (invariant 4 — caps never serialize to a viewer).
 	FriendName     string
 	FriendUsername string
+	// PartnerID/PartnerScope/NeedsActivation mark a партнёрка entry (kind =
+	// OfferPartner): the source row's id, where it applies (merchant scope in
+	// a category ranking carries the «только в …» caveat), and whether the
+	// bank still wants an activation tap — it ranks anyway, with a warning
+	// (the S3b philosophy: activating is an on-the-spot action).
+	PartnerID       int64
+	PartnerScope    PartnerScope
+	NeedsActivation bool
 }
 
 // MidPeriodAddPolicy mirrors cashback_program.mid_period_add (2026-07-16):
@@ -416,6 +472,21 @@ func AssessAvailability(c AvailabilityCheck) AvailabilityVerdict {
 	}
 }
 
+// Pickable reports whether the row can still become a selection. slots_full
+// and locked are dead ends: no bank lets a chosen category be unpicked
+// mid-period, so «free a slot first» is never an action the user can take
+// (2026-08-07).
+//
+// Since 2026-08-28 that governs the call to action, not visibility: the
+// lookup boards serve blocked rows in a section of their own — «в меню, но
+// не выбрано» — because «этот банк считает код в своей категории» is worth
+// knowing even when the period is settled, and a board that hides it reads
+// as broken. The feed still drops them: its row advertises a rate the user
+// can go and take.
+func (v AvailabilityVerdict) Pickable() bool {
+	return v != AvailSlotsFull && v != AvailLocked
+}
+
 // AvailableEntry is one S3b row: the menu offer, its verdict and the
 // program's activation timing (next_day must be warned about).
 type AvailableEntry struct {
@@ -425,9 +496,10 @@ type AvailableEntry struct {
 	Activation ActivationKind
 }
 
-// verdictOrder: actionable first (free, paid, unknown are things the user can
-// still do), blocked after (slots_full before locked — freeing a slot is an
-// action, a one-shot lock is final).
+// verdictOrder: free first, then paid, then unknown, then the blocked pair
+// (slots_full, locked). Blocked rows are ranked in a list of their own, but
+// the shared order keeps a mixed slice honest — nothing that cannot be
+// picked ever sorts above something that can, whatever its percent.
 func verdictOrder(v AvailabilityVerdict) int {
 	switch v {
 	case AvailFree:
@@ -436,10 +508,8 @@ func verdictOrder(v AvailabilityVerdict) int {
 		return 1
 	case AvailUnknown:
 		return 2
-	case AvailSlotsFull:
+	default: // AvailSlotsFull, AvailLocked
 		return 3
-	default: // AvailLocked
-		return 4
 	}
 }
 
@@ -602,6 +672,25 @@ func RankActiveSelections(onDate time.Time, entries []LookupEntry) LookupResult 
 	return res
 }
 
+// SplitFeedWinner applies the feed's friend rule to one ranked category:
+// a friend appears in the row only when ranking put a friend's card first —
+// they win outright or fill a hole the viewer has no card for. The own best
+// is always returned alongside, so hiding friends (or a friend revoking the
+// share) falls the row back to the own winner instead of dropping it.
+// Both nil ⇔ the ranked list is empty.
+func SplitFeedWinner(ranked []LookupEntry) (own, friend *LookupEntry) {
+	for i := range ranked {
+		if ranked[i].FriendName == "" {
+			own = &ranked[i]
+			break
+		}
+	}
+	if len(ranked) > 0 && ranked[0].FriendName != "" {
+		friend = &ranked[0]
+	}
+	return own, friend
+}
+
 // homoglyphs maps the Latin letters that are pixel-identical to Cyrillic
 // ones onto their Cyrillic twins. Real Альфа menu titles mix them into
 // Cyrillic words («Кафе и pестораны», «Цвeты»). Applied to both sides of
@@ -648,4 +737,84 @@ func SuggestCanonical(rawTitle string, aliases []Alias) (int64, bool) {
 		}
 	}
 	return 0, false
+}
+
+// PeriodFill is one recorded offer period plus how many menu rows it holds —
+// the two facts «is this month done?» needs.
+type PeriodFill struct {
+	Range  DateRange
+	Offers int
+}
+
+// PendingMenu answers what CB-09.b marks: which period this bank client still
+// has to fill, given today. Nil means nothing is pending.
+//
+// Two windows count as «пора» (owner 2026-08-27):
+//
+//   - the period covering today — a forgotten month is still worth filling,
+//     because a bank that allows mid-period adds (Альфа) has not taken the
+//     month away yet, and even where it has, the record is what the lookup
+//     answers from;
+//   - the next period, once the bank has opened its selection — the 25th-of-
+//     the-month ритуал. «Opened» is day-of-month ≥ selection_opens_day within
+//     the month the current period ENDS in, which is the same thing for a
+//     monthly program and the honest generalisation for a quarterly one.
+//
+// «Filled» means the period exists AND holds at least one menu row: an empty
+// period is «начал и бросил», exactly the case the mark exists for (owner
+// 2026-08-27). A program with no known opens-day (Газпромбанк) never reports
+// the next period — the app does not guess a date it was never told.
+func PendingMenu(now time.Time, periodType PeriodType, opensDay *int32, filled []PeriodFill) *DateRange {
+	current := periodRangeAt(now, periodType)
+	if current == nil {
+		return nil // week/rolling: no calendar rule to derive a window from
+	}
+	if !isFilled(*current, filled) {
+		return current
+	}
+	if opensDay == nil {
+		return nil
+	}
+	// The window opens inside the month the current period ends in — the
+	// current month for a monthly program, the quarter's last month for МКБ.
+	if current.End.Day() < int(*opensDay) || dateOnly(now).Day() < int(*opensDay) ||
+		dateOnly(now).Month() != current.End.Month() {
+		return nil
+	}
+	next := periodRangeAt(current.End.AddDate(0, 0, 1), periodType)
+	if next == nil || isFilled(*next, filled) {
+		return nil
+	}
+	return next
+}
+
+// periodRangeAt returns the calendar range of the given type containing t.
+// Only the types with a calendar rule answer; week/rolling return nil rather
+// than a guess.
+func periodRangeAt(t time.Time, periodType PeriodType) *DateRange {
+	d := dateOnly(t)
+	switch periodType {
+	case PeriodCalendarMonth:
+		start := Date(d.Year(), d.Month(), 1)
+		return &DateRange{Start: start, End: start.AddDate(0, 1, -1)}
+	case PeriodQuarter:
+		firstMonth := time.Month((int(d.Month())-1)/3*3 + 1)
+		start := Date(d.Year(), firstMonth, 1)
+		return &DateRange{Start: start, End: start.AddDate(0, 3, -1)}
+	default:
+		return nil
+	}
+}
+
+// isFilled reports whether a recorded period overlaps the calendar range and
+// carries menu rows. Overlap rather than equality: a bank's own period may be
+// shifted from the calendar month (Ozon's расчётный период), and the question
+// is «is this stretch of time recorded», not «does it match to the day».
+func isFilled(r DateRange, filled []PeriodFill) bool {
+	for _, f := range filled {
+		if f.Offers > 0 && f.Range.Overlaps(r) {
+			return true
+		}
+	}
+	return false
 }

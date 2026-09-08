@@ -44,15 +44,33 @@ export function useMe() {
 // HttpOnly; the API answer is the only source of truth). The interrupted
 // location rides along as router state — in memory only, never storage —
 // so an invite link (/friends/join/:token) survives the login round-trip.
+// The gate's own pending and error states render INSTEAD of the Shell, so
+// they are the one place in the app that has to clear the status bar itself:
+// a standalone PWA draws edge-to-edge (viewport-fit=cover, index.html) and an
+// unpadded page starts underneath the clock. The Shell pads its <main> the
+// same way; these two never reached it.
+function OutsideShell({ children }: { children: ReactNode }) {
+  return <div className="mx-auto max-w-md px-4 pt-[max(env(safe-area-inset-top),1rem)]">{children}</div>;
+}
+
 export function RequireAuth({ children }: { children: ReactNode }) {
   const me = useMe();
   const location = useLocation();
-  if (me.isPending) return <Spinner />;
+  if (me.isPending)
+    return (
+      <OutsideShell>
+        <Spinner />
+      </OutsideShell>
+    );
   if (me.isError) {
     if (me.error instanceof ApiError && me.error.status === 401) {
       return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
     }
-    return <ErrMsg error={me.error} />;
+    return (
+      <OutsideShell>
+        <ErrMsg error={me.error} />
+      </OutsideShell>
+    );
   }
   return children;
 }

@@ -154,3 +154,29 @@ func UserID(ctx context.Context) uuid.UUID {
 	id, _ := ctx.Value(ctxKey{}).(uuid.UUID)
 	return id
 }
+
+// Role mirrors the user_role enum (00028). The hierarchy is linear —
+// admin passes every moderator gate (roles-moderation invariant 5).
+type Role string
+
+const (
+	RoleUser      Role = "user"
+	RoleModerator Role = "moderator"
+	RoleAdmin     Role = "admin"
+)
+
+// CanModerate reports whether the role passes a moderator gate.
+func (r Role) CanModerate() bool {
+	return r == RoleModerator || r == RoleAdmin
+}
+
+// RoleOf reads the user's CURRENT role — per request, never from the
+// session, so a demotion takes effect on the demoted user's next request
+// without a re-login (roles-moderation invariant 4).
+func (s *Service) RoleOf(ctx context.Context, id uuid.UUID) (Role, error) {
+	u, err := s.Q.GetUserByID(ctx, id)
+	if err != nil {
+		return RoleUser, err
+	}
+	return Role(u.Role), nil
+}

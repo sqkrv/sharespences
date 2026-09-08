@@ -1,3 +1,7 @@
+import type { LookupEntry, Schemas } from "./api/client";
+
+type CategoryGroup = Schemas["OverviewCategoryDTO"];
+
 // Small display helpers shared by screens. Domain language is Russian.
 
 // Latin lowercase letters that are pixel-identical to Cyrillic ones — real
@@ -95,27 +99,6 @@ export function merchantMonogram(title: string): string {
   return title.trim()[0]?.toUpperCase() ?? "?";
 }
 
-// «Можно ли ещё добавить категорию в идущий период?» — the program policy
-// from migration 00008, which is what S3b verdicts key on. This replaced the
-// old selection_mode chip: atomic|incremental described how the picker
-// submits, not whether you may still pick, and on Яндекс Пэй the two say
-// opposite things (incremental, yet locked after the first confirm).
-// Returns "" when there is nothing worth saying.
-export function midPeriodAddNote(policy?: string, activation?: string): string {
-  const add =
-    policy === "allowed"
-      ? "можно добавить"
-      : policy === "locked_after_first"
-        ? "добавить нельзя"
-        : policy === "paid"
-          ? "платно"
-          : "";
-  // next_day only matters where a pick is still possible — «активируется
-  // завтра» is advice about a purchase you are about to make.
-  const late = activation === "next_day" && policy !== "locked_after_first" ? "со след. дня" : "";
-  return [add, late].filter(Boolean).join(", ");
-}
-
 // Static cap reference, e.g. «лимит 1500₽/кат, всего 3000₽» (Озон) or
 // «лимит 7000₽» (Альфа-Смарт). Caps are configured values, not remaining.
 // A per-offer cap (ВТБ «Кешбэк до N ₽» rows) wins over the tier cap.
@@ -145,27 +128,23 @@ export function fmtPercent(p?: string): string {
   return p != null ? `${p}%` : "—%";
 }
 
-const MONTHS_NOM = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
-const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+export const MONTHS_NOM = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+export const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 
 // «июль 2026» — the overview header chip.
 export function fmtMonthYear(d = new Date()): string {
   return `${MONTHS_NOM[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-// «Выбор категорий на август откроется **25 июля**» — passive display of
-// the program's selection_opens_day (spec: dates shown, never pushed).
-// Returns the date part separately: the design renders it bold.
-export function opensStripParts(day: number, now = new Date()): { text: string; date: string } {
-  let opens = new Date(now.getFullYear(), now.getMonth(), day);
-  if (opens < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
-    opens = new Date(now.getFullYear(), now.getMonth() + 1, day);
-  }
-  const target = new Date(opens.getFullYear(), opens.getMonth() + 1, 1);
-  return {
-    text: `Выбор категорий на ${MONTHS_NOM[target.getMonth()]} откроется`,
-    date: `${day} ${MONTHS_GEN[opens.getMonth()]}`,
-  };
+
+// «III квартал» — a quarter-aligned period named on the bank card (2e): a
+// three-month menu shown under a month chip needs saying why it spans the
+// quarter (МКБ). Non-quarter ranges return "".
+export function quarterNote(start?: string, end?: string): string {
+  if (!start || !end || start.slice(0, 4) !== end.slice(0, 4)) return "";
+  const sm = Number(start.slice(5, 7));
+  if (sm % 3 !== 1 || Number(end.slice(5, 7)) !== sm + 2) return "";
+  return `${["I", "II", "III", "IV"][(sm - 1) / 3]} квартал`;
 }
 
 export const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
@@ -201,9 +180,102 @@ export function monthNameOf(iso: string): string {
   return MONTHS_NOM[Number(iso.slice(5, 7)) - 1];
 }
 
+// Genitive month of an ISO date («августа») — «Меню августа» headlines.
+export function monthGenOf(iso: string): string {
+  return MONTHS_GEN[Number(iso.slice(5, 7)) - 1];
+}
+
+// Months (0-based) the recognizer's verbatim period_texts hint at: «на
+// август», «май», «до 31.07», «01.08–31.08». Used only to WARN when the
+// screenshots disagree with the month being filled (3b) — never to change
+// it silently; the strings stay unparsed on the server by design.
+export function parseMonthHints(texts: string[]): number[] {
+  const out = new Set<number>();
+  for (const raw of texts) {
+    const t = raw.toLowerCase();
+    MONTHS_NOM.forEach((nom, i) => {
+      // One stem covers «август/августа/августе»; ь-months stem the same
+      // way («сентябр…»); «май» declines off a 2-letter stem, so its three
+      // forms are spelled out rather than matching «март» by accident.
+      const stems = nom === "май" ? ["май", "мая", "мае"] : [nom.endsWith("ь") ? nom.slice(0, -1) : nom];
+      if (stems.some((s) => t.includes(s))) out.add(i);
+    });
+    for (const m of t.matchAll(/\b\d{1,2}\.(\d{2})(?:\.\d{2,4})?\b/g)) {
+      const mm = Number(m[1]);
+      if (mm >= 1 && mm <= 12) out.add(mm - 1);
+    }
+  }
+  return [...out];
+}
+
+// «1 скрин / 2 скрина / 5 скринов» — the Russian numeral triad.
+export function plural(n: number, one: string, few: string, many: string): string {
+  const oneCase = n % 10 === 1 && n % 100 !== 11;
+  const fewCase = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
+  return oneCase ? one : fewCase ? few : many;
+}
+
+// Human labels of point_of_sale.type — shared by the search rows and the
+// «О точке» card.
+// Provenance mark of a точка (origin, 00027). mcc-codes.ru rows carry the
+// blanket license credit and get NO mark; everything people wrote here is
+// marked, which is what keeps that credit exactly true on a mixed base.
+export const POS_ORIGIN_MARK: Record<string, string> = {
+  user_manual: "от пользователей",
+  user_transaction: "от пользователей",
+  admin: "Sharespences",
+};
+
+export const POS_TYPE_RU: Record<string, string> = {
+  offline: "офлайн-точка",
+  online: "онлайн",
+  app: "приложение",
+  other: "другое",
+};
+
 // Category icon fallback — a canonical category may carry no emoji yet
 // (custom rows, un-curated additions); the icon column still aligns.
 export const FALLBACK_EMOJI = "🏷️";
+
+// S3b verdict copy — fact-based states, never guesses (spec S3b). Shared by
+// the feed's dashed rows, the lookup's «Можно выбрать» section and the
+// lookup boards' «В меню, но не выбрано» block. The commonest verdict —
+// free, right now — says nothing at all: the dashed style already means
+// «можно выбрать», so only the exceptions get words (feedback 2026-08-25).
+// The two blocked verdicts do carry words: their rows are dim and reasonless
+// otherwise (2026-08-28; the feed still never receives them).
+export function verdictNote(e: { verdict: string; kind?: string; activation?: string }): string {
+  const parts: string[] = [];
+  switch (e.verdict) {
+    case "free":
+      if (e.kind === "super") parts.push("барабан — не занимает слот");
+      break;
+    case "paid":
+      parts.push("платно");
+      break;
+    case "slots_full":
+      parts.push("слоты заняты");
+      break;
+    case "locked":
+      parts.push("выбор закрыт");
+      break;
+    default:
+      parts.push("правила неизвестны");
+  }
+  // «активация завтра» is advice for a pick still ahead of you — a blocked
+  // row has none, so the note would only muddle its reason.
+  if (e.activation === "next_day" && e.verdict !== "slots_full" && e.verdict !== "locked") parts.push("активация завтра");
+  return parts.join(" · ");
+}
+
+// «Карты друзей» in rankings (friends-sharing FR-S4) — persisted under the
+// policy-listed lookup-friends key (privacy.html §3.2). Default on: the
+// shared card is the feature's whole point. The feed reads the same key —
+// with friends off a row falls back to the own winner, it never vanishes.
+export const FRIENDS_KEY = "lookup-friends";
+export function initWithFriends(): boolean {
+  return localStorage.getItem(FRIENDS_KEY) !== "off";
+}
 
 // Public status page (Uptime Kuma, deliberately on separate infrastructure —
 // it has to answer when sharespences.com does not). Linked from the offline
@@ -240,4 +312,44 @@ export function unitWord(unit: string, n: number): string {
   if (t === 1 && h !== 11) return forms[0];
   if (t >= 2 && t <= 4 && (h < 12 || h > 14)) return forms[1];
   return forms[2];
+}
+
+export function currencyRank(kind?: string): number {
+  return kind === "rub" ? 0 : kind === "points" ? 1 : 2;
+}
+
+export function pctNum(p?: string | null): number {
+  return p != null ? parseFloat(p) : -1;
+}
+
+// The row's displayed winner: the best rate the row can honestly show —
+// 9a's own rule, «передний логотип — банк с максимальным процентом, ему и
+// принадлежит цифра». A friend's 9% must not front a row that has a
+// still-pickable 10% below it (feedback 2026-08-28). Ties resolve by the
+// least action needed: an own selected card already pays, a friend's needs
+// asking, a «свободный слот» needs picking first.
+export function winnerOf(g: CategoryGroup, friendsOn: boolean): { entry: LookupEntry; state: "friend" | "own" | "available" | "friend-available" } | null {
+  const candidates: { entry: LookupEntry; state: "friend" | "own" | "available"; prio: number }[] = [];
+  if (g.best) candidates.push({ entry: g.best, state: "own", prio: 0 });
+  if (friendsOn && g.friend_best) candidates.push({ entry: g.friend_best, state: "friend", prio: 1 });
+  if (g.available) candidates.push({ entry: g.available, state: "available", prio: 2 });
+  if (candidates.length === 0) {
+    // Nothing of the viewer's own, and no friend has picked here — but a
+    // friend still holds the category unpicked. It fronts the row rather than
+    // dropping it, and only here: a rate nobody has taken must never outrank
+    // a card that already pays.
+    if (friendsOn && g.friend_available) return { entry: g.friend_available, state: "friend-available" };
+    return null;
+  }
+  // Currency first, exactly as the server ranks and as the row expansion
+  // now sorts: a friend's 9% в баллах must not headline a row whose list
+  // opens on a 4% в рублях. Percent still decides inside a currency, and the
+  // prio tiebreak still favours the card that needs the least action.
+  candidates.sort(
+    (a, b) =>
+      currencyRank(a.entry.currency_kind) - currencyRank(b.entry.currency_kind) ||
+      pctNum(b.entry.percent) - pctNum(a.entry.percent) ||
+      a.prio - b.prio,
+  );
+  return candidates[0];
 }

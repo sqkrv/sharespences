@@ -33,6 +33,7 @@ const sberAsOf = "as of 2026-07-28, официальные Правила «Сб
 const ozonUltraAsOf = "as of 2026-05, first-party finance.ozon.ru (промо Ultra + блог)"
 
 const otpAsOf = "as of 2026-09, официальная инструкция ОТП по МСС (матрица категорий × уровней привилегий)"
+const gpbAsOf = "as of 2026-08-01, официальные Правила ПЛ Газпромбанка (пп. 18–19)"
 const ubrrAsOf = "as of 2026-08-01, официальные Правила ПЛ «Моя жизнь» (пп. 3.2–3.12 + Приложение №1)"
 const sovcomAsOf = "as of 2026-04-21 (перекройка ПЛ и запуск подписки «Оптима»)"
 const mtsAsOf = "as of 2026-08"
@@ -162,8 +163,14 @@ var programs = []program{
 		currencyKind: "points", pointsLabel: "Баллы Плюс",
 		// rules: base selection is one-shot; the incremental feel comes from
 		// GRANTED extra categories (мини-игра/Свои Плюсы), not from re-picking.
+		// No opensDay: п. 5.3.4 dates the window to the offer itself — «с момента
+		// предложения ему Категорий … на следующий календарный месяц до истечения
+		// календарного месяца», once per month. «ему» is doing real work there:
+		// the set is rolled out per client rather than to everyone at once, which
+		// is why observation finds a 26th–1st band (28th–29th most often) instead
+		// of a date, and why users without it are told to look again tomorrow.
 		midPeriodAdd: "locked_after_first", activation: "immediate",
-		notes: asOf + "; баллы требуют активной подписки Яндекс Плюс; колесо фортуны — record-only",
+		notes: asOf + "; набор категорий на следующий месяц появляется в самом конце текущего — по наблюдениям 2023–2026 не раньше 26 числа, чаще 28–29-го — и раскатывается на клиентов не одновременно, так что у части он появляется позже остальных; баллы требуют активной подписки Яндекс Плюс; колесо фортуны — record-only",
 		tiers: []tier{
 			// 5 slots. The menu size varies (12–14) and is NOT the slot count.
 			{name: "Стандартный", capValue: "10000", capScope: "total", maxCategories: 5, notes: asOf + "; 5 слотов"},
@@ -171,9 +178,13 @@ var programs = []program{
 	},
 	{
 		bank: "Газпромбанк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
-		currencyKind: "rub",
-		midPeriodAdd: "unknown", activation: "unknown",
-		notes: "факты не собраны (knowledge stub, 2026-07); period/mode/currency — предположения",
+		currencyKind: "rub", opensDay: 25,
+		// п. 18: the window opens on the 25th of the preceding month and stays
+		// open «до окончания последних календарных суток» of the period itself.
+		// п. 19: a category chosen for the current period counts from the moment
+		// it is switched on, one chosen ahead from 00:00 on the 1st.
+		midPeriodAdd: "allowed", activation: "immediate",
+		notes: gpbAsOf + "; подключение категорий с 25 числа предыдущего месяца и до конца текущего Отчетного периода (п. 18); выбранная на текущий период категория действует с момента подключения, выбранная заранее — с 1 числа (п. 19)",
 		tiers: []tier{
 			{name: "Стандартный", capScope: "total", notes: "лимиты неизвестны (null = unknown)"},
 		},
@@ -181,8 +192,13 @@ var programs = []program{
 	{
 		bank: "МКБ", name: "Кэшбэк", periodType: "quarter", selectionMode: "atomic",
 		currencyKind: "points", pointsLabel: "баллы МКБ",
-		midPeriodAdd: "paid", activation: "next_day",
-		notes: mkbAsOf + "; баллами возвращают стоимость покупок прошлого месяца от 1 ₽ (1 б = 1 ₽), выплата до 20 числа; бонусируются покупки от 300 ₽ (кроме соц. карты); платная смена категории посреди квартала, активация на следующий день; ⚠️ с 30.06.25 банк следит, чтобы на повышенные категории приходилось не более 70% всех покупок, иначе ПЛ урезают",
+		// п. 3.4: a category chosen for the NEXT period runs from its first day,
+		// one chosen inside the current period «действует с момента выбора» —
+		// so activation is immediate, not next-day as summaries had it. The
+		// opening has no fixed day: it is «дата установления Банком Категорий»,
+		// observed landing on the 25th of the month before each quarter.
+		midPeriodAdd: "paid", activation: "immediate",
+		notes: mkbAsOf + "; баллами возвращают стоимость покупок прошлого месяца от 1 ₽ (1 б = 1 ₽), выплата до 20 числа; бонусируются покупки от 300 ₽ (кроме соц. карты); платная смена категории посреди квартала (п. 3.5), выбранная внутри квартала категория действует с момента выбора; ⚠️ с 30.06.25 банк следит, чтобы на повышенные категории приходилось не более 70% всех покупок, иначе ПЛ урезают",
 		tiers: []tier{
 			// Выгодный and Эксклюзивный are 2025-05 rungs that no 2026 source
 			// mentions. They are kept rather than deleted because bank_client rows may
@@ -205,13 +221,13 @@ var programs = []program{
 		// distinct (slots, cap) shapes; rungs sharing a shape are listed in the
 		// notes rather than duplicated as rows.
 		bank: "СберБанк", name: "СберСпасибо", periodType: "calendar_month", selectionMode: "atomic",
-		currencyKind: "points", pointsLabel: "бонусы СберСпасибо",
+		currencyKind: "points", pointsLabel: "бонусы СберСпасибо", opensDay: 28,
 		// «Активация Категории» is per-period and one-shot; purchases in the
 		// first 15 minutes after activating may not count (п. 2.1.9), which is
 		// a delay no `activation` value expresses — recorded as immediate,
 		// with the caveat in the notes.
 		midPeriodAdd: "locked_after_first", activation: "immediate",
-		notes: sberAsOf + "; Расчетный период = календарный месяц; начисление за каждые полные 100 ₽ с округлением вниз (п. 3.2.4); покупки в первые 15 минут после активации категории могут не учитываться (п. 2.1.9); ⚠️ курс бонуса к рублю устанавливается Уполномоченной компанией и в Правилах не зафиксирован",
+		notes: sberAsOf + "; предложение по активации категорий появляется в «Сбербанк Онлайн» с 00:00 28 числа предыдущего месяца, но не позднее 00:00 первого дня Расчетного периода (п. 23) — на практике набор чаще виден только с 1 числа;  Расчетный период = календарный месяц; начисление за каждые полные 100 ₽ с округлением вниз (п. 3.2.4); покупки в первые 15 минут после активации категории могут не учитываться (п. 2.1.9); ⚠️ курс бонуса к рублю устанавливается Уполномоченной компанией и в Правилах не зафиксирован",
 		tiers: []tier{
 			{name: "Детская СберКарта", capValue: "3000", capScope: "total", maxCategories: 2,
 				notes: sberAsOf + "; категории назначаются банком, самостоятельная активация не требуется; приоритет 1 независимо от других критериев"},
@@ -239,9 +255,13 @@ var programs = []program{
 		bank: "Т-Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "incremental",
 		currencyKind: "rub",
 		// Filling a still-empty slot later is allowed; whether a TAKEN slot can be
-		// swapped is a different question, and stays unknown.
-		midPeriodAdd: "allowed", activation: "unknown",
-		notes: tbankAsOf,
+		// swapped is a different question, and stays unknown. No opensDay: the
+		// help page says «выбрать категории можно в любой день в течение
+		// календарного месяца», with next month's set offered «в конце» this one
+		// — observed arriving on the 27th–28th every month since 2023, but the
+		// bank publishes no date, so the note carries it and the field does not.
+		midPeriodAdd: "allowed", activation: "immediate",
+		notes: tbankAsOf + "; набор категорий на следующий месяц появляется в приложении около 27–28 числа (по наблюдениям 2023–2026, банк даты не публикует); выбрать можно в любой день месяца",
 		tiers: []tier{
 			// The subscription buys cap, not slots — 4 on every tier.
 			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 4, notes: tbankAsOf},
@@ -281,6 +301,9 @@ var programs = []program{
 		bank: "Совкомбанк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub",
 		midPeriodAdd: "unknown", activation: "unknown",
+		// No opensDay by construction: the period is anchored to each card's issue
+		// date, so «the Nth of the month» describes nothing for this bank.
+		//
 		// ⚠️ periodType is «monthly cadence», NOT the calendar month: Совкомбанк
 		// accounts caps per расчетный период, which runs from each card's issue
 		// date. The start day belongs on bank_client.period_anchor_day (00033,
@@ -295,8 +318,12 @@ var programs = []program{
 	},
 	{
 		bank: "ОТП Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
-		currencyKind: "points", pointsLabel: "баллы ОТП",
-		midPeriodAdd: "unknown", activation: "unknown",
+		currencyKind: "points", pointsLabel: "баллы ОТП", opensDay: 25,
+		// п. 2.2.2: the list is offered on the 25th for the following month and
+		// the choice stays open «до последнего дня календарного месяца», with
+		// points accruing «не ранее даты их выбора» — so a late pick pays from
+		// the day it is made, never retroactively.
+		midPeriodAdd: "allowed", activation: "immediate",
 		// ⚠️ The offered set is RANDOM after a client's first two months — the
 		// catalog below is a POOL no client ever sees whole (ADR-0009 §1).
 		notes: otpAsOf + "; баллы 1:1 в рубли от 500 б, начисление по 10 числам; ⚠️ покупки округляются вниз до 100 ₽ — покупка за 99 ₽ не приносит ничего; ⚠️ после первых двух месяцев набор предлагаемых категорий случаен, каталог — это пул; лимит общий на все карты клиента, но дебетовая и кредитная не суммируются (в seed — дебетовые лимиты)",
@@ -315,11 +342,14 @@ var programs = []program{
 	},
 	{
 		bank: "МТС Деньги", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
-		currencyKind: "points", pointsLabel: "баллы МТС",
-		midPeriodAdd: "unknown", activation: "unknown",
+		currencyKind: "points", pointsLabel: "баллы МТС", opensDay: 25,
+		// The rules are silent on timing; the bank's help page states it —
+		// «категории на новый месяц открываются после 25 числа» and «ваш выбор
+		// нельзя будет изменить до конца следующего месяца».
+		midPeriodAdd: "locked_after_first", activation: "unknown",
 		// ⚠️ Not МТС Банк — a different credit institution. The card is issued
 		// by Экси Банк, and it is Экси Банк that runs this picker.
-		notes: mtsAsOf + "; карту выпускает Экси Банк (не МТС Банк — это другая кредитная организация); ⚠️ баллы тратятся только в экосистеме МТС и только при активной подписке — для большинства клиентов они НЕ превращаются в рубли; части клиентов доступна компенсация покупок от 500 ₽ (1 б = 1 ₽), и это единственный путь обратно в деньги",
+		notes: mtsAsOf + "; категории на новый месяц открываются после 25 числа, выбор нельзя изменить до конца следующего месяца; карту выпускает Экси Банк (не МТС Банк — это другая кредитная организация); ⚠️ баллы тратятся только в экосистеме МТС и только при активной подписке — для большинства клиентов они НЕ превращаются в рубли; части клиентов доступна компенсация покупок от 500 ₽ (1 б = 1 ₽), и это единственный путь обратно в деньги",
 		tiers: []tier{
 			{name: "Стандартный", capValue: "10000", capScope: "both", capPerCategory: "1000", maxCategories: 5,
 				notes: mtsAsOf + "; до 30% в сервисах МТС, до 20% в остальных категориях; подписка МТС Premium 99 ₽ первый месяц, далее 349 ₽/мес"},
@@ -343,9 +373,12 @@ var programs = []program{
 	},
 	{
 		bank: "Примсоцбанк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
-		currencyKind: "rub",
+		currencyKind: "rub", opensDay: 25,
+		// The rules document states no date; the bank's monthly announcements do,
+		// identically across 2026-02…08 («с 25 февраля … категории на март»), and
+		// the 25th is what independent monthly observation shows (12 of 13 months).
 		midPeriodAdd: "unknown", activation: "unknown",
-		notes: pskbAsOf + "; выплата до 15 числа, учёт по дате покупки; ⚠️ покупки округляются до 100 ₽ (кроме общественного транспорта); ⚠️ с 2026-05 весь кешбэк умножается на 0,8 — заявленная ставка не равна выплачиваемой; список категорий ОДИНАКОВ для всех клиентов, что среди банков редкость",
+		notes: pskbAsOf + "; выбор категорий открывается 25 числа на следующий месяц; выплата до 15 числа, учёт по дате покупки; ⚠️ покупки округляются до 100 ₽ (кроме общественного транспорта); ⚠️ с 2026-05 весь кешбэк умножается на 0,8 — заявленная ставка не равна выплачиваемой; список категорий ОДИНАКОВ для всех клиентов, что среди банков редкость",
 		tiers: []tier{
 			{name: "Стандартный", capValue: "2500", capScope: "both", capPerCategory: "1000", maxCategories: 4,
 				notes: pskbAsOf + "; ставки 3–10%; соцкарта получает повышение в отдельных категориях (аптеки, супермаркеты, книги), а не общий множитель; per-category лимит действует лишь на часть строк"},
@@ -356,8 +389,12 @@ var programs = []program{
 	{
 		bank: "Банк Синара", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "points", pointsLabel: "баллы Синары",
+		// opensDay stays unset on purpose: the published rule is relative —
+		// «за 5 календарных дней до начала нового месяца» — so the day of month
+		// moves with the month's length (27th in a 31-day month, 24th in February),
+		// which is exactly the 24th–28th spread observed month after month.
 		midPeriodAdd: "unknown", activation: "unknown",
-		notes: sinaraAsOf + "; карта «Та Самая», 4 категории из 11, список одинаков для всех клиентов; ⚠️ баллы меняются на рубли 1:1 ТОЛЬКО от 1 000 б — заработанное ниже порога нереализуемо; у кредитной карты своя ПЛ (1 категория с разбавлением 70/30, новые карты не выдают)",
+		notes: sinaraAsOf + "; выбор открывается за 5 календарных дней до начала месяца (наблюдения 2025–2026: 24–28 числа); карта «Та Самая», 4 категории из 11, список одинаков для всех клиентов; ⚠️ баллы меняются на рубли 1:1 ТОЛЬКО от 1 000 б — заработанное ниже порога нереализуемо; у кредитной карты своя ПЛ (1 категория с разбавлением 70/30, новые карты не выдают)",
 		tiers: []tier{
 			{name: "Стандартный", capValue: "3000", capScope: "total", maxCategories: 4,
 				notes: sinaraAsOf + "; до 15%; первые 3 месяца +5% по всем категориям в рамках продлеваемой акции"},
@@ -779,7 +816,7 @@ var bankCategories = []struct {
 	{bank: "Альфа-Банк", title: "KASSIR.RU", emoji: "🎫"},
 	{bank: "Альфа-Банк", title: "Подели", emoji: "💳"},
 	// Rows carried by the bank's MCC appendix:
-	{bank: "Альфа-Банк", title: "Спорт и красота у партнера", emoji: "💪"}, // WellPass partner category
+	{bank: "Альфа-Банк", title: "Спорт и красота у партнёра", emoji: "💪"}, // WellPass partner category
 	// The umbrella duplicate of Фастфуд + Кафе и рестораны: seeded hidden so
 	// mcc-import can attach its codes while the picker and resolve keep showing
 	// only the two separate rows.
@@ -1404,7 +1441,7 @@ var bankCategories = []struct {
 	// Channel-bound rows pay only inside «Сбербанк Онлайн» / the Тревел
 	// section / a payment rail — no canonical, or the lookup would promise the
 	// rate at any merchant of that kind (the «… в Городе» rule).
-	{bank: "СберБанк", title: "ЖКХ в Сбербанк Онлайн", emoji: "💡"},
+	{bank: "СберБанк", title: "ЖКХ в СберБанк Онлайн", emoji: "💡"},
 	{bank: "СберБанк", title: "Транспортные карты", emoji: "🚌"},
 	{bank: "СберБанк", title: "Маркетплейс ОСАГО", emoji: "🛡️"},
 	{bank: "СберБанк", title: "СпасибоТревел", emoji: "🧳"},
@@ -1501,21 +1538,28 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 			p.pointsLabel, p.opensDay, p.midPeriodAdd, p.activation, p.notes); err != nil {
 			return fmt.Errorf("seed program %s: %w", p.bank, err)
 		}
-		// Policy facts and notes are reference data, not user data — refresh them
-		// on existing rows too (the insert guard leaves pre-existing programs as
-		// they were, which would strand prod on the 'unknown' defaults, and on
-		// whatever the notes said when the row was first seeded).
+		// Every column here is reference data, not user data, and the insert
+		// guard above leaves a pre-existing program exactly as first seeded —
+		// which stranded prod on the 'unknown' defaults, then on stale notes,
+		// then on a null selection_opens_day. Refresh the whole row rather than
+		// adding one column at a time as each turns out to be wrong.
 		if _, err := pool.Exec(ctx, `
 			update cashback_program cp
-			set mid_period_add = $3::cashback_mid_period_add,
-			    activation     = $4::cashback_activation,
-			    notes          = nullif($5, '')
+			set period_type         = $3::cashback_period_type,
+			    selection_mode      = $4::cashback_selection_mode,
+			    currency_kind       = $5::cashback_currency_kind,
+			    points_label        = nullif($6, ''),
+			    selection_opens_day = nullif($7, 0),
+			    mid_period_add      = $8::cashback_mid_period_add,
+			    activation          = $9::cashback_activation,
+			    notes               = nullif($10, '')
 			from bank b
 			where b.id = cp.bank_id
 			  and b.name = $1
 			  and cp.name = $2`,
-			p.bank, p.name, p.midPeriodAdd, p.activation, p.notes); err != nil {
-			return fmt.Errorf("seed program policy %s: %w", p.bank, err)
+			p.bank, p.name, p.periodType, p.selectionMode, p.currencyKind,
+			p.pointsLabel, p.opensDay, p.midPeriodAdd, p.activation, p.notes); err != nil {
+			return fmt.Errorf("seed program refresh %s: %w", p.bank, err)
 		}
 		for _, t := range p.tiers {
 			if _, err := pool.Exec(ctx, `
@@ -1664,7 +1708,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 
 	// MCC dictionary + per-bank category→MCC membership (embedded CSVs,
-	// derived from the meta-repo curation — see mcc.go).
+	// derived from the curated source — see mcc.go).
 	return seedMCC(ctx, pool)
 }
 

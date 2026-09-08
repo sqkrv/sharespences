@@ -127,7 +127,9 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 	authSvc := &auth.Service{Q: q}
 	store := &attach.Store{Q: q, Dir: cfg.AttachmentsDir}
 	cbSvc := &cashback.Service{Q: q, RemoveAttachmentFile: store.Remove, ReadAttachmentFile: store.Open, Vision: cfg.Vision}
-	mccSvc := &mcc.Service{Q: q}
+	// The auth module owns the "user" table, so the moderation gate's role
+	// read crosses that seam as an injected function value too.
+	mccSvc := &mcc.Service{Q: q, RoleOf: authSvc.RoleOf}
 	frSvc := &friends.Service{Q: q, Pool: cfg.Pool}
 	// Привилегии is self-contained: it reads bank and bank_client as reference
 	// data and owns everything else it touches, so it needs no seam wiring.
@@ -144,6 +146,22 @@ func build(cfg Config) (chi.Router, *scs.SessionManager, huma.API) {
 			out[i] = cashback.SharedFriend{
 				UserID: r.UserID, Username: r.Username, DisplayName: r.DisplayName,
 				BankClientIDs: r.BankClientIDs,
+			}
+		}
+		return out, nil
+	}
+	// The mcc→cashback seam, same idiom: the MCC board judges each bank by
+	// its own category for the code (bank_category_mcc), and the membership
+	// rows cross as values.
+	cbSvc.MCCMemberships = func(ctx context.Context, userID uuid.UUID, code int16) ([]cashback.MembershipRow, error) {
+		rows, err := mccSvc.Memberships(ctx, userID, code)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]cashback.MembershipRow, len(rows))
+		for i, r := range rows {
+			out[i] = cashback.MembershipRow{
+				BankCategoryID: r.BankCategoryID, BankID: r.BankID, CanonicalCategoryID: r.CanonicalCategoryID,
 			}
 		}
 		return out, nil
@@ -258,10 +276,13 @@ type UserDTO struct {
 	Username    string    `json:"username"`
 	DisplayName string    `json:"display_name"`
 	Email       string    `json:"email"`
+	// Role gates the SPA's moderation navigation only — every moderation
+	// operation re-checks the role server-side (roles-moderation inv. 4).
+	Role string `json:"role" enum:"user,moderator,admin"`
 }
 
 func userDTO(u db.User) UserDTO {
-	return UserDTO{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, Email: u.Email}
+	return UserDTO{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, Email: u.Email, Role: string(u.Role)}
 }
 
 func registerAuth(api huma.API, sm *scs.SessionManager, svc *auth.Service) {

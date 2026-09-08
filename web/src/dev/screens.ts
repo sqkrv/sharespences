@@ -3,8 +3,9 @@ import { matchPath } from "react-router-dom";
 // Screen IDs (docs/design/ui-preferences.md §Dev mode). A shared vocabulary:
 // «поправь CB-03» beats describing a screen in
 // prose. Prefix = module (CB кешбек, GR группы, HM главная, HS история,
-// PV привилегии, SYS системные), so the numbers never collide the way the
-// specs' old S<n> labels did across cashback.md and group-expenses.md.
+// MD модерация, PV привилегии, SYS системные), so the numbers never collide
+// the way the specs' old S<n> labels did across cashback.md and
+// group-expenses.md.
 //
 // This array is the ONLY list of screen IDs — it is what renders the chip,
 // so it cannot rot silently. Sub-region IDs (CB-01.a…) are deliberately not
@@ -17,13 +18,25 @@ export const SCREENS: Screen[] = [
   { id: "SYS-01", path: "/login", title: "Вход", file: "web/src/pages/Login.tsx" },
   { id: "SYS-02", path: "/register", title: "Регистрация", file: "web/src/pages/Register.tsx" },
   { id: "SYS-03", path: "/services", title: "Сервисы", file: "web/src/pages/Services.tsx" },
-  { id: "CB-01", path: "/", title: "Кешбек — обзор", file: "web/src/pages/Overview.tsx" },
-  { id: "CB-02", path: "/periods/new", title: "Новый период", file: "web/src/pages/PeriodNew.tsx" },
-  { id: "CB-03", path: "/periods/:id", title: "Период", file: "web/src/pages/Period.tsx" },
-  { id: "CB-04", path: "/lookup", title: "Какой картой платить?", file: "web/src/pages/Lookup.tsx" },
-  { id: "CB-05", path: "/partners", title: "Партнёрские предложения", file: "web/src/pages/Partners.tsx" },
+  { id: "MD-01", path: "/moderation", title: "Модерация", file: "web/src/pages/Moderation.tsx" },
+  { id: "CB-01", path: "/", title: "Кешбек — лента", file: "web/src/pages/Overview.tsx" },
+  { id: "CB-02", path: "/periods/new", title: "Меню месяца", file: "web/src/pages/PeriodNew.tsx" },
+  { id: "CB-03", path: "/periods/:id", title: "Меню банка", file: "web/src/pages/Period.tsx" },
+  { id: "CB-04", path: "/search", title: "Поиск", file: "web/src/pages/Search.tsx" },
+  { id: "CB-09", path: "/banks", title: "Банки и карты", file: "web/src/pages/Banks.tsx" },
+  { id: "CB-10", path: "/banks/new", title: "Новый банк", file: "web/src/pages/BankNew.tsx" },
+  // /pos/new before /pos: the router matches in order and so does this table.
+  { id: "CB-13", path: "/pos/new", title: "Новая точка", file: "web/src/pages/PosNew.tsx" },
+  { id: "CB-11", path: "/pos", title: "Точка продаж", file: "web/src/pages/Pos.tsx" },
+  { id: "CB-14", path: "/mcc/:code", title: "Код MCC", file: "web/src/pages/Mcc.tsx" },
+  // CB-05 (the partner-offer list screen) dissolved into the bank cards on
+  // CB-09 + the CB-12 form (партнёрки v2, 2026-08-06); /partners redirects.
+  { id: "CB-12", path: "/partners/new", title: "Партнёрское предложение", file: "web/src/pages/PartnerNew.tsx" },
   { id: "CB-06", path: "/friends", title: "Кешбек друзей", file: "web/src/pages/Friends.tsx" },
   { id: "CB-07", path: "/friends/settings", title: "Друзья и шэринг", file: "web/src/pages/FriendsSettings.tsx" },
+  // /join is the short form printed on invites (4e); /friends/join is the
+  // pre-00025 spelling old links still carry.
+  { id: "CB-08", path: "/join/:token", title: "Приглашение в друзья", file: "web/src/pages/FriendJoin.tsx" },
   { id: "CB-08", path: "/friends/join/:token", title: "Приглашение в друзья", file: "web/src/pages/FriendJoin.tsx" },
   // Sub-regions (design4 «Perks - Module»). One letter, one thing — PV-02.a
   // was on the корректировка-шит AND on the годовое окно until 2026-08-30.
@@ -40,12 +53,42 @@ export const SCREENS: Screen[] = [
   { id: "HS-01", path: "/history", title: "История (заглушка)", file: "web/src/pages/Stub.tsx" },
 ];
 
+// The array above is the only inventory of screen IDs, and it has already
+// carried one id twice by accident: CB-13 named «Новая точка» and «Экран
+// кода» at the same time, so the chip labelled two screens identically and
+// «поправь CB-13» addressed neither. Nothing caught it, because a duplicate
+// breaks no type and renders fine.
+//
+// An id repeated across rows that name the SAME screen is not the bug —
+// CB-08 is one screen on two routes (the short invite link and the spelling
+// old links carry), and W-widgets repeat by design. So the check compares
+// what each row points at, not the id alone.
+//
+// web/ has no test runner to assert this in, so it runs at import time; the
+// DEV guard drops it from production bundles. It throws rather than logs on
+// purpose — it can only fire on an edit to the array directly above, and a
+// console line is precisely what went unread the first time.
+if (import.meta.env.DEV) {
+  const byId = new Map<string, Set<string>>();
+  for (const s of SCREENS) {
+    const targets = byId.get(s.id) ?? new Set<string>();
+    targets.add(`${s.title} · ${s.file}`);
+    byId.set(s.id, targets);
+  }
+  const clashes = [...byId].filter(([, targets]) => targets.size > 1).map(([id]) => id);
+  if (clashes.length > 0) {
+    throw new Error(`screens.ts: ${clashes.join(", ")} names more than one screen — one ID names one screen`);
+  }
+}
+
 // Shared widgets keep one ID wherever they appear, so «W-01» always means the
 // month picker. That is what spares the components a `sid` prop from every
 // parent screen; they carry their `data-sid` literal themselves.
-//   W-01 components/MonthPicker.tsx
+//   W-01 components/MonthPicker.tsx (v2: bottom sheet with fill logos)
 //   W-02 components/CategoryPicker.tsx
 //   W-03 components/NavBar.tsx
+//   W-04 components/Lightbox.tsx
+//   W-05 components/Sheet.tsx (shared bottom sheet)
 //
 // Static pages live outside the SPA entirely — plain HTML in web/public/,
 // served by internal/web/web.go at their extensionless URLs. React never

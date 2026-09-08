@@ -25,7 +25,7 @@ export default defineConfig({
         this.emitFile({ type: "asset", fileName: "build.json", source: JSON.stringify({ build: BUILD }) });
       },
     },
-    // PWA per docs/specs/pwa.md (meta-repo): installable + offline READ.
+    // PWA per docs/specs/pwa.md: installable + offline READ.
     // Update flow is `prompt` (toast in the shell), never a silent swap.
     VitePWA({
       registerType: "prompt",

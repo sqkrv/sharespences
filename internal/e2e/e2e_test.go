@@ -264,7 +264,16 @@ type lookupJSON struct {
 		BankName string  `json:"bank_name"`
 		Percent  *string `json:"percent"`
 	} `json:"fallback"`
-	Message string `json:"message"`
+	Available []availableJSON `json:"available"`
+	Blocked   []availableJSON `json:"blocked"`
+	Message   string          `json:"message"`
+}
+
+type availableJSON struct {
+	BankName string  `json:"bank_name"`
+	RawTitle string  `json:"raw_title"`
+	Percent  *string `json:"percent"`
+	Verdict  string  `json:"verdict"`
 }
 
 func TestCashbackE2E(t *testing.T) {
@@ -638,18 +647,24 @@ func TestCashbackE2E(t *testing.T) {
 		Categories []struct {
 			Slug        string `json:"slug"`
 			OthersCount int    `json:"others_count"`
-			Best        struct {
+			Best        *struct {
 				BankName string `json:"bank_name"`
 			} `json:"best"`
+			Available *struct {
+				BankName string `json:"bank_name"`
+				Verdict  string `json:"verdict"`
+			} `json:"available"`
 		} `json:"categories"`
 		Clients []struct {
-			BankName      string  `json:"bank_name"`
-			HolderLabel   *string `json:"holder_label"`
-			PeriodID      *int64  `json:"period_id"`
-			SlotsUsed     int     `json:"slots_used"`
-			MaxCategories *int32  `json:"max_categories"`
-			TierName      *string `json:"tier_name"`
-			Cards         []struct {
+			BankName          string  `json:"bank_name"`
+			HolderLabel       *string `json:"holder_label"`
+			PeriodID          *int64  `json:"period_id"`
+			SlotsUsed         int     `json:"slots_used"`
+			MaxCategories     *int32  `json:"max_categories"`
+			TierName          *string `json:"tier_name"`
+			SelectionOpensDay *int32  `json:"selection_opens_day"`
+			PendingFrom       *string `json:"pending_from"`
+			Cards             []struct {
 				Last4Digits int32 `json:"last_4_digits"`
 			} `json:"cards"`
 		} `json:"clients"`
@@ -659,31 +674,76 @@ func TestCashbackE2E(t *testing.T) {
 				Percent  *string `json:"percent"`
 			} `json:"best"`
 		} `json:"base"`
+		SingleBank []struct {
+			RawTitle string `json:"raw_title"`
+			BankName string `json:"bank_name"`
+		} `json:"single_bank"`
 		SelectionOpensDay *int32 `json:"selection_opens_day"`
 	}
 	owner.must("GET", "/api/v1/cashback/overview?date=2026-07-15", nil, &overview, http.StatusOK)
-	// Транспорт is selected but unmapped → invisible here, like in lookup.
+	// Транспорт is selected but unmapped → invisible here, like in lookup
+	// (it reappears in single_bank once selected canonical-less rows exist —
+	// covered below). «Рестораны» (Альфа-Банк) was entered but never
+	// selected — and with Альфа-Банк 4/4 it can no longer be picked (no bank
+	// lets a pick be removed mid-period), so it is not served at all
+	// (2026-08-07; earlier redesign cut showed it dashed with slots_full).
 	if len(overview.Categories) != 4 {
-		t.Fatalf("overview categories = %d, want 4 (supermarkets, gas-stations, pharmacies, flowers)", len(overview.Categories))
+		t.Fatalf("overview categories = %d, want 4 selected (unpickable Рестораны dropped)", len(overview.Categories))
 	}
-	var superRow *struct {
+	// The lookup does NOT drop it (2026-08-28): the same row the feed hides
+	// is served under `blocked`, because «у Альфы эта категория есть» is the
+	// answer the screen looked broken without. It stays out of `available` —
+	// nothing here can be picked before the period ends.
+	var restaurants lookupJSON
+	owner.must("GET", "/api/v1/cashback/lookup?category=restaurants&date=2026-07-15", nil, &restaurants, http.StatusOK)
+	if len(restaurants.Available) != 0 {
+		t.Fatalf("restaurants available = %+v, want none (Альфа-Банк is 4/4)", restaurants.Available)
+	}
+	if len(restaurants.Blocked) != 1 || restaurants.Blocked[0].BankName != "Альфа-Банк" ||
+		restaurants.Blocked[0].RawTitle != "Рестораны" || restaurants.Blocked[0].Verdict != "slots_full" {
+		t.Fatalf("restaurants blocked = %+v, want the Альфа-Банк Рестораны row with slots_full", restaurants.Blocked)
+	}
+	withBest, withAvail := 0, 0
+	type catRow = struct {
 		Slug        string `json:"slug"`
 		OthersCount int    `json:"others_count"`
-		Best        struct {
+		Best        *struct {
 			BankName string `json:"bank_name"`
 		} `json:"best"`
+		Available *struct {
+			BankName string `json:"bank_name"`
+			Verdict  string `json:"verdict"`
+		} `json:"available"`
 	}
+	var superRow *catRow
 	for i := range overview.Categories {
-		if overview.Categories[i].Slug == "supermarkets" {
-			superRow = &overview.Categories[i]
+		g := &overview.Categories[i]
+		if g.Best != nil {
+			withBest++
 		}
+		if g.Available != nil {
+			withAvail++
+		}
+		if g.Slug == "supermarkets" {
+			superRow = g
+		}
+	}
+	if withBest != 4 || withAvail != 0 {
+		t.Fatalf("overview categories: %d with best, %d with available — want 4 and 0", withBest, withAvail)
 	}
 	// Both offers are 5%, so the winner is decided by the name tie-break —
 	// and Latin «O» sorts before Cyrillic «А» (Russian collation agrees),
 	// so «Ozon Банк» leads since the 2026-07-28 rename. The assertion that
 	// matters is «one best + one other», not which of the tied two shows.
-	if superRow == nil || superRow.Best.BankName != "Ozon Банк" || superRow.OthersCount != 1 {
+	if superRow == nil || superRow.Best == nil || superRow.Best.BankName != "Ozon Банк" || superRow.OthersCount != 1 {
 		t.Fatalf("overview supermarkets = %+v, want best Ozon Банк with 1 other (5%% tie → bank-name order)", superRow)
+	}
+	// Selected-but-unmapped rows land in the «Только в одном банке» tail
+	// instead of being dropped from the feed (redesign 2026-08-06): Транспорт
+	// (Альфа-Банк, 7%) plus Ozon's Фастфуд and Кафе и Рестораны (5% each);
+	// the ranking puts the 7% row first.
+	if len(overview.SingleBank) != 3 || overview.SingleBank[0].RawTitle != "Транспорт" || overview.SingleBank[0].BankName != "Альфа-Банк" {
+		t.Fatalf("overview single_bank = %+v, want 3 unmapped selected rows led by Транспорт (Альфа-Банк, 7%%)", overview.SingleBank)
 	}
 	if len(overview.Clients) != 3 {
 		t.Fatalf("overview clients = %d, want 3", len(overview.Clients))
@@ -714,6 +774,33 @@ func TestCashbackE2E(t *testing.T) {
 	}
 	if overview.SelectionOpensDay == nil || *overview.SelectionOpensDay != 25 {
 		t.Fatalf("selection_opens_day = %v, want 25", overview.SelectionOpensDay)
+	}
+	// CB-09.b (2026-08-27): the ритуал date is per bank, not only aggregated —
+	// and it comes from the bank's program, so the ВТБ client answers with 26
+	// even though it has no tier. The mark itself is computed from *today*,
+	// not from the requested month: the July fixture leaves the current
+	// period unfilled, so every client has one pending.
+	thisMonth := time.Now().UTC().Format("2006-01") + "-01"
+	seenAlfa, seenVTB := false, false
+	for _, c := range overview.Clients {
+		if c.PendingFrom == nil || *c.PendingFrom != thisMonth {
+			t.Fatalf("overview %s pending_from = %v, want %s (current period unfilled)", c.BankName, c.PendingFrom, thisMonth)
+		}
+		switch c.BankName {
+		case "Альфа-Банк":
+			seenAlfa = true
+			if c.SelectionOpensDay == nil || *c.SelectionOpensDay != 25 {
+				t.Fatalf("Альфа-Банк selection_opens_day = %v, want 25", c.SelectionOpensDay)
+			}
+		case "ВТБ":
+			seenVTB = true
+			if c.SelectionOpensDay == nil || *c.SelectionOpensDay != 26 {
+				t.Fatalf("ВТБ selection_opens_day = %v, want 26 (bank program, not the client tier)", c.SelectionOpensDay)
+			}
+		}
+	}
+	if !seenAlfa || !seenVTB {
+		t.Fatalf("overview clients missing Альфа-Банк/ВТБ rows: %+v", overview.Clients)
 	}
 
 	// Screenshots are editable after creation (2026-07-09): upload →
@@ -785,8 +872,16 @@ func TestCashbackE2E(t *testing.T) {
 	if overview.Base == nil || overview.Base.Best.BankName != "Альфа-Банк" || *overview.Base.Best.Percent != "1" {
 		t.Fatalf("overview base = %+v, want Альфа-Банк 1%%", overview.Base)
 	}
+	// 4 selected rows; the still-unselected Рестораны stays hidden (slots
+	// full again → unpickable); «За все покупки» must route to base, never
+	// here.
 	if len(overview.Categories) != 4 {
-		t.Fatalf("base row must not appear among categories, got %d", len(overview.Categories))
+		t.Fatalf("base row must not appear among categories, got %d, want 4", len(overview.Categories))
+	}
+	for _, g := range overview.Categories {
+		if g.Slug == "all-purchases" {
+			t.Fatalf("base row leaked into categories: %+v", g)
+		}
 	}
 
 	// Держатель is editable on the client (PUT /bank-clients/{id}).
@@ -1152,6 +1247,45 @@ func TestCashbackE2E(t *testing.T) {
 			t.Fatalf("5411 at %s = %q, want %s (all: %v)", bank, gotBanks[bank], want, gotBanks)
 		}
 	}
+	// CB-11's board for the same code: what the точка screen offers to pay
+	// with. The fixture's menu rows were entered by title with a canonical
+	// mapping and no bank_category_id — the shape the board used to drop
+	// entirely, which is why «for every PoS it showed no cards»
+	// (report 2026-08-28). A bank counts a code through its own catalog row;
+	// a selected row matching that row's canonical is the same answer.
+	var board struct {
+		Ranked []struct {
+			BankName string  `json:"bank_name"`
+			RawTitle string  `json:"raw_title"`
+			Percent  *string `json:"percent"`
+		} `json:"ranked"`
+		Base []struct {
+			BankName string `json:"bank_name"`
+		} `json:"base"`
+	}
+	owner.must("GET", "/api/v1/cashback/mcc-board?code=5411&date=2026-07-15", nil, &board, http.StatusOK)
+	rankedBanks := map[string]string{}
+	for _, r := range board.Ranked {
+		rankedBanks[r.BankName] = r.RawTitle
+	}
+	if len(board.Ranked) == 0 {
+		t.Fatalf("mcc-board 5411: nothing ranked — the fixture has selected supermarket rows at Альфа-Банк and Ozon Банк")
+	}
+	if _, ok := rankedBanks["Альфа-Банк"]; !ok {
+		t.Fatalf("mcc-board 5411 ranked %v, want Альфа-Банк among them", rankedBanks)
+	}
+	// A code no bank counts falls through to «Кешбек на всё» rather than
+	// ranking a category that does not cover it.
+	var boardOther struct {
+		Ranked []struct {
+			BankName string `json:"bank_name"`
+		} `json:"ranked"`
+	}
+	owner.must("GET", "/api/v1/cashback/mcc-board?code=7995&date=2026-07-15", nil, &boardOther, http.StatusOK)
+	for _, r := range boardOther.Ranked {
+		t.Fatalf("mcc-board 7995 ranked %s — no seeded catalog row holds that code", r.BankName)
+	}
+
 	haveSupermarkets := false
 	for _, c := range resolved.Canonicals {
 		if c.Slug == "supermarkets" {
@@ -1259,26 +1393,78 @@ func TestCashbackE2E(t *testing.T) {
 		Type          *string `json:"type"`
 		Confirmations int64   `json:"confirmations"`
 	}
+	type merchantPageJSON struct {
+		Items []merchantJSON `json:"items"`
+		Total int64          `json:"total"`
+	}
 	// Case-insensitive Cyrillic substring, ranked by confirmations.
-	var merchants []merchantJSON
+	var merchants merchantPageJSON
 	owner.must("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
-	if len(merchants) != 2 {
-		t.Fatalf("merchants?query=кафе = %+v, want 2 rows", merchants)
+	if len(merchants.Items) != 2 || merchants.Total != 2 {
+		t.Fatalf("merchants?query=кафе = %+v, want 2 rows and total 2", merchants)
 	}
-	if merchants[0].Name != "Кафе Ночь" || merchants[0].Confirmations != 9 {
-		t.Fatalf("merchant ranking = %+v, want Кафе Ночь (9 confirmations) first", merchants)
+	if merchants.Items[0].Name != "Кафе Ночь" || merchants.Items[0].Confirmations != 9 {
+		t.Fatalf("merchant ranking = %+v, want Кафе Ночь (9 confirmations) first", merchants.Items)
 	}
-	if merchants[1].Name != `Кафе "Уют"` {
-		t.Fatalf("quoted-title row = %+v, want Кафе \"Уют\"", merchants[1])
+	if merchants.Items[1].Name != `Кафе "Уют"` {
+		t.Fatalf("quoted-title row = %+v, want Кафе \"Уют\"", merchants.Items[1])
+	}
+	// Words match in any order and across the two searched fields: «ночь
+	// кафе» is the same question as «кафе ночь», and «кафе noch» spans name +
+	// merchant_title (report 2026-08-24 — a row findable only by typing its
+	// words in the stored order is a row the user cannot find).
+	for _, q := range []string{"ночь кафе", "кафе noch", "  НОЧЬ   кафе  "} {
+		owner.must("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape(q), nil, &merchants, http.StatusOK)
+		if len(merchants.Items) != 1 || merchants.Items[0].Name != "Кафе Ночь" {
+			t.Fatalf("merchants?query=%q = %+v, want only Кафе Ночь", q, merchants.Items)
+		}
+	}
+	// Paging: the page carries the total of the whole match set, so the list
+	// knows there is more to load; offset walks past the first row without
+	// repeating it.
+	owner.must("GET", "/api/v1/mcc/merchants?limit=1&query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 1 || merchants.Total != 2 || merchants.Items[0].Name != "Кафе Ночь" {
+		t.Fatalf("first page = %+v, want 1 of 2 rows starting at Кафе Ночь", merchants)
+	}
+	owner.must("GET", "/api/v1/mcc/merchants?limit=1&offset=1&query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 1 || merchants.Total != 2 || merchants.Items[0].Name != `Кафе "Уют"` {
+		t.Fatalf("second page = %+v, want the second row and the same total", merchants)
+	}
+	owner.must("GET", "/api/v1/mcc/merchants?offset=99&query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 0 {
+		t.Fatalf("past the last page = %+v, want no rows", merchants.Items)
+	}
+	// Type filter: the fixture has one app row (Кафе Ночь), one online
+	// (Ветклиника Кот) and two offline; an empty type still means «any».
+	owner.must("GET", "/api/v1/mcc/merchants?type=app&query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 1 || merchants.Items[0].Name != "Кафе Ночь" || merchants.Total != 1 {
+		t.Fatalf("type=app = %+v, want only Кафе Ночь and a total of 1 (the count follows the filter)", merchants)
+	}
+	owner.must("GET", "/api/v1/mcc/merchants?type=offline&query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 0 {
+		t.Fatalf("type=offline&кафе = %+v, want no rows (the quoted café has no type)", merchants.Items)
+	}
+	owner.must("GET", "/api/v1/mcc/merchants?type=&query="+url.QueryEscape("кафе"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 2 {
+		t.Fatalf("empty type = %+v, want both café rows", merchants.Items)
+	}
+	if got := owner.do("GET", "/api/v1/mcc/merchants?type=shop&query="+url.QueryEscape("кафе"), nil, nil); got != http.StatusUnprocessableEntity {
+		t.Fatalf("unknown type: %d, want 422", got)
+	}
+
+	// A LIKE wildcard typed by the user is a literal, not a pattern.
+	owner.must("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape("ка%е"), nil, &merchants, http.StatusOK)
+	if len(merchants.Items) != 0 {
+		t.Fatalf("merchants?query=ка%%е = %+v, want no rows (%% is literal)", merchants.Items)
 	}
 	// Sub-4-digit MCC comes back zero-padded; empty type maps to null.
 	owner.must("GET", "/api/v1/mcc/merchants?query="+url.QueryEscape("ветклиника"), nil, &merchants, http.StatusOK)
-	if len(merchants) != 1 || merchants[0].MCC != "0742" {
+	if len(merchants.Items) != 1 || merchants.Items[0].MCC != "0742" {
 		t.Fatalf("merchants?query=ветклиника = %+v, want one 0742 row", merchants)
 	}
 	// merchant_title (Latin) is searched too.
 	owner.must("GET", "/api/v1/mcc/merchants?query=testovy", nil, &merchants, http.StatusOK)
-	if len(merchants) != 1 || merchants[0].Name != "Тестовый Магазин" {
+	if len(merchants.Items) != 1 || merchants.Items[0].Name != "Тестовый Магазин" {
 		t.Fatalf("merchants?query=testovy = %+v, want Тестовый Магазин", merchants)
 	}
 	// minLength guard.
@@ -1404,6 +1590,69 @@ func TestCashbackE2E(t *testing.T) {
 	owner.must("DELETE", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", shotOffer.ID), nil, nil, http.StatusNoContent)
 	if got := owner.do("GET", "/api/v1/attachments/"+stuckShot+"/content", nil, nil); got != http.StatusNotFound {
 		t.Fatalf("attachment after partner-offer delete: %d, want 404", got)
+	}
+
+	// --- Партнёрки v2 (2026-08-06): a canonical hint ranks the offer in
+	// that category's lookup as kind=partner; a category scope without a
+	// canonical is rejected; «Завершить» is an undoable event. ---
+	owner.must("PUT", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", partnerOffer.ID), map[string]any{
+		"bank_id": vtbID, "bank_client_id": partnerClient.ID, "merchant_title": "25% в Авито",
+		"percent": "25", "min_amount": "3000",
+		"canonical_category_id": flowersID, "currency_kind": "rub", "requires_activation": true,
+	}, nil, http.StatusOK)
+	var pv2 struct {
+		ScopeKind    string  `json:"scope_kind"`
+		CurrencyKind *string `json:"currency_kind"`
+		Status       string  `json:"status"`
+	}
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", partnerOffer.ID), nil, &pv2, http.StatusOK)
+	if pv2.ScopeKind != "merchant" || pv2.CurrencyKind == nil || *pv2.CurrencyKind != "rub" || pv2.Status != "active" {
+		t.Fatalf("partner v2 row = %+v, want merchant/rub/active", pv2)
+	}
+	if got := owner.do("POST", "/api/v1/cashback/partner-offers", map[string]any{
+		"bank_id": vtbID, "merchant_title": "категорийная без канона", "scope_kind": "category",
+	}, nil); got != http.StatusUnprocessableEntity {
+		t.Fatalf("category scope without canonical: %d, want 422", got)
+	}
+	// Flowers already has the 5% regular pick; the 25% rub партнёрка ranks
+	// above it (same currency group, percent desc) carrying its facts.
+	var pLookup struct {
+		Ranked []struct {
+			Kind            string `json:"kind"`
+			PartnerID       int64  `json:"partner_id"`
+			PartnerScope    string `json:"partner_scope"`
+			NeedsActivation bool   `json:"needs_activation"`
+		} `json:"ranked"`
+	}
+	owner.must("GET", "/api/v1/cashback/lookup?category=flowers&date=2026-07-15", nil, &pLookup, http.StatusOK)
+	if len(pLookup.Ranked) != 2 || pLookup.Ranked[0].Kind != "partner" || pLookup.Ranked[0].PartnerID != partnerOffer.ID ||
+		pLookup.Ranked[0].PartnerScope != "merchant" || !pLookup.Ranked[0].NeedsActivation || pLookup.Ranked[1].Kind != "regular" {
+		t.Fatalf("flowers lookup ranked = %+v, want the merchant партнёрка (needing activation) above the 5%% pick", pLookup.Ranked)
+	}
+	// The точка продаж match is name-based, both directions normalized.
+	var pMatch struct {
+		Matches []struct {
+			PartnerID int64 `json:"partner_id"`
+		} `json:"matches"`
+	}
+	owner.must("GET", "/api/v1/cashback/partner-offers/match?query="+url.QueryEscape("Авито"), nil, &pMatch, http.StatusOK)
+	if len(pMatch.Matches) != 1 || pMatch.Matches[0].PartnerID != partnerOffer.ID {
+		t.Fatalf("partner match = %+v, want the Авито offer", pMatch.Matches)
+	}
+	// End: out of every ranking, status ended; reopen restores it.
+	owner.must("POST", fmt.Sprintf("/api/v1/cashback/partner-offers/%d/end", partnerOffer.ID), nil, nil, http.StatusNoContent)
+	owner.must("GET", "/api/v1/cashback/lookup?category=flowers&date=2026-07-15", nil, &pLookup, http.StatusOK)
+	if len(pLookup.Ranked) != 1 || pLookup.Ranked[0].Kind != "regular" {
+		t.Fatalf("ended партнёрка still ranks: %+v", pLookup.Ranked)
+	}
+	owner.must("GET", fmt.Sprintf("/api/v1/cashback/partner-offers/%d", partnerOffer.ID), nil, &pv2, http.StatusOK)
+	if pv2.Status != "ended" {
+		t.Fatalf("status after end = %q, want ended", pv2.Status)
+	}
+	owner.must("POST", fmt.Sprintf("/api/v1/cashback/partner-offers/%d/reopen", partnerOffer.ID), nil, nil, http.StatusNoContent)
+	owner.must("GET", "/api/v1/cashback/lookup?category=flowers&date=2026-07-15", nil, &pLookup, http.StatusOK)
+	if len(pLookup.Ranked) != 2 {
+		t.Fatalf("reopened партнёрка does not rank again: %+v", pLookup.Ranked)
 	}
 
 	if got := owner.do("DELETE", fmt.Sprintf("/api/v1/bank-clients/%d", partnerClient.ID), nil, nil); got != http.StatusConflict {

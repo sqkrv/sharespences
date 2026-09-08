@@ -39,8 +39,9 @@ type friendJSON struct {
 
 type requestsJSON struct {
 	Incoming []struct {
-		ID       int64  `json:"id"`
-		Username string `json:"username"`
+		ID        int64  `json:"id"`
+		Username  string `json:"username"`
+		ViaInvite bool   `json:"via_invite"`
 	} `json:"incoming"`
 	Outgoing []struct {
 		ID       int64  `json:"id"`
@@ -52,6 +53,11 @@ type inviteCreatedJSON struct {
 	ID    string `json:"id"`
 	URL   string `json:"url"`
 	Token string `json:"token"`
+}
+
+type claimResultJSON struct {
+	Inviter foundUserJSON `json:"inviter"`
+	Status  string        `json:"status"`
 }
 
 func TestFriendsE2E(t *testing.T) {
@@ -285,51 +291,74 @@ func TestFriendsE2E(t *testing.T) {
 		t.Fatalf("unfriending a non-friend: status %d, want 404", got)
 	}
 
-	// --- Step 4: invites ---
+	// --- Step 4: invites (multi-use live link since 00037) ---
 	var inv inviteCreatedJSON
 	anna.must("POST", "/api/v1/friends/invites", nil, &inv, http.StatusCreated)
-	if inv.Token == "" || inv.URL != "/friends/join/"+inv.Token {
+	if inv.Token == "" || inv.URL != "/join/"+inv.Token {
 		t.Fatalf("invite create: %+v", inv)
 	}
-	// Hash-only storage: the plaintext token never lands in the DB.
+	// The plaintext token lives at rest now — it is what re-shows the link;
+	// the hash stays the lookup key.
 	var stored int
-	if err := pool.QueryRow(ctx, "select count(*) from friend_invite where token_hash = $1 or encode(token_hash, 'escape') = $2",
-		[]byte(inv.Token), inv.Token).Scan(&stored); err != nil {
+	if err := pool.QueryRow(ctx, "select count(*) from friend_invite where token = $1", inv.Token).Scan(&stored); err != nil {
 		t.Fatal(err)
 	}
-	if stored != 0 {
-		t.Fatal("invite token stored in plaintext")
-	}
-
-	// Self-claim → 422; carl claims → friends; re-claim → 409.
-	if got := anna.do("POST", "/api/v1/friends/invites/claim", map[string]any{"token": inv.Token}, nil); got != http.StatusUnprocessableEntity {
-		t.Fatalf("self claim: status %d, want 422", got)
-	}
-	var inviter foundUserJSON
-	carl.must("POST", "/api/v1/friends/invites/claim", map[string]any{"token": inv.Token}, &inviter, http.StatusOK)
-	if inviter.Username != "anna" {
-		t.Fatalf("claim response names %q, want anna", inviter.Username)
-	}
-	var carlFriends []friendJSON
-	carl.must("GET", "/api/v1/friends", nil, &carlFriends, http.StatusOK)
-	if len(carlFriends) != 2 {
-		t.Fatalf("carl friends = %+v, want boris + anna", carlFriends)
-	}
-	if got := boris.do("POST", "/api/v1/friends/invites/claim", map[string]any{"token": inv.Token}, nil); got != http.StatusConflict {
-		t.Fatalf("re-claim: status %d, want 409", got)
-	}
-
-	// Already-friends claim leaves the token unburned (invariant 5): a fresh
-	// invite claimed by an existing friend answers 409 and stays live.
-	var inv2 inviteCreatedJSON
-	anna.must("POST", "/api/v1/friends/invites", nil, &inv2, http.StatusCreated)
-	if got := carl.do("POST", "/api/v1/friends/invites/claim", map[string]any{"token": inv2.Token}, nil); got != http.StatusConflict {
-		t.Fatalf("already-friends claim: status %d, want 409", got)
+	if stored != 1 {
+		t.Fatal("live invite must store its token for re-display")
 	}
 	var live []inviteCreatedJSON
 	anna.must("GET", "/api/v1/friends/invites", nil, &live, http.StatusOK)
+	if len(live) != 1 || live[0].Token != inv.Token || live[0].URL != inv.URL {
+		t.Fatalf("live invites = %+v, want the link served back", live)
+	}
+
+	// Self-claim → 422; carl's claim files a via-invite заявка — NOT a
+	// friendship; a repeat claim is the benign multi-use case.
+	if got := anna.do("POST", "/api/v1/friends/invites/claim", map[string]any{"token": inv.Token}, nil); got != http.StatusUnprocessableEntity {
+		t.Fatalf("self claim: status %d, want 422", got)
+	}
+	var claim claimResultJSON
+	carl.must("POST", "/api/v1/friends/invites/claim", map[string]any{"token": inv.Token}, &claim, http.StatusOK)
+	if claim.Inviter.Username != "anna" || claim.Status != "request_sent" {
+		t.Fatalf("claim = %+v, want anna / request_sent", claim)
+	}
+	var carlFriends []friendJSON
+	carl.must("GET", "/api/v1/friends", nil, &carlFriends, http.StatusOK)
+	if len(carlFriends) != 1 {
+		t.Fatalf("carl friends after claim = %+v — a claim must not create the friendship", carlFriends)
+	}
+	claim = claimResultJSON{}
+	carl.must("POST", "/api/v1/friends/invites/claim", map[string]any{"token": inv.Token}, &claim, http.StatusOK)
+	if claim.Status != "already_requested" {
+		t.Fatalf("repeat claim status = %q, want already_requested", claim.Status)
+	}
+
+	// The заявка sits in anna's inbox marked via_invite; accepting it is
+	// what creates the friendship.
+	var annaInbox requestsJSON
+	anna.must("GET", "/api/v1/friends/requests", nil, &annaInbox, http.StatusOK)
+	if len(annaInbox.Incoming) != 1 || annaInbox.Incoming[0].Username != "carl" || !annaInbox.Incoming[0].ViaInvite {
+		t.Fatalf("anna incoming = %+v, want carl via invite", annaInbox)
+	}
+	anna.must("POST", "/api/v1/friends/requests/"+itoa(annaInbox.Incoming[0].ID)+"/accept", nil, nil, http.StatusNoContent)
+	carlFriends = nil
+	carl.must("GET", "/api/v1/friends", nil, &carlFriends, http.StatusOK)
+	if len(carlFriends) != 2 {
+		t.Fatalf("carl friends after accept = %+v, want boris + anna", carlFriends)
+	}
+
+	// An existing friend's claim is benign too, and the link stays live.
+	var inv2 inviteCreatedJSON
+	anna.must("POST", "/api/v1/friends/invites", nil, &inv2, http.StatusCreated)
+	claim = claimResultJSON{}
+	carl.must("POST", "/api/v1/friends/invites/claim", map[string]any{"token": inv2.Token}, &claim, http.StatusOK)
+	if claim.Status != "already_friends" {
+		t.Fatalf("already-friends claim status = %q, want already_friends", claim.Status)
+	}
+	live = nil
+	anna.must("GET", "/api/v1/friends/invites", nil, &live, http.StatusOK)
 	if len(live) != 1 || live[0].ID != inv2.ID {
-		t.Fatalf("live invites = %+v, want just the unburned one", live)
+		t.Fatalf("live invites = %+v, want the link still alive", live)
 	}
 
 	// Expired → 410 (SQL-nudge; the API has no time machine).
@@ -632,11 +661,35 @@ func TestFriendsE2E(t *testing.T) {
 	}
 
 	// anna's unselected Рестораны row must not surface as boris's
-	// «Можно выбрать» — verdicts are owner actions.
+	// «Можно выбрать» — verdicts are owner actions. It DOES surface as
+	// friend_available, which is display-only: «Марина может это выбрать».
+	rawLookup := rawGet(t, boris, "/api/v1/cashback/lookup?category=restaurants")
+	for _, needle := range []string{"cap_value", "cap_per_category", "max_categories"} {
+		if strings.Contains(rawLookup, needle) {
+			t.Fatalf("lookup payload leaks %q for a friend row:\n%s", needle, rawLookup)
+		}
+	}
 	lookup = friendLookupJSON{}
-	boris.must("GET", "/api/v1/cashback/lookup?category=restaurants", nil, &lookup, http.StatusOK)
+	if err := json.Unmarshal([]byte(rawLookup), &lookup); err != nil {
+		t.Fatal(err)
+	}
 	if len(lookup.Ranked) != 0 || len(lookup.Available) != 0 {
 		t.Fatalf("restaurants lookup = %+v, want empty (friend menu rows never rank or offer)", lookup)
+	}
+	if len(lookup.FriendAvailable) != 1 {
+		t.Fatalf("restaurants friend_available = %+v, want anna's unpicked Рестораны row", lookup.FriendAvailable)
+	}
+	fa := lookup.FriendAvailable[0]
+	if fa.FriendName != "Аня" || fa.RawTitle != "Рестораны" {
+		t.Fatalf("friend_available row = %+v, want Аня's «Рестораны»", fa)
+	}
+	// No offer id travels: it is the friend's category_offer, and handing it
+	// over would invite a selection posted against someone else's row.
+	if fa.OfferID != 0 {
+		t.Fatalf("friend_available carries offer_id %d, want none", fa.OfferID)
+	}
+	if fa.CapValue != nil || fa.OfferCapValue != nil {
+		t.Fatalf("friend_available carries a cap: %+v", fa)
 	}
 	// anna's selected «За все покупки» must not reach boris's fallback.
 	annaAll := addOffer(anna, annaPeriod, "За все покупки", "1", "regular", catID("all-purchases"))
@@ -765,6 +818,17 @@ type friendLookupJSON struct {
 	} `json:"ranked"`
 	Fallback  []struct{} `json:"fallback"`
 	Available []struct{} `json:"available"`
+	// A friend's menu row they have NOT picked. Display only: it must name
+	// them and their rate, and carry no cap of theirs (invariant 4).
+	FriendAvailable []struct {
+		BankName      string  `json:"bank_name"`
+		RawTitle      string  `json:"raw_title"`
+		Percent       *string `json:"percent"`
+		FriendName    string  `json:"friend_name"`
+		OfferID       int64   `json:"offer_id"`
+		CapValue      *string `json:"cap_value"`
+		OfferCapValue *string `json:"offer_cap_value"`
+	} `json:"friend_available"`
 }
 
 // rawGet fetches a path and returns the raw body — for asserting what a

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/sqkrv/sharespences/internal/auth"
 	"github.com/sqkrv/sharespences/internal/db"
 )
 
@@ -17,6 +18,10 @@ import (
 // mcc.sql header); no other module touches the MCC tables.
 type Service struct {
 	Q *db.Queries
+	// RoleOf is injected at the composition root (the auth module owns the
+	// "user" table — same seam practice as friends→cashback): the caller's
+	// CURRENT role, read per request, gates moderation.
+	RoleOf func(ctx context.Context, userID uuid.UUID) (auth.Role, error)
 }
 
 var numericRe = regexp.MustCompile(`^[0-9]+$`)
@@ -54,17 +59,159 @@ func (s *Service) Resolve(ctx context.Context, userID uuid.UUID, code int16) (db
 	return entry, rows, nil
 }
 
-// SearchMerchants finds points of sale (the imported mcc-codes.ru base) by
-// name or merchant-title substring, most-confirmed first.
-func (s *Service) SearchMerchants(ctx context.Context, query string, limit int32) ([]db.SearchMerchantsRow, error) {
-	query = strings.TrimSpace(query)
-	if query == "" {
+// SearchMerchants finds points of sale (the imported base + approved user
+// submissions; the caller's own pending ones too) by name or merchant-title
+// substring, most-confirmed first.
+func (s *Service) SearchMerchants(ctx context.Context, userID uuid.UUID, query, posType string, limit, offset int32) ([]db.SearchMerchantsRow, int64, error) {
+	patterns := SearchPatterns(query)
+	if len(patterns) == 0 {
+		return nil, 0, nil
+	}
+	rows, err := s.Q.SearchMerchants(ctx, db.SearchMerchantsParams{
+		UserID: userID, Head: patterns[0], Patterns: patterns, PosType: posType, MaxRows: limit, SkipRows: offset,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	// The window count is per row; an empty page carries no count, and past
+	// the last page that is the honest answer for «how many are left».
+	var total int64
+	if len(rows) > 0 {
+		total = rows[0].TotalRows
+	}
+	return rows, total, nil
+}
+
+// SearchPatterns turns a raw query into the ILIKE patterns the search matches
+// with: one per word, so word order stops mattering. LIKE wildcards typed by
+// the user are escaped — «100%» is a merchant name, not a pattern.
+func SearchPatterns(query string) []string {
+	fields := strings.Fields(query)
+	patterns := make([]string, 0, len(fields))
+	for _, w := range fields {
+		w = strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(w)
+		patterns = append(patterns, "%"+w+"%")
+	}
+	return patterns
+}
+
+// Memberships lists the bank catalog rows holding a code — the value the
+// cashback module's MCC board consumes across the seam (10b variant 3:
+// each bank is judged by its OWN category for the code).
+func (s *Service) Memberships(ctx context.Context, userID uuid.UUID, code int16) ([]db.ResolveMCCRow, error) {
+	return s.Q.ResolveMCC(ctx, db.ResolveMCCParams{MccCode: code, UserID: userID})
+}
+
+// MerchantsByCode lists the известные точки carrying a code («Точки с кодом
+// 5812», 13a) — confirmations first, same visibility rule as the search.
+func (s *Service) MerchantsByCode(ctx context.Context, userID uuid.UUID, code int16, limit int32) ([]db.ListMerchantsByCodeRow, error) {
+	return s.Q.ListMerchantsByCode(ctx, db.ListMerchantsByCodeParams{MccCode: &code, UserID: userID, MaxRows: limit})
+}
+
+// Point serves the «О точке» card (8b): one row by id, under the search's
+// visibility rule — approved, or the caller's own pending submission.
+func (s *Service) Point(ctx context.Context, userID uuid.UUID, id uuid.UUID) (db.GetPointOfSaleRow, error) {
+	row, err := s.Q.GetPointOfSale(ctx, db.GetPointOfSaleParams{ID: id, UserID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return db.GetPointOfSaleRow{}, ErrNotFound
+	}
+	return row, err
+}
+
+// SimilarPoints is the 5e duplicate net: same MCC, either name contains the
+// other — shown on the form so an existing точка is opened, not copied.
+func (s *Service) SimilarPoints(ctx context.Context, userID uuid.UUID, mccCode int16, name string) ([]db.FindSimilarPointsOfSaleRow, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
 		return nil, nil
 	}
-	return s.Q.SearchMerchants(ctx, db.SearchMerchantsParams{Query: query, MaxRows: limit})
+	return s.Q.FindSimilarPointsOfSale(ctx, db.FindSimilarPointsOfSaleParams{
+		MccCode: &mccCode, UserID: userID, Name: name,
+	})
+}
+
+// CreatePoint files a user-submitted точка продаж: pending until moderated,
+// visible to its author immediately. The MCC must exist in the dictionary —
+// the FK would refuse anyway, this check just answers in Russian.
+func (s *Service) CreatePoint(ctx context.Context, userID uuid.UUID, p db.CreateUserPointOfSaleParams) (db.PointOfSale, error) {
+	if p.MccCode == nil {
+		return db.PointOfSale{}, ErrNotFound
+	}
+	if _, err := s.Q.GetMCC(ctx, *p.MccCode); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return db.PointOfSale{}, ErrNotFound
+		}
+		return db.PointOfSale{}, err
+	}
+	p.AuthorUserID = &userID
+	return s.Q.CreateUserPointOfSale(ctx, p)
 }
 
 // Changes returns the newest journal rows (news-digest precursor).
 func (s *Service) Changes(ctx context.Context, limit int32) ([]db.ListMCCChangesRow, error) {
 	return s.Q.ListMCCChanges(ctx, limit)
+}
+
+// requireModerator gates the moderation surface. Every caller gets the
+// same answer on refusal — no existence leaks (roles-moderation inv. 6).
+func (s *Service) requireModerator(ctx context.Context, userID uuid.UUID) error {
+	role, err := s.RoleOf(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if !role.CanModerate() {
+		return ErrNotModerator
+	}
+	return nil
+}
+
+// ModerationPending lists the queue oldest-first (fairness: the longest
+// waiting submission is reviewed first).
+func (s *Service) ModerationPending(ctx context.Context, userID uuid.UUID, limit, offset int32) ([]db.ModerationListPendingPOSRow, error) {
+	if err := s.requireModerator(ctx, userID); err != nil {
+		return nil, err
+	}
+	return s.Q.ModerationListPendingPOS(ctx, db.ModerationListPendingPOSParams{MaxRows: limit, Skip: offset})
+}
+
+// ModerationPublished is the review stream: recently published non-scrape
+// rows — what keeps the instant-publish path supervised after the fact.
+func (s *Service) ModerationPublished(ctx context.Context, userID uuid.UUID, limit, offset int32) ([]db.ModerationListPublishedPOSRow, error) {
+	if err := s.requireModerator(ctx, userID); err != nil {
+		return nil, err
+	}
+	return s.Q.ModerationListPublishedPOS(ctx, db.ModerationListPublishedPOSParams{MaxRows: limit, Skip: offset})
+}
+
+// ModerationApprove publishes a pending submission into the общий каталог.
+func (s *Service) ModerationApprove(ctx context.Context, userID uuid.UUID, id uuid.UUID) error {
+	if err := s.requireModerator(ctx, userID); err != nil {
+		return err
+	}
+	n, err := s.Q.ModerationApprovePOS(ctx, id)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ModerationReject pulls a pending or published non-scrape row out of
+// circulation; the row is kept for audit and stays invisible to everyone,
+// its author included. The note is the reviewer's reason for the OPERATOR
+// (design 1c) — it is stored on the row and never returned to the author.
+func (s *Service) ModerationReject(ctx context.Context, userID uuid.UUID, id uuid.UUID, note *string) error {
+	if err := s.requireModerator(ctx, userID); err != nil {
+		return err
+	}
+	n, err := s.Q.ModerationRejectPOS(ctx, db.ModerationRejectPOSParams{ID: id, Note: note})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

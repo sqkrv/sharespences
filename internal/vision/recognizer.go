@@ -10,10 +10,13 @@ import (
 )
 
 const (
-	// PerCallTimeout bounds one backend completion. qwen3-vl:4b averaged
-	// 149 s/image with a 259 s worst case on the prod GPU (run 5); the
-	// timeout leaves headroom without letting a hung call eat the job.
-	PerCallTimeout = 5 * time.Minute
+	// PerCallTimeout bounds one backend completion. Hitting it fails the
+	// whole job — askJSON returns the deadline error rather than advancing
+	// a rung — so it is a hard stop, not a retry trigger. That is why it is
+	// derived from a measured WORST case rather than an average, with
+	// enough headroom left for a cold model load. Re-measure before
+	// changing it; the measurements are not kept here.
+	PerCallTimeout = 2 * time.Minute
 	// LadderRungs is the escalation ladder length (askJSON below).
 	LadderRungs = 3
 	// MaxCallsPerImage derives the per-image call bound FROM the ladder
@@ -193,8 +196,8 @@ func (r *Recognizer) complete(ctx context.Context, req Request) (Response, error
 }
 
 // oomSignature spots the vision-encoder out-of-memory shape: HTTP 500
-// whose detail mentions memory/CUDA, or the bare «unexpected EOF» run 5
-// hit on the card-grid shot.
+// whose detail mentions memory/CUDA, or a bare «unexpected EOF», which is
+// what a dense card-grid screenshot produced in testing.
 func oomSignature(err error) bool {
 	var be *BackendError
 	if errors.As(err, &be) && be.Status == 500 {

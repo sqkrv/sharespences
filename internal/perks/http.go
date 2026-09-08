@@ -198,7 +198,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		on := time.Now()
 		if in.On != "" {
 			var err error
-			if on, err = parseDate(in.On, "on"); err != nil {
+			if on, err = parseDate(in.On, "дата"); err != nil {
 				return nil, err
 			}
 		}
@@ -311,7 +311,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 		now := time.Now()
 		if in.On != "" {
 			var err error
-			if now, err = parseDate(in.On, "on"); err != nil {
+			if now, err = parseDate(in.On, "дата"); err != nil {
 				return nil, err
 			}
 		}
@@ -369,11 +369,11 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Note          *string `json:"note,omitempty"`
 		}
 	}) (*struct{ Body PerkQuotaDTO }, error) {
-		start, err := parseDate(in.Body.WindowStart, "window_start")
+		start, err := parseDate(in.Body.WindowStart, "начало периода")
 		if err != nil {
 			return nil, err
 		}
-		end, err := parseDate(in.Body.WindowEnd, "window_end")
+		end, err := parseDate(in.Body.WindowEnd, "конец периода")
 		if err != nil {
 			return nil, err
 		}
@@ -429,7 +429,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Note *string `json:"note,omitempty"`
 		}
 	}) (*struct{ Body PerkEventDTO }, error) {
-		on, err := optDate(in.Body.Date, "event_date")
+		on, err := optDate(in.Body.Date, "дата события")
 		if err != nil {
 			return nil, err
 		}
@@ -468,7 +468,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Note       *string `json:"note,omitempty"`
 		}
 	}) (*struct{ Body PerkSnapshotDTO }, error) {
-		on, err := optDate(in.Body.ObservedOn, "observed_on")
+		on, err := optDate(in.Body.ObservedOn, "дата сверки")
 		if err != nil {
 			return nil, err
 		}

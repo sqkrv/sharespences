@@ -50,17 +50,24 @@ func (s *Service) SendRequest(ctx context.Context, userID uuid.UUID, username st
 	if err != nil {
 		return RequestOutcome{}, err
 	}
-	if target.ID == userID {
+	return s.sendRequestTo(ctx, userID, target.ID, false)
+}
+
+// sendRequestTo is the заявка core shared by SendRequest and ClaimInvite —
+// the invite path differs only in how the target was found and in the
+// via_invite marker its заявка carries.
+func (s *Service) sendRequestTo(ctx context.Context, userID, targetID uuid.UUID, viaInvite bool) (RequestOutcome, error) {
+	if targetID == userID {
 		return RequestOutcome{}, ErrSelfFriendship
 	}
-	lo, hi := CanonPair(userID, target.ID)
+	lo, hi := CanonPair(userID, targetID)
 	if _, err := s.Q.GetFriendshipByPair(ctx, db.GetFriendshipByPairParams{UserLo: lo, UserHi: hi}); err == nil {
 		return RequestOutcome{}, ErrAlreadyFriends
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return RequestOutcome{}, err
 	}
 
-	pending, err := s.Q.GetPendingRequestBetween(ctx, db.GetPendingRequestBetweenParams{FromUserID: userID, ToUserID: target.ID})
+	pending, err := s.Q.GetPendingRequestBetween(ctx, db.GetPendingRequestBetweenParams{FromUserID: userID, ToUserID: targetID})
 	switch {
 	case err == nil && pending.FromUserID == userID:
 		return RequestOutcome{}, ErrRequestExists
@@ -73,7 +80,7 @@ func (s *Service) SendRequest(ctx context.Context, userID uuid.UUID, username st
 		return RequestOutcome{}, err
 	}
 
-	req, err := s.Q.CreateFriendRequest(ctx, db.CreateFriendRequestParams{FromUserID: userID, ToUserID: target.ID})
+	req, err := s.Q.CreateFriendRequest(ctx, db.CreateFriendRequestParams{FromUserID: userID, ToUserID: targetID, ViaInvite: viaInvite})
 	if err != nil {
 		// The pending-pair partial unique index closes the race between the
 		// check above and this insert.
@@ -161,11 +168,11 @@ func (s *Service) Unfriend(ctx context.Context, userID, otherID uuid.UUID) error
 	return nil
 }
 
-// CreateInvite mints a one-shot invite link. The plaintext token is
-// returned exactly once; only its hash is stored (invariant 5). One live
-// invite per user: the previous unclaimed link is revoked in the same
-// transaction — «потерял ссылку → создай новую» is the whole recovery
-// story, so the old one must die the moment the new one exists.
+// CreateInvite mints the invite link. Multi-use and re-showable since 00037:
+// a claim only files a friend request, so the token may live at rest — that
+// is what lets the app display the live link again. One live invite per
+// user: the previous link is revoked in the same transaction — «Создать
+// новую: старая перестанет работать сразу».
 func (s *Service) CreateInvite(ctx context.Context, userID uuid.UUID) (db.FriendInvite, string, error) {
 	token, hash, err := NewInviteToken()
 	if err != nil {
@@ -182,7 +189,7 @@ func (s *Service) CreateInvite(ctx context.Context, userID uuid.UUID) (db.Friend
 		return db.FriendInvite{}, "", err
 	}
 	inv, err := q.CreateFriendInvite(ctx, db.CreateFriendInviteParams{
-		CreatedByUserID: userID, TokenHash: hash, ExpiresAt: time.Now().Add(InviteTTL),
+		CreatedByUserID: userID, TokenHash: hash, Token: &token, ExpiresAt: time.Now().Add(InviteTTL),
 	})
 	if err != nil {
 		return db.FriendInvite{}, "", err
@@ -193,6 +200,9 @@ func (s *Service) CreateInvite(ctx context.Context, userID uuid.UUID) (db.Friend
 	return inv, token, nil
 }
 
+// ListInvites returns the live link (at most one by construction). Rows
+// minted before 00037 carry no stored token — the client shows «Создать
+// новую» for them, the only path that ever could recover a lost link.
 func (s *Service) ListInvites(ctx context.Context, userID uuid.UUID) ([]db.FriendInvite, error) {
 	return s.Q.ListLiveInvitesForUser(ctx, userID)
 }
@@ -208,59 +218,35 @@ func (s *Service) DeleteInvite(ctx context.Context, userID uuid.UUID, id uuid.UU
 	return nil
 }
 
-// ClaimInvite burns a live invite and creates the friendship, returning the
-// inviter (for «теперь вы друзья с X»). Already-friends leaves the token
-// unburned — the link isn't wasted (invariant 5).
-func (s *Service) ClaimInvite(ctx context.Context, userID uuid.UUID, token string) (db.User, error) {
-	hash := HashInviteToken(token)
-	inv, err := s.Q.GetInviteByTokenHash(ctx, hash)
+// ClaimInvite resolves a live link into an incoming friend request to the
+// inviter (4e: «переход сам по себе не делает другом — человек падает во
+// входящие»). Multi-use: nothing burns, the link keeps working until it
+// expires or is replaced. The mutual-pending collapse still applies — if the
+// inviter already sent this user a заявка, the claim accepts it.
+func (s *Service) ClaimInvite(ctx context.Context, userID uuid.UUID, token string) (db.User, RequestOutcome, error) {
+	inv, err := s.Q.GetInviteByTokenHash(ctx, HashInviteToken(token))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return db.User{}, ErrNotFound
+		return db.User{}, RequestOutcome{}, ErrNotFound
 	}
 	if err != nil {
-		return db.User{}, err
+		return db.User{}, RequestOutcome{}, err
 	}
-	if inv.CreatedByUserID == userID {
-		return db.User{}, ErrSelfFriendship
+	// Pre-00037 rows were one-shot and may sit in the burned terminal state.
+	if inv.ClaimedAt != nil {
+		return db.User{}, RequestOutcome{}, ErrInviteBurned
 	}
-	lo, hi := CanonPair(userID, inv.CreatedByUserID)
-	if _, err := s.Q.GetFriendshipByPair(ctx, db.GetFriendshipByPairParams{UserLo: lo, UserHi: hi}); err == nil {
-		return db.User{}, ErrAlreadyFriends
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return db.User{}, err
+	if !inv.ExpiresAt.After(time.Now()) {
+		return db.User{}, RequestOutcome{}, ErrInviteExpired
 	}
-
-	tx, err := s.Pool.Begin(ctx)
+	inviter, err := s.Q.GetUserByID(ctx, inv.CreatedByUserID)
 	if err != nil {
-		return db.User{}, err
+		return db.User{}, RequestOutcome{}, err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := s.Q.WithTx(tx)
-
-	if _, err := q.ClaimInvite(ctx, db.ClaimInviteParams{TokenHash: hash, ClaimedByUserID: &userID}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			// The conditional burn matched nothing: the pre-fetched row says
-			// which terminal state it hit; a lost race reads as burned.
-			if inv.ClaimedAt != nil {
-				return db.User{}, ErrInviteBurned
-			}
-			if !inv.ExpiresAt.After(time.Now()) {
-				return db.User{}, ErrInviteExpired
-			}
-			return db.User{}, ErrInviteBurned
-		}
-		return db.User{}, err
+	res, err := s.sendRequestTo(ctx, userID, inv.CreatedByUserID, true)
+	if err != nil {
+		return inviter, RequestOutcome{}, err
 	}
-	if _, err := q.CreateFriendship(ctx, db.CreateFriendshipParams{UserLo: lo, UserHi: hi}); err != nil {
-		if isPgCode(err, "23505") {
-			return db.User{}, ErrAlreadyFriends
-		}
-		return db.User{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return db.User{}, err
-	}
-	return s.Q.GetUserByID(ctx, inv.CreatedByUserID)
+	return inviter, res, nil
 }
 
 // SetSharing toggles one grant: friendUserID sees (or stops seeing)

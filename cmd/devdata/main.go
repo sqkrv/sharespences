@@ -55,8 +55,7 @@ type cardSpec struct {
 	system string
 }
 
-// profile is the wallet to build: the owner's six banks plus two household
-// members, so the «по держателям» grouping and the cross-client collision
+// profile is the wallet to build: six banks plus two household members, so the «по держателям» grouping and the cross-client collision
 // warnings both have something to show.
 var profile = []clientSpec{
 	{bank: "Альфа-Банк", tier: "Alfa Only", cards: []cardSpec{{4321, "mir"}, {8890, "visa"}}},
@@ -67,6 +66,8 @@ var profile = []clientSpec{
 	{bank: "Яндекс Пэй", tier: "Стандартный", cards: []cardSpec{{8868, "mir"}}},
 	{bank: "Т-Банк", tier: "Premium", cards: []cardSpec{{3357, "mir"}}},
 	{bank: "МКБ", tier: "Премиальный", cards: []cardSpec{{6604, "mir"}}},
+	{bank: "ОТП Банк", tier: "Premium", cards: []cardSpec{{4802, "mir"}}},
+	{bank: "Совкомбанк", label: "Папа", tier: "Подписка «Оптима»", cards: []cardSpec{{3915, "mir"}}},
 }
 
 // slotFallback supplies a slot count for programs whose tier leaves
@@ -103,6 +104,8 @@ func run() error {
 		seedVal  = flag.Int64("seed", 1, "RNG seed; the same seed reproduces the same data")
 		confirm  = flag.Bool("confirm", false, "required when DATABASE_URL is not local")
 		dryRun   = flag.Bool("dry-run", false, "report what would be written, write nothing")
+		coverage = flag.Bool("coverage", true, "also generate the design-coverage set: edge-case clients, an awkward and an empty period, the partner-offer matrix, and friends sharing into this user")
+		friendMo = flag.Int("friend-months", 6, "months of history to give each generated friend")
 	)
 	flag.Parse()
 
@@ -140,6 +143,8 @@ func run() error {
 		pool: pool,
 		rng:  rand.New(rand.NewSource(*seedVal)),
 		dry:  *dryRun,
+
+		counters: &counterSet{},
 	}
 	g.svc = &cashback.Service{Q: g.q}
 
@@ -154,11 +159,31 @@ func run() error {
 		log.Printf("dry run — nothing will be written")
 	}
 
-	if err := g.ensureClients(ctx); err != nil {
+	if err := g.ensureClients(ctx, profile); err != nil {
 		return err
 	}
-	if err := g.fillPeriods(ctx, lastMonth, *months); err != nil {
+	if err := g.fillPeriods(ctx, profile, lastMonth, *months); err != nil {
 		return err
+	}
+	if *coverage {
+		if err := g.fillEdgeClients(ctx); err != nil {
+			return err
+		}
+		if err := g.fillEdgePeriod(ctx, lastMonth); err != nil {
+			return err
+		}
+		if err := g.fillPartnerMatrix(ctx, lastMonth); err != nil {
+			return err
+		}
+		if err := g.ensureFriends(ctx, lastMonth, *friendMo); err != nil {
+			return err
+		}
+		if err := g.fillBarabanStack(ctx); err != nil {
+			return err
+		}
+		if err := g.fillFriendUnpicked(ctx, lastMonth); err != nil {
+			return err
+		}
 	}
 	g.report()
 	return nil
@@ -171,7 +196,8 @@ type gen struct {
 	rng  *rand.Rand
 	dry  bool
 
-	userID uuid.UUID
+	userID   uuid.UUID
+	username string
 
 	banks    map[string]int32              // name → bank id
 	tiers    map[string]map[string]tierRef // bank → tier name → tier
@@ -180,7 +206,14 @@ type gen struct {
 	tierOf   map[int64]tierRef
 	bankOf   map[int64]string
 	labelOf  map[int64]string
-	counters struct{ clients, cards, periods, offers, selections, partners, skipped int }
+	counters *counterSet
+}
+
+// counterSet is shared by pointer so the per-friend sub-generators report into
+// the same totals as the main pass.
+type counterSet struct {
+	clients, cards, periods, offers, selections, partners, skipped int
+	friends, shares, requests, invites                             int
 }
 
 type tierRef struct {
@@ -192,8 +225,8 @@ type tierRef struct {
 // the tool: the app has no GetUserByUsername (it authenticates by email) and
 // a dev tool should not grow the production query set.
 func (g *gen) resolveUser(ctx context.Context, username string) error {
-	row := g.pool.QueryRow(ctx, `select id from "user" where username = $1`, strings.ToLower(username))
-	if err := row.Scan(&g.userID); err != nil {
+	row := g.pool.QueryRow(ctx, `select id, username from "user" where username = $1`, strings.ToLower(username))
+	if err := row.Scan(&g.userID, &g.username); err != nil {
 		return fmt.Errorf("user %q not found: %w", username, err)
 	}
 	return nil
@@ -270,8 +303,8 @@ func (g *gen) loadReference(ctx context.Context) error {
 	return nil
 }
 
-func (g *gen) ensureClients(ctx context.Context) error {
-	for _, spec := range profile {
+func (g *gen) ensureClients(ctx context.Context, specs []clientSpec) error {
+	for _, spec := range specs {
 		bankID, ok := g.banks[spec.bank]
 		if !ok {
 			log.Printf("skip %s: bank not seeded", spec.bank)
@@ -336,8 +369,8 @@ func (g *gen) ensureClients(ctx context.Context) error {
 // fillPeriods walks backwards from the newest month so a re-run reaches the
 // new month first and stops doing anything interesting once it hits periods
 // that already exist.
-func (g *gen) fillPeriods(ctx context.Context, last time.Time, months int) error {
-	for _, spec := range profile {
+func (g *gen) fillPeriods(ctx context.Context, specs []clientSpec, last time.Time, months int) error {
+	for _, spec := range specs {
 		clientID, ok := g.clients[spec.bank+"|"+spec.label]
 		if !ok {
 			continue
@@ -443,6 +476,9 @@ func (g *gen) fillOnePeriod(ctx context.Context, clientID int64, bank string, st
 		if _, err := g.q.CreatePartnerOffer(ctx, db.CreatePartnerOfferParams{
 			UserID: g.userID, BankID: g.banks[bank], BankClientID: &clientID,
 			MerchantTitle: m, Percent: &pct, ValidFrom: &from, ValidTo: &to,
+			// scope_kind is NOT NULL since 00036 (партнёрки v2) — these are
+			// merchant offers, matching what the CB-12 form records.
+			ScopeKind: db.PartnerScopeMerchant,
 		}); err != nil {
 			return fmt.Errorf("partner %q: %w", m, err)
 		}
@@ -529,6 +565,7 @@ func (g *gen) report() {
 	log.Printf("bank clients +%d, cards +%d", c.clients, c.cards)
 	log.Printf("periods +%d (%d already existed, skipped)", c.periods, c.skipped)
 	log.Printf("menu rows +%d, selections +%d, partner offers +%d", c.offers, c.selections, c.partners)
+	log.Printf("friends +%d, заявки +%d, shares +%d, invites +%d", c.friends, c.requests, c.shares, c.invites)
 }
 
 var barabanTitles = []string{"Такси", "Кафе и рестораны", "Продукты", "Транспорт", "Аптеки", "Дом и ремонт"}

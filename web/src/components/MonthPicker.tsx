@@ -1,73 +1,82 @@
-import { useEffect, useRef, useState } from "react";
-import { MONTHS_SHORT, fmtMonthYear, midMonthISO, monthKey, pad2, todayISO } from "../lib";
+import { useMemo, useState } from "react";
+import { useClients, usePeriods } from "../hooks";
+import { BankBadge, Chip } from "./ui";
+import { Sheet } from "./Sheet";
+import { MONTHS_NOM, fmtMonthYear, midMonthISO, monthKey, pad2, todayISO } from "../lib";
 
-// The overview header's period picker: a chip («июль 2026 ▾») opening a
-// year-navigable month grid. ANY month up to next month is selectable — you
-// must be able to open a month with no data yet to backfill it (2026-07-15).
-// A dot marks months that already have offer periods; only
-// future months beyond next month are disabled.
+// The feed header's month chip (W-01), redesigned as a bottom sheet: one row
+// per month, each carrying the user's bank clients as logos — bright = the
+// month's menu is entered (offer rows exist), dim = not. ANY month up to next
+// month stays selectable — backfilling needs months with no data yet
+// (2026-07-15). The quarter case falls out of period coverage: an МКБ period
+// spanning июль–сентябрь lights МКБ in all three rows.
 export function MonthPicker({
   value,
-  available,
   onChange,
 }: {
   value: string; // mid-month ISO the overview API's ?date= accepts
-  available: ReadonlySet<string>; // "YYYY-MM" keys that have offer periods
   onChange: (iso: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [year, setYear] = useState(() => Number(value.slice(0, 4)));
-  const ref = useRef<HTMLDivElement>(null);
+  const clients = useClients();
+  const periods = usePeriods();
 
   const selectedKey = monthKey(value);
   const currentKey = monthKey(todayISO());
-  // Forward limit: next month — the selection ritual happens before the month
-  // starts (banks open next-month categories ~25th), so it must be reachable
-  // even before its period exists. Anything past it isn't real data yet.
   const now = new Date();
   const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const maxKey = `${next.getFullYear()}-${pad2(next.getMonth() + 1)}`;
 
-  const dataYears = [...available, selectedKey].map((k) => Number(k.slice(0, 4)));
-  // At least a year of backfill room even with no data; never past next month.
-  const minYear = Math.min(now.getFullYear() - 1, ...dataYears);
+  // client id → months its periods cover with a non-empty menu.
+  const filled = useMemo(() => {
+    const m = new Map<number, Set<string>>();
+    for (const p of periods.data ?? []) {
+      if (!p.offer_count) continue;
+      let d = new Date(Number(p.period_start.slice(0, 4)), Number(p.period_start.slice(5, 7)) - 1, 1);
+      const end = new Date(Number(p.period_end.slice(0, 4)), Number(p.period_end.slice(5, 7)) - 1, 1);
+      const set = m.get(p.bank_client_id) ?? new Set<string>();
+      while (d <= end) {
+        set.add(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}`);
+        d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      }
+      m.set(p.bank_client_id, set);
+    }
+    return m;
+  }, [periods.data]);
+
+  const dataYears = [...filled.values()].flatMap((s) => [...s]).map((k) => Number(k.slice(0, 4)));
+  const minYear = Math.min(now.getFullYear() - 1, Number(selectedKey.slice(0, 4)), ...dataYears);
   const maxYear = Math.max(next.getFullYear(), Number(selectedKey.slice(0, 4)));
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  const roster = clients.data ?? [];
+  // A bank with two держателя shows its logo twice — the corner initial
+  // (Я/М) says whose client each one is; single-client banks stay clean
+  // (design v2, 2026-08-07).
+  const bankCount = new Map<number, number>();
+  for (const c of roster) bankCount.set(c.bank_id, (bankCount.get(c.bank_id) ?? 0) + 1);
+  const initialOf = (label?: string | null) => (label?.trim() || "Я")[0].toUpperCase();
 
   return (
-    <div ref={ref} data-sid="W-01" className="relative">
+    <>
       <button
         type="button"
-        aria-haspopup="true"
+        aria-haspopup="dialog"
         aria-expanded={open}
+        data-sid="W-01"
         onClick={() => {
           setYear(Number(value.slice(0, 4)));
-          setOpen(!open);
+          setOpen(true);
         }}
-        className="flex items-center gap-1 text-xs font-medium text-tx3"
+        className="flex items-center gap-1.5 rounded-[11px] bg-inset px-2.5 py-1.5 text-[13px] font-bold text-tx"
       >
         {fmtMonthYear(new Date(Number(value.slice(0, 4)), Number(value.slice(5, 7)) - 1))}
-        <span className="text-[9px] text-tx4">▾</span>
+        <span className="text-[9px] text-tx4">{open ? "▲" : "▼"}</span>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-2 w-60 rounded-2xl border border-brd bg-srf p-3 shadow-[0_14px_40px_-12px_rgba(0,0,0,.55)]">
-          <div className="flex items-center justify-between">
+        <Sheet onClose={() => setOpen(false)} title="Месяц" sid="W-01">
+          <div className="mb-2 flex items-center justify-between">
             <button
               type="button"
               disabled={year <= minYear}
@@ -86,44 +95,70 @@ export function MonthPicker({
               ›
             </button>
           </div>
-          <div className="mt-2.5 grid grid-cols-4 gap-1.5">
-            {MONTHS_SHORT.map((label, m) => {
+          <div className="space-y-1.5">
+            {MONTHS_NOM.map((name, m) => {
               const key = `${year}-${pad2(m + 1)}`;
-              const isSelected = key === selectedKey;
               const isFuture = key > maxKey; // beyond next month → not real data yet
-              const hasData = available.has(key);
+              const isNext = key === maxKey;
+              const isSelected = key === selectedKey;
+              const fills = roster.map((c) => filled.get(c.id)?.has(key) ?? false);
+              const filledCount = fills.filter(Boolean).length;
               const cls = isSelected
-                ? "grad-acc font-bold text-white shadow-[0_6px_16px_-8px_rgba(139,111,255,.9)]"
-                : isFuture
-                  ? "text-tx4 opacity-40"
-                  : key === currentKey
-                    ? "border border-acc/40 bg-srf2 font-semibold text-tx2"
-                    : "bg-srf2 font-semibold text-tx2";
+                ? "border border-acc shadow-[0_10px_26px_-14px_rgba(139,111,255,.5)]"
+                : isNext && filledCount === 0
+                  ? "border border-dashed border-dash bg-srf/60"
+                  : "border border-brd bg-srf";
               return (
                 <button
                   key={key}
                   type="button"
-                  disabled={isFuture}
+                  disabled={isFuture && !isNext}
                   onClick={() => {
                     onChange(midMonthISO(year, m));
                     setOpen(false);
                   }}
-                  className={`relative rounded-[10px] py-2 text-center text-[12px] transition disabled:cursor-not-allowed ${cls}`}
+                  className={`flex w-full flex-wrap items-center gap-2.5 rounded-[13px] px-3 py-2.5 text-left disabled:opacity-35 ${cls}`}
                 >
-                  {label}
-                  {hasData && !isSelected && (
-                    <span className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-accl" />
+                  <span className="flex-none text-[13.5px] font-semibold text-tx2 capitalize">
+                    {name}
+                    {key === currentKey && (
+                      <span className="ml-1.5 align-[2px]">
+                        <Chip tone="friend">сейчас</Chip>
+                      </span>
+                    )}
+                  </span>
+                  {roster.length > 0 && !isFuture && (
+                    // The strip takes the slack and wraps inside it. A roster
+                    // of sixteen клиентов is wider than any phone, and while
+                    // the name was the flexible half the logos ran straight
+                    // over it (the name has nothing to truncate into).
+                    <span className="flex min-w-0 flex-1 flex-wrap justify-end gap-1.5">
+                      {roster.map((c, i) => (
+                        <span key={c.id} className={`relative ${fills[i] ? "" : "opacity-25 saturate-[.3]"}`}>
+                          <BankBadge name={c.bank_name ?? ""} size={16} />
+                          {(bankCount.get(c.bank_id) ?? 0) > 1 && (
+                            <span className="absolute -right-1 -bottom-1 flex h-2.5 w-2.5 items-center justify-center rounded-[4px] bg-dash text-[6.5px] font-extrabold text-tx">
+                              {initialOf(c.label)}
+                            </span>
+                          )}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                  {roster.length > 0 && !isFuture && !(isNext && filledCount === 0) && (
+                    <span className="ml-auto flex-none text-[10.5px] font-semibold text-tx4">
+                      {filledCount} из {roster.length}
+                    </span>
                   )}
                 </button>
               );
             })}
           </div>
-          <p className="mt-2.5 flex items-center gap-1.5 text-[10px] font-medium text-tx4">
-            <span className="h-1 w-1 rounded-full bg-accl" />
-            есть данные · любой месяц можно открыть и заполнить
+          <p className="mt-2 px-0.5 text-[10px] leading-snug font-medium text-tx4">
+            Логотип — клиент банка, не банк: два держателя — банк дважды, с инициалом в углу. Яркий — меню занесено, погасший — нет. Любой месяц до следующего можно открыть и заполнить.
           </p>
-        </div>
+        </Sheet>
       )}
-    </div>
+    </>
   );
 }

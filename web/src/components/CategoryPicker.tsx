@@ -117,7 +117,7 @@ export function CategoryPicker({
             </span>
           </>
         ) : (
-          <span className="flex-1 text-tx4">Выберите категорию…</span>
+          <span className="flex-1 text-tx4">Выбери категорию…</span>
         )}
         <span className="flex-none text-[9px] text-tx4">▾</span>
       </button>
