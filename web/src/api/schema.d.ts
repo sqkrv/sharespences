@@ -288,7 +288,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Кешбек друзей: shared clients' window (current + next month) */
+        /** Кешбэк друзей: shared clients' window (current + next month) */
         get: operations["cashback-friends"];
         put?: never;
         post?: never;
@@ -443,7 +443,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Обзор кешбека: лучшие карты по категориям и срез по картам */
+        /** Обзор кешбэка: лучшие карты по категориям и срез по картам */
         get: operations["cashback-overview"];
         put?: never;
         post?: never;
@@ -1559,7 +1559,7 @@ export interface components {
             readonly $schema?: string;
             /** @description exact-matched menu rows still pickable («свободный слот») */
             available?: components["schemas"]["AvailableEntryDTO"][] | null;
-            /** @description «Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships */
+            /** @description «Кешбэк на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships */
             base?: components["schemas"]["LookupEntryDTO"][] | null;
             /** @description exact-matched menu rows this period can no longer take (slots_full/locked) — shown apart, the client still answers with its base row */
             blocked?: components["schemas"]["AvailableEntryDTO"][] | null;

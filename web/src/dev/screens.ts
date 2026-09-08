@@ -2,7 +2,7 @@ import { matchPath } from "react-router-dom";
 
 // Screen IDs (docs/design/ui-preferences.md §Dev mode). A shared vocabulary:
 // «поправь CB-03» beats describing a screen in
-// prose. Prefix = module (CB кешбек, GR группы, HM главная, HS история,
+// prose. Prefix = module (CB кешбэк, GR группы, HM главная, HS история,
 // MD модерация, PV привилегии, SYS системные), so the numbers never collide
 // the way the specs' old S<n> labels did across cashback.md and
 // group-expenses.md.
@@ -19,7 +19,7 @@ export const SCREENS: Screen[] = [
   { id: "SYS-02", path: "/register", title: "Регистрация", file: "web/src/pages/Register.tsx" },
   { id: "SYS-03", path: "/services", title: "Сервисы", file: "web/src/pages/Services.tsx" },
   { id: "MD-01", path: "/moderation", title: "Модерация", file: "web/src/pages/Moderation.tsx" },
-  { id: "CB-01", path: "/", title: "Кешбек — лента", file: "web/src/pages/Overview.tsx" },
+  { id: "CB-01", path: "/", title: "Кешбэк — лента", file: "web/src/pages/Overview.tsx" },
   { id: "CB-02", path: "/periods/new", title: "Меню месяца", file: "web/src/pages/PeriodNew.tsx" },
   { id: "CB-03", path: "/periods/:id", title: "Меню банка", file: "web/src/pages/Period.tsx" },
   { id: "CB-04", path: "/search", title: "Поиск", file: "web/src/pages/Search.tsx" },
@@ -32,7 +32,7 @@ export const SCREENS: Screen[] = [
   // CB-05 (the partner-offer list screen) dissolved into the bank cards on
   // CB-09 + the CB-12 form (партнёрки v2, 2026-08-06); /partners redirects.
   { id: "CB-12", path: "/partners/new", title: "Партнёрское предложение", file: "web/src/pages/PartnerNew.tsx" },
-  { id: "CB-06", path: "/friends", title: "Кешбек друзей", file: "web/src/pages/Friends.tsx" },
+  { id: "CB-06", path: "/friends", title: "Кешбэк друзей", file: "web/src/pages/Friends.tsx" },
   { id: "CB-07", path: "/friends/settings", title: "Друзья и шэринг", file: "web/src/pages/FriendsSettings.tsx" },
   // /join is the short form printed on invites (4e); /friends/join is the
   // pre-00025 spelling old links still carry.

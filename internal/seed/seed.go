@@ -86,7 +86,7 @@ type program struct {
 
 var programs = []program{
 	{
-		bank: "Альфа-Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		bank: "Альфа-Банк", name: "Кешбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub", opensDay: 25,
 		midPeriodAdd: "allowed", activation: "immediate", // 2026-07-16: add while a slot is free
 		notes: asOf,
@@ -100,7 +100,7 @@ var programs = []program{
 			// Migration 00030 renames the pre-split row to M, which preserves
 			// the terms every existing subscriber already has.
 			{name: "Альфа-Смарт S", paid: true, capValue: "5000", capScope: "total", maxCategories: 3,
-				notes: alfaAsOf + "; набор из 9 привилегий (199 ₽/мес) — кэшбэк на базовых условиях"},
+				notes: alfaAsOf + "; набор из 9 привилегий (199 ₽/мес) — кешбэк на базовых условиях"},
 			{name: "Альфа-Смарт M", paid: true, capValue: "7000", capScope: "total", maxCategories: 4,
 				notes: alfaAsOf + "; набор из 15 привилегий (399 ₽ личный / 499 ₽ семейный)"},
 			// Same cap covers the Максимум package; А-Клуб (30 000 / 200 000) is
@@ -109,7 +109,7 @@ var programs = []program{
 		},
 	},
 	{
-		bank: "ВТБ", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		bank: "ВТБ", name: "Кешбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub", opensDay: 26,
 		midPeriodAdd: "locked_after_first", activation: "immediate", // one-shot (п. 3.5); +5 мин ≈ immediate
 		notes: vtbAsOf + "; Отчетный период = календарный месяц (п. 1.7); бонусные рубли зачисляются на счёт 1:1, баланс обнуляется в начале периода (пп. 2.13–2.14); дополнительные категории за хранение остатков — record-only",
@@ -130,7 +130,7 @@ var programs = []program{
 		},
 	},
 	{
-		bank: "Ozon Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		bank: "Ozon Банк", name: "Кешбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub", opensDay: 25,
 		midPeriodAdd: "locked_after_first", activation: "immediate", // «единожды» per the loyalty rules
 		notes: asOf,
@@ -159,7 +159,7 @@ var programs = []program{
 		},
 	},
 	{
-		bank: "Яндекс Пэй", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "incremental",
+		bank: "Яндекс Пэй", name: "Кешбэк", periodType: "calendar_month", selectionMode: "incremental",
 		currencyKind: "points", pointsLabel: "Баллы Плюс",
 		// rules: base selection is one-shot; the incremental feel comes from
 		// GRANTED extra categories (мини-игра/Свои Плюсы), not from re-picking.
@@ -177,7 +177,7 @@ var programs = []program{
 		},
 	},
 	{
-		bank: "Газпромбанк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		bank: "Газпромбанк", name: "Кешбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub", opensDay: 25,
 		// п. 18: the window opens on the 25th of the preceding month and stays
 		// open «до окончания последних календарных суток» of the period itself.
@@ -190,7 +190,7 @@ var programs = []program{
 		},
 	},
 	{
-		bank: "МКБ", name: "Кэшбэк", periodType: "quarter", selectionMode: "atomic",
+		bank: "МКБ", name: "Кешбэк", periodType: "quarter", selectionMode: "atomic",
 		currencyKind: "points", pointsLabel: "баллы МКБ",
 		// п. 3.4: a category chosen for the NEXT period runs from its first day,
 		// one chosen inside the current period «действует с момента выбора» —
@@ -252,7 +252,7 @@ var programs = []program{
 		},
 	},
 	{
-		bank: "Т-Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "incremental",
+		bank: "Т-Банк", name: "Кешбэк", periodType: "calendar_month", selectionMode: "incremental",
 		currencyKind: "rub",
 		// Filling a still-empty slot later is allowed; whether a TAKEN slot can be
 		// swapped is a different question, and stays unknown. No opensDay: the
@@ -286,7 +286,7 @@ var programs = []program{
 		// «уровни» (Начальный/Базовый/Продвинутый) are IDENTIFICATION tiers set by
 		// KYC depth and govern payment limits — the cashback terms are identical
 		// across all three, so they are deliberately not modelled as program_tier.
-		bank: "Яндекс Про", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		bank: "Яндекс Про", name: "Кешбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "points", pointsLabel: "Баллы Плюса", opensDay: 28,
 		midPeriodAdd: "unknown", activation: "unknown",
 		notes: yandexProAsOf + "; карта для исполнителей Яндекс Про, она же карта для выплат; выбор категорий с 28 числа, период — полный календарный месяц; ⚠️ кешбэк начисляется ТОЛЬКО за покупки вне сервисов Яндекса; ⚠️ балл = 1 ₽ скидки внутри сервисов Яндекса, в рубли не выводится; уровни Начальный/Базовый/Продвинутый — это ступени идентификации (лимиты хранения и трат), на кешбэк не влияют",
@@ -298,7 +298,7 @@ var programs = []program{
 		},
 	},
 	{
-		bank: "Совкомбанк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		bank: "Совкомбанк", name: "Кешбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub",
 		midPeriodAdd: "unknown", activation: "unknown",
 		// No opensDay by construction: the period is anchored to each card's issue
@@ -317,7 +317,7 @@ var programs = []program{
 		},
 	},
 	{
-		bank: "ОТП Банк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		bank: "ОТП Банк", name: "Кешбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "points", pointsLabel: "баллы ОТП", opensDay: 25,
 		// п. 2.2.2: the list is offered on the 25th for the following month and
 		// the choice stays open «до последнего дня календарного месяца», with
@@ -341,7 +341,7 @@ var programs = []program{
 		},
 	},
 	{
-		bank: "МТС Деньги", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		bank: "МТС Деньги", name: "Кешбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "points", pointsLabel: "баллы МТС", opensDay: 25,
 		// The rules are silent on timing; the bank's help page states it —
 		// «категории на новый месяц открываются после 25 числа» and «ваш выбор
@@ -356,7 +356,7 @@ var programs = []program{
 		},
 	},
 	{
-		bank: "УБРиР", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		bank: "УБРиР", name: "Кешбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub", opensDay: 25,
 		midPeriodAdd: "locked_after_first", activation: "immediate",
 		// ⚠️ `activation: immediate` is an approximation the document does not
@@ -372,7 +372,7 @@ var programs = []program{
 		},
 	},
 	{
-		bank: "Примсоцбанк", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		bank: "Примсоцбанк", name: "Кешбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "rub", opensDay: 25,
 		// The rules document states no date; the bank's monthly announcements do,
 		// identically across 2026-02…08 («с 25 февраля … категории на март»), and
@@ -387,7 +387,7 @@ var programs = []program{
 		},
 	},
 	{
-		bank: "Банк Синара", name: "Кэшбэк", periodType: "calendar_month", selectionMode: "atomic",
+		bank: "Банк Синара", name: "Кешбэк", periodType: "calendar_month", selectionMode: "atomic",
 		currencyKind: "points", pointsLabel: "баллы Синары",
 		// opensDay stays unset on purpose: the published rule is relative —
 		// «за 5 календарных дней до начала нового месяца» — so the day of month

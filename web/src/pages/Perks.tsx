@@ -289,7 +289,7 @@ function NewPerkSheet({ onClose }: { onClose: () => void }) {
         <p className="mt-3 rounded-lg border border-brd2 bg-srf2 px-2.5 py-2 text-[10.5px] font-semibold text-tx3">
           У этого банка пока нет держателей — сначала заведи карту в{" "}
           <Link to="/banks/new" className="font-bold text-accl">
-            «Кешбеке»
+            «Кешбэке»
           </Link>
           .
         </p>

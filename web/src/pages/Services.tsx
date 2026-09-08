@@ -140,7 +140,7 @@ export default function Services() {
             </button>
           </div>
         )}
-        <p className="mt-1 text-[10px] font-medium text-tx4">По логину друзья находят тебя в кешбеке.</p>
+        <p className="mt-1 text-[10px] font-medium text-tx4">По логину друзья находят тебя в кешбэке.</p>
         <Btn variant="danger" className="mt-4" onClick={() => logout.mutate()}>
           Выйти
         </Btn>
@@ -200,7 +200,7 @@ export default function Services() {
             sub="Квоты банковских привилегий: такси, бизнес-залы, преференции"
             fresh
           />
-          <ModuleRow to="/friends/settings" emoji="👥" title="Друзья" sub="Обмен кешбек-выборами и заявки" />
+          <ModuleRow to="/friends/settings" emoji="👥" title="Друзья" sub="Обмен кешбэк-выборами и заявки" />
         </div>
       </Card>
 
@@ -246,7 +246,7 @@ export default function Services() {
       <Card className="p-4" data-sid="SYS-03.e">
         <p className="text-[10px] font-semibold uppercase tracking-[.1em] text-tx4">О приложении</p>
         <p className="mt-2 text-sm font-medium text-tx3">
-          Sharespences — учёт банковского кешбека: какие категории выбраны и какой картой выгоднее платить.
+          Sharespences — учёт банковского кешбэка: какие категории выбраны и какой картой выгоднее платить.
         </p>
         <p className="mt-2 text-sm font-medium text-tx3">
           Разработал{" "}

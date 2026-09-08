@@ -122,7 +122,7 @@ export function PartnerSheet({ id, onClose }: { id: number; onClose: () => void 
       <Sheet onClose={() => setConfirmEnd(false)} sid="CB-09.f" title="Завершить партнёрку?">
         <div className="space-y-3 pb-1">
           <p className="text-[12.5px] leading-snug font-medium text-tx2">
-            Предложение сразу уйдёт из ленты, поиска и точки продаж. Начисленный кешбек останется в истории.
+            Предложение сразу уйдёт из ленты, поиска и точки продаж. Начисленный кешбэк останется в истории.
           </p>
           <div className="flex items-center gap-2.5 rounded-xl border border-gold/25 bg-gold/5 px-3 py-2.5">
             <span className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[9px] bg-gold/15 text-xs font-extrabold text-gold">★</span>

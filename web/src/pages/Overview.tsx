@@ -387,7 +387,7 @@ function FirstRun() {
       <Btn className="w-full" onClick={() => navigate("/banks/new")}>
         Добавить первый банк
       </Btn>
-      <p className="text-center text-[11px] font-medium text-tx4">Есть друг в Sharespences? Его кешбеки появятся здесь же.</p>
+      <p className="text-center text-[11px] font-medium text-tx4">Есть друг в Sharespences? Его кешбэки появятся здесь же.</p>
     </div>
   );
 }
@@ -478,7 +478,7 @@ export default function Overview() {
   return (
     <>
       <div className="flex items-center justify-between gap-2.5" data-sid="CB-01.a">
-        <h1 className="text-[23px] font-extrabold tracking-tight">Кешбек</h1>
+        <h1 className="text-[23px] font-extrabold tracking-tight">Кешбэк</h1>
         <div className="flex items-center gap-2">
           {roster.length > 0 && <MonthPicker value={monthDate} onChange={setMonthDate} />}
           <Link to="/banks" title="Банки и карты" className="flex h-[33px] w-[33px] items-center justify-center rounded-[11px] bg-inset">
@@ -487,7 +487,7 @@ export default function Overview() {
               <path d="M3 10.5h18" />
             </svg>
           </Link>
-          <Link to="/friends" title="Кешбек друзей" className="flex h-[33px] w-[33px] items-center justify-center rounded-[11px] bg-inset">
+          <Link to="/friends" title="Кешбэк друзей" className="flex h-[33px] w-[33px] items-center justify-center rounded-[11px] bg-inset">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--t-accl)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="9" cy="8.5" r="3.2" />
               <path d="M3.5 19.5c0-3 2.5-4.8 5.5-4.8s5.5 1.8 5.5 4.8" />
@@ -523,7 +523,7 @@ export default function Overview() {
           <FirstRun />
           {feed.length > 0 && (
             <div className="space-y-1.5">
-              <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Кешбеки друзей</p>
+              <p className="mx-0.5 text-[10.5px] font-extrabold tracking-[.14em] text-tx3 uppercase">Кешбэки друзей</p>
               {feed.map((it) =>
                 it.cat ? (
                   <FeedRow key={it.key} g={it.cat} date={isCurrentMonth ? null : monthDate} friendsOn={friendsOn} openEntry={openEntry} />
