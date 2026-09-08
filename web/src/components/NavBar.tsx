@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 
-// The design's five-tab bottom navbar. Only «Кешбек» is a built module;
+// The design's five-tab bottom navbar. Only «Кешбэк» is a built module;
 // the rest route to honest «в разработке» stubs (2026-07-09).
 const TABS: { to: string; label: string; icon: React.ReactNode }[] = [
   {
@@ -15,7 +15,7 @@ const TABS: { to: string; label: string; icon: React.ReactNode }[] = [
   },
   {
     to: "/",
-    label: "Кешбек",
+    label: "Кешбэк",
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
         <line x1="6.5" y1="17.5" x2="17.5" y2="6.5" />

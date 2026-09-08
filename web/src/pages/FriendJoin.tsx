@@ -65,7 +65,7 @@ export default function FriendJoin() {
               </Link>
               <Link to="/friends" className="block">
                 <Btn variant="ghost" className="w-full">
-                  Кешбек друзей
+                  Кешбэк друзей
                 </Btn>
               </Link>
             </div>
@@ -76,7 +76,7 @@ export default function FriendJoin() {
             <p className="text-base font-bold">Приглашение в друзья</p>
             <p className="text-[12px] font-medium text-tx3">
               По этой ссылке вы отправите заявку в друзья — когда её подтвердят, сможете открыть друг другу свои
-              категории кешбека.
+              категории кешбэка.
             </p>
             <Btn className="w-full" disabled={claim.isPending || token === ""} onClick={() => claim.mutate()}>
               Отправить заявку

@@ -769,7 +769,7 @@ export default function Period() {
                     <p className="mt-0.5 text-[9.5px] font-medium text-tx4">выбрано {new Date(offer.selected_at).toLocaleDateString("ru-RU")}</p>
                   )}
                   {offer.cap_value && (
-                    <p className="mt-0.5 text-[9.5px] font-medium text-tx4">кешбек до {offer.cap_value} {currency === "points" ? "баллов" : "₽"}</p>
+                    <p className="mt-0.5 text-[9.5px] font-medium text-tx4">кешбэк до {offer.cap_value} {currency === "points" ? "баллов" : "₽"}</p>
                   )}
                 </button>
                 {notesCount > 0 && !expanded && <span className="h-1.5 w-1.5 flex-none rounded-full bg-gold" title="есть предупреждения — тап по строке" />}

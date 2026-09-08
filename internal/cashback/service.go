@@ -1645,7 +1645,7 @@ func isPgCode(err error, code string) bool {
 // MCCBoard is the exact answer for one code (10b variant 3, 2026-08-27):
 // every entry got here through a bank's OWN category holding the code —
 // bank_category_mcc membership — never through a canonical guess. Banks
-// without ingested MCC memberships fall to Base («Кешбек на всё»), honestly:
+// without ingested MCC memberships fall to Base («Кешбэк на всё»), honestly:
 // approximate ranking on an MCC-driven screen was rejected outright.
 // Exclusion lists («код исключён банком», 13c) are a recorded follow-up —
 // they need their own model and a per-bank rules ingestion first.

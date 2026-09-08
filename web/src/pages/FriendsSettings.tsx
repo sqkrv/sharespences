@@ -107,7 +107,7 @@ function FriendRow({ f }: { f: Friend }) {
           {confirmRemove ? (
             <div className="space-y-2 rounded-xl bg-warn/5 p-3">
               <p className="text-[12px] font-medium text-warn">
-                Удалить из друзей? Доступ к кешбеку отзовётся в обе стороны.
+                Удалить из друзей? Доступ к кешбэку отзовётся в обе стороны.
               </p>
               <div className="flex gap-2">
                 <Btn variant="danger" disabled={remove.isPending} onClick={() => remove.mutate()}>
@@ -408,7 +408,7 @@ export default function FriendsSettings() {
       <div className="flex items-center justify-between">
         <h1 className="text-[22px] font-extrabold tracking-tight">Друзья и шэринг</h1>
         <Link to="/friends" className="text-[12px] font-semibold text-accl">
-          Кешбек друзей ›
+          Кешбэк друзей ›
         </Link>
       </div>
       <SegTabs

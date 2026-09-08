@@ -5,7 +5,7 @@ import { api, unwrap, type FriendCashback, type FriendOffer, type FriendPeriod, 
 import { BackButton, BankBadge, Card, Empty, ErrMsg, Pct, Spinner } from "../components/ui";
 import { FALLBACK_EMOJI, coversToday, currencyBadge, fmtRange } from "../lib";
 
-// CB-06 «Кешбек друзей» v2 (redesign 4a): each friend's picture in chips
+// CB-06 «Кешбэк друзей» v2 (redesign 4a): each friend's picture in chips
 // tinted by the currency legend — мята рубли, сирень баллы, золото спец —
 // without limits and without history (invariants 4 and 8). The unselected
 // menu stays collapsed; caps are absent by API shape, so no ProgressRing.
@@ -153,7 +153,7 @@ export default function Friends() {
     <>
       <div className="flex items-center gap-2.5">
         <BackButton />
-        <h1 className="min-w-0 flex-1 text-xl font-extrabold tracking-tight">Кешбек друзей</h1>
+        <h1 className="min-w-0 flex-1 text-xl font-extrabold tracking-tight">Кешбэк друзей</h1>
         <Link
           to="/friends/settings"
           title="Друзья и шэринг"

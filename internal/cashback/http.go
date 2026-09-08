@@ -1209,7 +1209,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "cashback-overview", Method: http.MethodGet,
-		Path: "/api/v1/cashback/overview", Summary: "Обзор кешбека: лучшие карты по категориям и срез по картам", Tags: []string{"cashback"},
+		Path: "/api/v1/cashback/overview", Summary: "Обзор кешбэка: лучшие карты по категориям и срез по картам", Tags: []string{"cashback"},
 	}, func(ctx context.Context, in *struct {
 		Date string `query:"date" doc:"YYYY-MM-DD; defaults to today"`
 	}) (*struct {
@@ -1334,7 +1334,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 			Available       []AvailableEntryDTO `json:"available,omitempty" doc:"exact-matched menu rows still pickable («свободный слот»)"`
 			Blocked         []AvailableEntryDTO `json:"blocked,omitempty" doc:"exact-matched menu rows this period can no longer take (slots_full/locked) — shown apart, the client still answers with its base row"`
 			FriendAvailable []AvailableEntryDTO `json:"friend_available,omitempty" doc:"a friend's shared menu row holding this code that they have not picked and still can — display only, offer_id is 0: the action is asking them"`
-			Base            []LookupEntryDTO    `json:"base,omitempty" doc:"«Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships"`
+			Base            []LookupEntryDTO    `json:"base,omitempty" doc:"«Кешбэк на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships"`
 		}
 	}, error) {
 		onDate := time.Now()
@@ -1354,7 +1354,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 				Available       []AvailableEntryDTO `json:"available,omitempty" doc:"exact-matched menu rows still pickable («свободный слот»)"`
 				Blocked         []AvailableEntryDTO `json:"blocked,omitempty" doc:"exact-matched menu rows this period can no longer take (slots_full/locked) — shown apart, the client still answers with its base row"`
 				FriendAvailable []AvailableEntryDTO `json:"friend_available,omitempty" doc:"a friend's shared menu row holding this code that they have not picked and still can — display only, offer_id is 0: the action is asking them"`
-				Base            []LookupEntryDTO    `json:"base,omitempty" doc:"«Кешбек на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships"`
+				Base            []LookupEntryDTO    `json:"base,omitempty" doc:"«Кешбэк на всё»: clients whose only answer is the selected base row — incl. every bank without ingested MCC memberships"`
 			}
 		}{}
 		for _, e := range board.Ranked {
@@ -1756,7 +1756,7 @@ func RegisterHTTP(api huma.API, s *Service) {
 
 	huma.Register(api, huma.Operation{
 		OperationID: "cashback-friends", Method: http.MethodGet,
-		Path: "/api/v1/cashback/friends", Summary: "Кешбек друзей: shared clients' window (current + next month)", Tags: []string{"cashback"},
+		Path: "/api/v1/cashback/friends", Summary: "Кешбэк друзей: shared clients' window (current + next month)", Tags: []string{"cashback"},
 		// No date parameter on purpose (invariant 8): the shared window is
 		// [today .. end of next month] from SERVER time — a caller-supplied
 		// date must never page a friend's history.

@@ -23,7 +23,7 @@ import { pushRecent } from "../recent";
 // «это та самая точка» — then one ranked leaderboard «Чем платить — по
 // убыванию», no hero. Every row got here through EXACT per-bank matching
 // (10b variant 3): the bank's own category holds the point's MCC. Banks
-// without ingested MCC memberships fall to the «Кешбек на всё» fold —
+// without ingested MCC memberships fall to the «Кешбэк на всё» fold —
 // approximate ranking on an MCC screen was rejected outright (2026-08-27).
 //
 // The board ranks by the nominal percent across currencies (owner decision
@@ -455,7 +455,7 @@ export function Leaderboard({ board, matches, sid }: { board: MccBoard; matches:
         <div className="rounded-xl border border-brd bg-srf/60 px-3 py-2.5" data-sid="CB-11.f">
           <button type="button" onClick={() => setShowBase(!showBase)} className="flex w-full items-center gap-2 text-left">
             <span className="min-w-0 flex-1 text-xs font-semibold text-tx4">
-              Кешбек на всё · {base.length} —{" "}
+              Кешбэк на всё · {base.length} —{" "}
               {base.map((e) => (e.holder_label ? `${e.bank_name} · ${e.holder_label}` : e.bank_name)).join(", ")}
             </span>
             <span className="text-[9px] text-tx4">{showBase ? "▲" : "▼"}</span>
@@ -738,7 +738,7 @@ function CategoryScreen({ slug }: { slug: string }) {
             <div className="rounded-xl border border-brd bg-srf/60 px-3 py-2.5" data-sid="CB-11.f">
               <button type="button" onClick={() => setShowBase(!showBase)} className="flex w-full items-center gap-2 text-left">
                 <span className="min-w-0 flex-1 text-xs font-semibold text-tx4">
-                  Кешбек на всё · {baseClients.length} —{" "}
+                  Кешбэк на всё · {baseClients.length} —{" "}
                   {baseClients.map((e) => (e.holder_label ? `${e.bank_name} · ${e.holder_label}` : e.bank_name)).join(", ")}
                 </span>
                 <span className="text-[9px] text-tx4">{showBase ? "▲" : "▼"}</span>

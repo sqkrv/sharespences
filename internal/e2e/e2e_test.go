@@ -1274,7 +1274,7 @@ func TestCashbackE2E(t *testing.T) {
 	if _, ok := rankedBanks["Альфа-Банк"]; !ok {
 		t.Fatalf("mcc-board 5411 ranked %v, want Альфа-Банк among them", rankedBanks)
 	}
-	// A code no bank counts falls through to «Кешбек на всё» rather than
+	// A code no bank counts falls through to «Кешбэк на всё» rather than
 	// ranking a category that does not cover it.
 	var boardOther struct {
 		Ranked []struct {

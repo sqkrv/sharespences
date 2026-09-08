@@ -100,7 +100,7 @@ var programs = []program{
 			// Migration 00030 renames the pre-split row to M, which preserves
 			// the terms every existing subscriber already has.
 			{name: "Альфа-Смарт S", paid: true, capValue: "5000", capScope: "total", maxCategories: 3,
-				notes: alfaAsOf + "; набор из 9 привилегий (199 ₽/мес) — кэшбэк на базовых условиях"},
+				notes: alfaAsOf + "; набор из 9 привилегий (199 ₽/мес) — кешбэк на базовых условиях"},
 			{name: "Альфа-Смарт M", paid: true, capValue: "7000", capScope: "total", maxCategories: 4,
 				notes: alfaAsOf + "; набор из 15 привилегий (399 ₽ личный / 499 ₽ семейный)"},
 			// Same cap covers the Максимум package; А-Клуб (30 000 / 200 000) is

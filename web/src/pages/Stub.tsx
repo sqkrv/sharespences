@@ -6,7 +6,7 @@ export default function Stub({ title }: { title: string }) {
     <div className="flex flex-col items-center gap-3 pt-24 text-center">
       <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-brd bg-srf text-2xl">🚧</span>
       <h1 className="text-xl font-extrabold tracking-tight">{title}</h1>
-      <p className="max-w-60 text-sm font-medium text-tx3">Модуль в разработке — первым построен «Кешбек».</p>
+      <p className="max-w-60 text-sm font-medium text-tx3">Модуль в разработке — первым построен «Кешбэк».</p>
     </div>
   );
 }
